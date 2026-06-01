@@ -96,7 +96,7 @@ export default function Hero()
                             <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo API    → http://localhost:5180</div>
                             <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo admin  → http://localhost:5181</div>
                             <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo portal → http://localhost:5182</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo app    → http://localhost:5183</div>
+                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo app    → http://localhost:5184</div>
                         </div>
                     </div>
                 </div>

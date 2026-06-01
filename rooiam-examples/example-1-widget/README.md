@@ -29,7 +29,7 @@ Important:
   - `client_id`
   - `app_name`
 - the callback stays registered on the Rooiam app itself.
-- for this local starter example, register `http://localhost:5180/callback` on that app.
+- for this local starter example, register `http://localhost:5191/callback` on that app.
 - if one app supports multiple sites, Rooiam matches the current embedding site to the registered callback with the same origin. If that feels confusing, use a separate app registration per site or environment.
 - this host page still needs normal frontend security:
   - strict CSP where possible
@@ -40,7 +40,7 @@ Important:
 ## Run
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-example/example-1-widget
+cd rooiam/rooiam-examples/example-1-widget
 npm install
 npm run dev
 ```
@@ -48,5 +48,5 @@ npm run dev
 Then open:
 
 ```text
-http://localhost:5180
+http://localhost:5191
 ```

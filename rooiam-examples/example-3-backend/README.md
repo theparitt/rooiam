@@ -4,8 +4,8 @@ Simple backend-only Rooiam example.
 
 This example is intentionally machine-to-machine only:
 
-- browser calls local routes on `5182`
-- `5182` backend calls Rooiam on `5170`
+- browser calls local routes on `5193`
+- `5193` backend calls Rooiam on `5170`
 - the workspace API key stays on the example server
 
 This example does not use:
@@ -16,7 +16,7 @@ This example does not use:
 
 ## What the page tests
 
-The page on `http://localhost:5182` is split into:
+The page on `http://localhost:5193` is split into:
 
 - read-route buttons for the implemented workspace API-key `GET` routes
 - write-route tests for:
@@ -27,7 +27,7 @@ The page on `http://localhost:5182` is split into:
 
 Every action:
 
-- calls the local example backend on `5182`
+- calls the local example backend on `5193`
 - the backend forwards the request to `5170` with the workspace API key
 - the browser shows the real JSON response with formatting
 
@@ -67,7 +67,7 @@ Needs broader scope than a workspace API key:
 
 ## Local Example Routes
 
-These are the local routes served by `5182`:
+These are the local routes served by `5193`:
 
 - `GET /api/rooiam/workspace`
 - `GET /api/rooiam/branding`
@@ -91,7 +91,7 @@ These are the local routes served by `5182`:
 
 Each local route:
 
-1. receives the browser request on `5182`
+1. receives the browser request on `5193`
 2. calls the real Rooiam endpoint on `5170`
 3. sends the JSON response back to the browser
 
@@ -103,7 +103,7 @@ Each local route:
 ## Run
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-example/example-3-backend
+cd rooiam/rooiam-examples/example-3-backend
 npm install
 npm run dev
 ```
@@ -111,5 +111,5 @@ npm run dev
 Then open:
 
 ```text
-http://localhost:5182
+http://localhost:5193
 ```

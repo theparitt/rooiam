@@ -1,4 +1,4 @@
-# rooiam-example
+# rooiam-examples
 
 Rooiam examples root.
 
@@ -6,21 +6,21 @@ Structure:
 
 - `example-1-widget`
   - minimal hosted login widget embed
-  - target local port: `5180`
+  - target local port: `5191`
 - `example-2-account`
   - fuller app with callback, `My` area, linked accounts, passkeys, MFA, sessions, and audit logs
-  - target local port: `5181`
+  - target local port: `5192`
 - `example-3-backend`
   - backend-heavy integration example
-  - target local port: `5182`
+  - target local port: `5193`
 
 Recommended doctrine:
 
-- `5180`
+- `5191`
   - easiest first example
-- `5181`
+- `5192`
   - richer account example
-- `5182`
+- `5193`
   - advanced backend / server-side integration
 
 This keeps the examples progressive instead of overloading one app with every concept at once.
@@ -56,11 +56,11 @@ Security notes:
 
 Port map:
 
-- `5180`
+- `5191`
   - `example-1-widget`
-- `5181`
+- `5192`
   - `example-2-account`
-- `5182`
+- `5193`
   - `example-3-backend`
 
 ## Real Product Path

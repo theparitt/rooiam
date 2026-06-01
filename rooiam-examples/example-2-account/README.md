@@ -37,7 +37,7 @@ Important:
   - `client_id`
   - `app_name`
 - the callback stays registered on the Rooiam app itself.
-- for this local example app, register `http://localhost:5181/callback`
+- for this local example app, register `http://localhost:5192/callback`
 - logout now sends both:
   - `client_id`
   - `post_logout_redirect_uri`
@@ -48,7 +48,7 @@ Important:
 ## Run
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-example/example-2-account
+cd rooiam/rooiam-examples/example-2-account
 npm install
 npm run dev
 ```
@@ -56,5 +56,5 @@ npm run dev
 Then open:
 
 ```text
-http://localhost:5181
+http://localhost:5192
 ```

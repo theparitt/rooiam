@@ -1,7 +1,7 @@
 export const GITHUB_REPO_URL = 'https://github.com/theparitt/rooiam'
 export const DOCS_BASE_URL = import.meta.env.VITE_DOCS_URL?.trim() || 'http://localhost:5175'
 export const APP_BASE_URL = import.meta.env.VITE_APP_URL?.trim() || 'http://localhost:5172'
-export const DEMO_BASE_URL = import.meta.env.VITE_DEMO_URL?.trim() || 'http://localhost:5183'
+export const DEMO_BASE_URL = import.meta.env.VITE_DEMO_URL?.trim() || 'http://localhost:5184'
 export const DEMO_APP_BASE_URL = import.meta.env.VITE_DEMO_APP_URL?.trim() || 'http://localhost:5182'
 export const DEMO_ADMIN_BASE_URL = import.meta.env.VITE_DEMO_ADMIN_URL?.trim() || 'http://localhost:5181'
 export const DOCS_HOME_URL = `${DOCS_BASE_URL}/`
