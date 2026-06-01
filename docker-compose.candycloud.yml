@@ -1,0 +1,41 @@
+name: candycloud
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - candycloud_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: rooiam-candycloud-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.candycloud
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CANDYCLOUD_PORT: 5185
+      CANDYCLOUD_REDIS_URL: redis://redis:6379
+      CANDYCLOUD_DB_PATH: /data/candycloud.db
+    ports:
+      - "5185:5185"
+    volumes:
+      - candycloud_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5185/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  candycloud_redis_data:
+  candycloud_data:

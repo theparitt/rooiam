@@ -1,0 +1,30 @@
+FROM node:22-alpine AS builder
+
+WORKDIR /build
+
+COPY candycloud-server/package*.json ./
+RUN npm ci --omit=dev
+
+COPY candycloud-server/src ./src
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+FROM node:22-alpine
+
+WORKDIR /app
+
+RUN addgroup -S candycloud && adduser -S candycloud -G candycloud
+
+COPY --from=builder /build/node_modules ./node_modules
+COPY --from=builder /build/src ./src
+COPY candycloud-server/package.json ./
+
+# SQLite db lives in /data so it can be mounted as a volume
+RUN mkdir -p /data && chown candycloud:candycloud /data
+
+USER candycloud
+
+EXPOSE 5185
+
+ENV CANDYCLOUD_DB_PATH=/data/candycloud.db
+
+CMD ["node", "src/index.js"]

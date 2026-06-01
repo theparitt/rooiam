@@ -1,0 +1,19 @@
+<svg width="320" height="96" viewBox="0 0 320 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="96" rx="28" fill="#FFF7F8"/>
+  <rect x="12" y="12" width="72" height="72" rx="22" fill="url(#paint0_linear)"/>
+  <circle cx="48" cy="48" r="22" fill="#FFF5EB"/>
+  <path d="M34 43C34 36.3726 39.3726 31 46 31H50C56.6274 31 62 36.3726 62 43V54C62 60.6274 56.6274 66 50 66H46C39.3726 66 34 60.6274 34 54V43Z" fill="#6B3A2A"/>
+  <path d="M59 39C64.5228 39 69 43.4772 69 49V50C69 55.5228 64.5228 60 59 60H58V39H59Z" fill="#8A4F39"/>
+  <path d="M38 37.5C38 34.4624 40.4624 32 43.5 32H52.5C55.5376 32 58 34.4624 58 37.5V44H38V37.5Z" fill="#8A4F39"/>
+  <circle cx="46" cy="49" r="2.5" fill="#FFF5EB"/>
+  <circle cx="54" cy="49" r="2.5" fill="#FFF5EB"/>
+  <path d="M46 57C47.4 58.3333 48.7333 59 50 59C51.2667 59 52.6 58.3333 54 57" stroke="#FFF5EB" stroke-width="3" stroke-linecap="round"/>
+  <text x="102" y="40" fill="#6D2C43" font-family="Nunito, Arial, sans-serif" font-size="16" font-weight="800" letter-spacing="0.12em">COMPANY</text>
+  <text x="102" y="68" fill="#2A2033" font-family="Nunito, Arial, sans-serif" font-size="34" font-weight="900">RooChoco</text>
+  <defs>
+    <linearGradient id="paint0_linear" x1="12" y1="12" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E39A7E"/>
+      <stop offset="1" stop-color="#C96B8A"/>
+    </linearGradient>
+  </defs>
+</svg>

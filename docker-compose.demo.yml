@@ -1,0 +1,160 @@
+name: rooiam-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ROOIAM_DEMO_DB_NAME?}
+      POSTGRES_USER: ${ROOIAM_DEMO_DB_USER?}
+      POSTGRES_PASSWORD: ${ROOIAM_DEMO_DB_PASSWORD?}
+    volumes:
+      - rooiam_demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ROOIAM_DEMO_DB_USER?} -d ${ROOIAM_DEMO_DB_NAME?}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - rooiam_demo_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${ROOIAM_DEMO_MINIO_USER?}
+      MINIO_ROOT_PASSWORD: ${ROOIAM_DEMO_MINIO_PASSWORD?}
+    ports:
+      - "9001:9001"
+    volumes:
+      - rooiam_demo_minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 "${ROOIAM_DEMO_MINIO_USER?}" "${ROOIAM_DEMO_MINIO_PASSWORD?}"; do
+          echo "waiting for minio..."
+          sleep 2
+        done
+        mc mb --ignore-existing local/${ROOIAM_DEMO_MINIO_BUCKET?}
+    restart: "no"
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  demo-server:
+    image: rooiam-demo-server
+    build:
+      context: .
+      dockerfile: Dockerfile.server.prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      mailhog:
+        condition: service_started
+    environment:
+      ROOIAM_MODE: demo
+      ROOIAM_DEPLOY_TARGET: ${ROOIAM_DEMO_DEPLOY_TARGET?}
+      ROOIAM_HOST: 0.0.0.0
+      ROOIAM_PORT: 5170
+      ROOIAM_COOKIE_SECURE: ${ROOIAM_DEMO_COOKIE_SECURE?}
+      ROOIAM_COOKIE_DOMAIN: ${ROOIAM_DEMO_COOKIE_DOMAIN:-}
+      ROOIAM_SERVER_URL: ${ROOIAM_DEMO_SERVER_URL?}
+      ROOIAM_APP_URL: ${ROOIAM_DEMO_APP_URL?}
+      ROOIAM_ENDUSER_URL: ${ROOIAM_DEMO_ENDUSER_URL?}
+      ROOIAM_ADMIN_URL: ${ROOIAM_DEMO_ADMIN_URL?}
+      ROOIAM_ALLOWED_ORIGINS: ${ROOIAM_DEMO_ALLOWED_ORIGINS?}
+      ROOIAM_DATABASE_URL: ${ROOIAM_DEMO_DATABASE_URL?}
+      ROOIAM_REDIS_URL: ${ROOIAM_DEMO_REDIS_URL?}
+      ROOIAM_STORAGE_ROOT: /data/rooiam
+      ROOIAM_PUBLIC_MEDIA_BASE: ${ROOIAM_DEMO_PUBLIC_MEDIA_BASE?}
+      ROOIAM_MINIO_ENDPOINT: ${ROOIAM_DEMO_MINIO_ENDPOINT?}
+      ROOIAM_MINIO_BUCKET: ${ROOIAM_DEMO_MINIO_BUCKET?}
+      ROOIAM_MINIO_USERNAME: ${ROOIAM_DEMO_MINIO_USER?}
+      ROOIAM_MINIO_PASSWORD: ${ROOIAM_DEMO_MINIO_PASSWORD?}
+      ROOIAM_DEMO_SMTP_HOST: ${ROOIAM_DEMO_SMTP_HOST?}
+      ROOIAM_DEMO_SMTP_PORT: ${ROOIAM_DEMO_SMTP_PORT?}
+      ROOIAM_DEMO_SMTP_FROM: ${ROOIAM_DEMO_SMTP_FROM?}
+      ROOIAM_DEMO_MAILBOX_URL: ${ROOIAM_DEMO_MAILBOX_URL?}
+    ports:
+      - "5180:5170"
+    volumes:
+      - rooiam_demo_server_data:/data/rooiam
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5170/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  demo-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+      args:
+        VITE_API_URL: ${ROOIAM_DEMO_SERVER_URL}/v1
+        VITE_DOCS_URL: ${ROOIAM_DOCS_URL?}
+    restart: unless-stopped
+    depends_on:
+      demo-server:
+        condition: service_healthy
+    ports:
+      - "5181:80"
+
+  demo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      args:
+        VITE_API_URL: ${ROOIAM_DEMO_SERVER_URL}/v1
+    restart: unless-stopped
+    depends_on:
+      demo-server:
+        condition: service_healthy
+    ports:
+      - "5182:80"
+
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+      args:
+        VITE_API_URL: ${ROOIAM_DEMO_CANDYCLOUD_API_URL?}
+        VITE_LOGIN_WIDGET_URL: ${ROOIAM_DEMO_SERVER_URL?}
+    restart: unless-stopped
+    depends_on:
+      demo-server:
+        condition: service_healthy
+    ports:
+      - "5184:80"
+
+volumes:
+  rooiam_demo_postgres_data:
+  rooiam_demo_redis_data:
+  rooiam_demo_minio_data:
+  rooiam_demo_server_data:

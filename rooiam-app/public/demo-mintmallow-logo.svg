@@ -1,0 +1,19 @@
+<svg width="320" height="96" viewBox="0 0 320 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="96" rx="28" fill="#F6FFFC"/>
+  <rect x="12" y="12" width="72" height="72" rx="22" fill="url(#paint0_linear)"/>
+  <circle cx="48" cy="48" r="22" fill="#F4FFF9"/>
+  <path d="M34 53C34 46.3726 39.3726 41 46 41H50C56.6274 41 62 46.3726 62 53V54C62 60.6274 56.6274 66 50 66H46C39.3726 66 34 60.6274 34 54V53Z" fill="#5CBDA6"/>
+  <path d="M39 41C39 35.4772 43.4772 31 49 31H50C55.5228 31 60 35.4772 60 41V44H39V41Z" fill="#88DCCB"/>
+  <path d="M39 47H60" stroke="#EAFBF5" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="46" cy="53" r="2.5" fill="#EAFBF5"/>
+  <circle cx="54" cy="53" r="2.5" fill="#EAFBF5"/>
+  <path d="M46 61C47.4 62.3333 48.7333 63 50 63C51.2667 63 52.6 62.3333 54 61" stroke="#EAFBF5" stroke-width="3" stroke-linecap="round"/>
+  <text x="102" y="40" fill="#4A8C7B" font-family="Nunito, Arial, sans-serif" font-size="16" font-weight="800" letter-spacing="0.12em">COMPANY</text>
+  <text x="102" y="68" fill="#1F3A33" font-family="Nunito, Arial, sans-serif" font-size="34" font-weight="900">MintMallow</text>
+  <defs>
+    <linearGradient id="paint0_linear" x1="12" y1="12" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A8E9D8"/>
+      <stop offset="1" stop-color="#5BBDA6"/>
+    </linearGradient>
+  </defs>
+</svg>

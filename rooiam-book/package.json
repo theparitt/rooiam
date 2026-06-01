@@ -1,0 +1,28 @@
+{
+  "name": "rooiam-walkthrough",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 5176",
+    "build": "next build",
+    "start": "next start -p 5176",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "lucide-react": "^0.378.0",
+    "mermaid": "^10.8.0",
+    "next": "14.2.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "rehype-highlight": "^7.0.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,3 @@
+ALTER TABLE organizations
+    ADD COLUMN IF NOT EXISTS card_bg_style VARCHAR(24) NOT NULL DEFAULT 'auto',
+    ADD COLUMN IF NOT EXISTS card_bg_color2 VARCHAR(32) NULL;

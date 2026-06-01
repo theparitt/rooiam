@@ -1,0 +1,40 @@
+FROM rust:1.88-bookworm AS builder
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install sqlx-cli --locked --no-default-features --features rustls,postgres
+
+COPY rooiam-server /build
+
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl libxml2 \
+    && HURL_VERSION=$(curl -s https://api.github.com/repos/Orange-OpenSource/hurl/releases/latest | grep '"tag_name"' | cut -d'"' -f4) \
+    && curl -fsSL "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb" -o /tmp/hurl.deb \
+    && dpkg -i /tmp/hurl.deb \
+    && rm /tmp/hurl.deb \
+    && apt-get remove -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/rooiam-server /usr/local/bin/rooiam-server
+COPY --from=builder /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
+COPY rooiam-server/migrations /app/migrations
+COPY rooiam-server/templates /app/templates
+COPY rooiam-server/assets /app/assets
+COPY docker-entrypoint.server.sh /usr/local/bin/docker-entrypoint.server.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.server.sh
+
+EXPOSE 5170
+
+CMD ["/usr/local/bin/docker-entrypoint.server.sh"]

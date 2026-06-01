@@ -1,0 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 20%;
+    --border: 240 10% 92%;
+    --muted: 240 10% 96%;
+    --muted-foreground: 240 5% 55%;
+    --primary: 346 100% 82%;
+    --primary-foreground: 346 60% 25%;
+    --secondary: 270 80% 88%;
+    --secondary-foreground: 270 60% 25%;
+    --accent: 40 100% 88%;
+    --accent-foreground: 40 60% 25%;
+    --destructive: 0 80% 65%;
+    --destructive-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Nunito', system-ui, sans-serif;
+    scrollbar-width: none;
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    background-image: radial-gradient(circle at 20% 20%, hsl(346 100% 95%) 0%, transparent 50%),
+                      radial-gradient(circle at 80% 80%, hsl(270 80% 95%) 0%, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* DO NOT CHANGE — finalized sidebar scrollbar design.
+   Track is always 4px wide (no layout shift). Thumb is invisible at rest,
+   fades in on hover. Scrollbar is flush to right edge via -mr-4 pr-4 in DashboardLayout. */
+.nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.nav-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.2s;
+}
+.nav-scroll:hover {
+  scrollbar-color: rgba(214, 176, 205, 0.95) transparent;
+}
+.nav-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(214, 176, 205, 0.95);
+}
+
+.main-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.main-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.main-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.main-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.2s;
+}
+.main-scroll:hover {
+  scrollbar-color: rgba(214, 176, 205, 0.6) transparent;
+}
+.main-scroll:hover::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255, 188, 213, 0.8), rgba(210, 178, 247, 0.8));
+}
+.main-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(248, 160, 195, 0.98), rgba(189, 155, 233, 0.98));
+}
+
+/* ── Route transition progress bar ──────────────────────────────────── */
+@keyframes route-progress {
+  0%   { width: 0%; opacity: 1; }
+  30%  { width: 40%; }
+  70%  { width: 75%; }
+  90%  { width: 90%; }
+  100% { width: 100%; opacity: 0; }
+}
+.route-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  background: linear-gradient(90deg, hsl(346 100% 65%), hsl(270 80% 65%));
+  box-shadow: 0 0 8px hsl(346 100% 65% / 0.5);
+  animation: route-progress 600ms ease-out forwards;
+}
+
+@layer components {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  .cute-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+  .nav-link-active {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 4px 14px -2px hsl(var(--primary) / 0.4);
+  }
+  .nav-link-inactive {
+    color: hsl(var(--muted-foreground));
+  }
+  .nav-link-inactive:hover {
+    background-color: hsl(var(--secondary) / 0.5);
+    color: hsl(var(--secondary-foreground));
+  }
+
+  /* ── Setup Wizard ───────────────────────────────────── */
+  .wizard-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 1rem;
+    font-weight: 900;
+    font-size: 0.875rem;
+    color: #5a2d3f;
+    background: linear-gradient(135deg, #FFB5C8 0%, #D5B7FF 100%);
+    box-shadow: 0 4px 14px -2px rgba(255, 181, 200, 0.5);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .wizard-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 20px -2px rgba(255, 181, 200, 0.6);
+  }
+  .wizard-input {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border-radius: 0.875rem;
+    border: 2px solid #F0E8F5;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: #374151;
+    background: white;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .wizard-input:focus {
+    border-color: #FFB5C8;
+  }
+  .wizard-input::placeholder {
+    color: #D1D5DB;
+  }
+  .wizard-label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #9CA3AF;
+    margin-bottom: 0.375rem;
+  }
+}
+

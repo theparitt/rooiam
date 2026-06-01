@@ -1,0 +1,51 @@
+# ── Secrets & Config ─────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.backup
+.env.demo
+*.backup
+*.pem
+*.key
+
+# ── Rust / Cargo ──────────────────────────────────────────────────────────────
+rooiam-server/target/
+**/*.rs.bk
+
+# ── Node / npm ────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+.pnpm-store/
+.wrangler/
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# ── Old/backup directories ────────────────────────────────────────────────────
+rooiam-admin-old*/
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+/rooiam-server/.sqlx
+/rooiam-book/.next
+/rooiam-book/.next
+/rooiam-book/.next
+/rooiam-book/.next
+.mynote
+.mynote

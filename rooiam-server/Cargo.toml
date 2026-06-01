@@ -1,0 +1,45 @@
+[package]
+name = "rooiam-server"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rooiam_server_lib"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+actix-files = "0.6"
+actix-multipart = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "ipnetwork"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+anyhow = "1"
+thiserror = "2"
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+jsonwebtoken = "9"
+rsa = { version = "0.9", features = ["pem"] }
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+url = "2"
+ipnet = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+hex = "0.4"
+subtle = "2.5"
+clap = { version = "4", features = ["derive"] }
+lettre = { version = "0.11.19", features = ["builder", "tokio1", "tokio1-native-tls"] }
+askama = "0.15.4"
+futures-util = "0.3"
+aes-gcm-siv = "0.11"
+base32 = "0.5"
+totp-rs = { version = "5", features = ["otpauth"] }

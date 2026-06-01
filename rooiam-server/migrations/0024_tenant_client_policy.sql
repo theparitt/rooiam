@@ -1,0 +1,5 @@
+ALTER TABLE organizations
+    ADD COLUMN allow_client_management BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN allow_web_clients BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN allow_spa_clients BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN allow_native_clients BOOLEAN NOT NULL DEFAULT TRUE;

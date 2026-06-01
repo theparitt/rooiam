@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ heading }}</title>
+</head>
+
+<body
+    style="margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#F5F0F8;color:#1e293b;-webkit-font-smoothing:antialiased;">
+    <div style="font-size:0;line-height:0;mso-hide:all;display:none;">Here's your magic link to securely sign in.</div>
+    <div
+        style="max-width:500px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
+
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, {{ brand_color }} 0%, #8b5cf6 100%);padding:40px 30px;text-align:center;">
+            {% match logo_url %}
+            {% when Some with (url) %}
+            <div style="margin-bottom:18px;">
+                <img src="{{ url }}" alt="{% match workspace_name %}{% when Some with (name) %}{{ name }}{% when None %}Rooiam{% endmatch %} logo"
+                    style="max-width:180px;max-height:56px;width:auto;height:auto;display:inline-block;border:0;outline:none;text-decoration:none;" />
+            </div>
+            {% when None %}
+            <div
+                style="background:rgba(255,255,255,0.2);display:inline-block;padding:12px;border-radius:16px;margin-bottom:16px;box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <path d="M10 12l2 2 4-4" />
+                </svg>
+            </div>
+            {% endmatch %}
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:900;letter-spacing:-0.5px;">{{ heading }}</h1>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:40px 30px;text-align:center;">
+            <p style="margin:0 0 24px 0;font-size:16px;line-height:24px;color:#475569;font-weight:500;">
+                {{ intro_text }}
+            </p>
+
+            <a href="{{ magic_link_url }}"
+                style="display:inline-block;background-color:{{ brand_color }};color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:16px 36px;border-radius:100px;line-height:100%;letter-spacing:0.5px;">
+                {{ action_label }}
+            </a>
+
+            <div style="margin:28px auto 0 auto;max-width:420px;border:1px solid #E2E8F0;background:#F8FAFC;border-radius:18px;padding:16px 18px;text-align:left;">
+                <p style="margin:0 0 8px 0;font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;">
+                    For your safety
+                </p>
+                <p style="margin:0 0 8px 0;font-size:14px;line-height:22px;color:#475569;font-weight:600;">
+                    Only continue if your browser opens <strong>{{ trusted_host }}</strong>.
+                </p>
+                <p style="margin:0;font-size:13px;line-height:21px;color:#64748B;font-weight:500;">
+                    This is a single-use sign-in link. It expires in <strong>15 minutes</strong> and was sent by <strong>{{ sender_email }}</strong>.
+                </p>
+            </div>
+
+            <p style="margin:22px 0 0 0;font-size:14px;color:#94a3b8;line-height:22px;">
+                If you did not request this, you can safely ignore this email.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color:#F8FAFC;padding:24px 30px;text-align:center;border-top:1px solid #E2E8F0;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;font-weight:500;">
+                Secure sign-in powered by <strong>Rooiam IAM</strong><br />
+                Open-source identity and access management
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>

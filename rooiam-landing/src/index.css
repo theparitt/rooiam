@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  html {
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #d9b6ca transparent;
+  }
+  body {
+    font-family: 'Nunito', system-ui, sans-serif;
+    background-color: #FFF8FC;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: linear-gradient(180deg, #efbfd0, #cfb0f1);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #e7a8c0, #ba95ea);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .section-padding {
+    @apply px-6 md:px-12 lg:px-20 py-16 md:py-24;
+  }
+  .feature-card {
+    @apply rounded-3xl p-7 border-2 transition-all duration-300 hover:-translate-y-2 hover:shadow-lg cursor-default;
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, #FF85A1, #C17BFF, #7BB5FF);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .cta-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full font-black text-base transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl;
+    background: linear-gradient(135deg, #FFB5C8, #D5B7FF);
+    color: #5a2d3f;
+  }
+  .cta-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full font-black text-base border-2 transition-all duration-200 hover:scale-105;
+    border-color: #E8D0E0;
+    color: #6b3a4f;
+    background: white;
+  }
+}

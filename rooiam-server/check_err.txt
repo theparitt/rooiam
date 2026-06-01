@@ -1,0 +1,32 @@
+    Checking rooiam-server v0.1.0 (/home/theparitt/work/rooiam/rooiam-server)
+warning: unused import: `Permission`
+ --> src/modules/rbac/repository.rs:5:27
+  |
+5 | ...e, Permission};
+  |       ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> src/modules/oauth/handlers.rs:41:9
+   |
+41 | ...et mut final_redirect = ...
+   |       ----^^^^^^^^^^^^^^
+   |       |
+   |       help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `id_token` is never read
+  --> src/modules/oauth/service.rs:18:5
+   |
+16 | struct ...enResponse {
+   |        ...---------- field in this struct
+17 |     access_token: String,
+18 |     id_token: Option<St...
+   |     ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rooiam-server` (bin "rooiam-server") generated 3 warnings (run `cargo fix --bin "rooiam-server" -p rooiam-server` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.91s

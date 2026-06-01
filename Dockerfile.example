@@ -1,0 +1,14 @@
+FROM node:20-alpine
+
+ARG EXAMPLE_DIR
+
+WORKDIR /app
+
+COPY rooiam-examples/shared /app/shared
+COPY rooiam-examples/${EXAMPLE_DIR}/package*.json /app/${EXAMPLE_DIR}/
+RUN cd /app/${EXAMPLE_DIR} && npm install
+COPY rooiam-examples/${EXAMPLE_DIR} /app/${EXAMPLE_DIR}
+
+WORKDIR /app/${EXAMPLE_DIR}
+
+CMD ["npm", "run", "start"]

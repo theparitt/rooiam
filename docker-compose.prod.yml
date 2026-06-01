@@ -1,0 +1,179 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - rooiam_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - rooiam_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9001:9001"
+    volumes:
+      - rooiam_minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"; do
+          echo "waiting for minio..."
+          sleep 2
+        done
+        mc mb --ignore-existing local/${ROOIAM_MINIO_BUCKET}
+    restart: "no"
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server.prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      ROOIAM_HOST: 0.0.0.0
+      ROOIAM_PORT: 5170
+      ROOIAM_MODE: production
+      ROOIAM_DEPLOY_TARGET: ${ROOIAM_DEPLOY_TARGET}
+      ROOIAM_COOKIE_SECURE: ${ROOIAM_COOKIE_SECURE}
+      ROOIAM_SERVER_URL: ${ROOIAM_SERVER_URL}
+      ROOIAM_APP_URL: ${ROOIAM_APP_URL}
+      ROOIAM_ADMIN_URL: ${ROOIAM_ADMIN_URL}
+      ROOIAM_ALLOWED_ORIGINS: ${ROOIAM_ALLOWED_ORIGINS}
+      ROOIAM_DATABASE_URL: ${ROOIAM_DATABASE_URL}
+      ROOIAM_REDIS_URL: ${ROOIAM_REDIS_URL}
+      ROOIAM_STORAGE_ROOT: /data/rooiam
+      ROOIAM_PUBLIC_MEDIA_BASE: ${ROOIAM_PUBLIC_MEDIA_BASE}
+      ROOIAM_MINIO_ENDPOINT: ${ROOIAM_MINIO_ENDPOINT}
+      ROOIAM_MINIO_BUCKET: ${ROOIAM_MINIO_BUCKET}
+      ROOIAM_MINIO_USERNAME: ${MINIO_ROOT_USER}
+      ROOIAM_MINIO_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      ROOIAM_SETUP_TOKEN: ${ROOIAM_SETUP_TOKEN}
+      ROOIAM_SMTP_HOST: ${ROOIAM_SMTP_HOST:-}
+      ROOIAM_SMTP_PORT: ${ROOIAM_SMTP_PORT:-}
+      ROOIAM_SMTP_SECURITY: ${ROOIAM_SMTP_SECURITY:-}
+      ROOIAM_SMTP_FROM: ${ROOIAM_SMTP_FROM:-}
+      ROOIAM_SMTP_USER: ${ROOIAM_SMTP_USER:-}
+      ROOIAM_SMTP_PASS: ${ROOIAM_SMTP_PASS:-}
+      ROOIAM_GOOGLE_CLIENT_ID: ${ROOIAM_GOOGLE_CLIENT_ID:-}
+      ROOIAM_GOOGLE_CLIENT_SECRET: ${ROOIAM_GOOGLE_CLIENT_SECRET:-}
+      ROOIAM_MICROSOFT_CLIENT_ID: ${ROOIAM_MICROSOFT_CLIENT_ID:-}
+      ROOIAM_MICROSOFT_CLIENT_SECRET: ${ROOIAM_MICROSOFT_CLIENT_SECRET:-}
+      ROOIAM_MICROSOFT_TENANT_ID: ${ROOIAM_MICROSOFT_TENANT_ID:-}
+      ROOIAM_TRUSTED_PROXY_CIDRS: ${ROOIAM_TRUSTED_PROXY_CIDRS:-}
+    ports:
+      - "5170:5170"
+    volumes:
+      - rooiam_server_data:/data/rooiam
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5170/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+      args:
+        VITE_API_URL: ${ROOIAM_SERVER_URL}/v1
+        VITE_DOCS_URL: ${ROOIAM_DOCS_URL}
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "5171:80"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      args:
+        VITE_API_URL: ${ROOIAM_SERVER_URL}/v1
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "5172:80"
+
+  landing:
+    build:
+      context: .
+      dockerfile: Dockerfile.landing
+      args:
+        VITE_DOCS_URL: ${ROOIAM_DOCS_URL}
+        VITE_APP_URL: ${ROOIAM_APP_URL}
+        VITE_DEMO_URL: ${ROOIAM_DEMO_ENDUSER_URL}
+        VITE_DEMO_APP_URL: ${ROOIAM_DEMO_APP_URL}
+        VITE_DEMO_ADMIN_URL: ${ROOIAM_DEMO_ADMIN_URL}
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile.docs
+      args:
+        VITE_LANDING_URL: ${ROOIAM_LANDING_URL}
+    restart: unless-stopped
+    ports:
+      - "5175:80"
+
+  book:
+    build:
+      context: .
+      dockerfile: Dockerfile.book
+    restart: unless-stopped
+    ports:
+      - "5176:5176"
+
+volumes:
+  rooiam_postgres_data:
+  rooiam_redis_data:
+  rooiam_minio_data:
+  rooiam_server_data:

@@ -1,0 +1,46 @@
+environments:
+  demo:
+    # Manual/demo-oriented values for editor tooling.
+    # The automated Hurl suite should use the `test` environment instead.
+    variables:
+      baseUrl: http://localhost:5170
+      platformOwnerEmail: owner@rooiam.demo
+      platformAdminEmail: admin@rooiam.demo
+      tenantOwnerEmail: coco@roochoco.demo
+      rooChocoMemberEmail: coco@roochoco.demo
+      rooChocoWorkspace: roochoco
+      mintMallowMemberEmail: peppermint@mintmallow.demo
+      mintMallowWorkspace: mintmallow
+      demoUserEmail: praline@roochoco.demo
+      demoWorkspaceSlug: roochoco
+      appBase: http://localhost:5172
+      # Runtime-captured variables (set by [Captures] in hurl, listed here for IDE awareness)
+      ownerSession: ""
+      adminSession: ""
+      tenantOwnerSession: ""
+      rooChocoSession: ""
+      mintMallowSession: ""
+      sessionCookie: ""
+      ownerSessionCookie: ""
+  test:
+    # Authoritative environment for the automated Hurl suite.
+    variables:
+      baseUrl: http://localhost:5170
+      platformOwnerEmail: owner@rooiam.test
+      platformAdminEmail: admin@rooiam.test
+      tenantOwnerEmail: rooroo@sweetfactory.test
+      rooChocoMemberEmail: praline@roochoco.test
+      rooChocoWorkspace: roochoco-test
+      mintMallowMemberEmail: peppermint@mintmallow.test
+      mintMallowWorkspace: mintmallow-test
+      demoUserEmail: praline@roochoco.test
+      demoWorkspaceSlug: roochoco-test
+      appBase: http://localhost:5172
+      # Runtime-captured variables (set by [Captures] in hurl, listed here for IDE awareness)
+      ownerSession: ""
+      adminSession: ""
+      tenantOwnerSession: ""
+      rooChocoSession: ""
+      mintMallowSession: ""
+      sessionCookie: ""
+      ownerSessionCookie: ""

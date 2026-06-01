@@ -1,0 +1,17 @@
+{
+  "name": "candycloud-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env src/index.js",
+    "dev": "node --watch --env-file=.env src/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.3.2",
+    "uuid": "^9.0.1"
+  }
+}

@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 99%;
+    --foreground: 240 10% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 15%;
+    --border: 240 10% 94%;
+    --muted: 240 10% 97%;
+    --muted-foreground: 240 5% 45%;
+    --primary: 252 80% 88%;
+    --primary-foreground: 252 60% 25%;
+    --secondary: 220 60% 92%;
+    --secondary-foreground: 220 60% 25%;
+    --accent: 252 70% 94%;
+    --accent-foreground: 252 60% 25%;
+    --destructive: 0 80% 65%;
+    --destructive-foreground: 0 0% 100%;
+  }
+}
+
+.dark {
+  --background: 220 15% 14%; /* Soft dark #1E222D */
+  --foreground: 210 16% 84%; /* Pleasant soft off-white text */
+  --card: 220 15% 18%;       /* Elevated soft dark #262B38 */
+  --card-foreground: 210 16% 84%; /* Pleasant soft off-white text */
+  --border: 220 15% 26%;     /* Soft divider */
+  --muted: 220 15% 22%;      /* Subtle backgrounds */
+  --muted-foreground: 210 10% 65%; /* Softer gray for less aggressive text */
+  --primary: 252 60% 75%;
+  --primary-foreground: 252 60% 15%;
+  --secondary: 220 60% 25%;
+  --secondary-foreground: 210 16% 84%;
+  --accent: 252 60% 24%;
+  --accent-foreground: 210 16% 84%;
+}
+
+  * {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Nunito', system-ui, sans-serif;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary)) transparent;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Nunito', system-ui, sans-serif;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    background-image: radial-gradient(circle at 20% 20%, hsl(252 80% 97%) 0%, transparent 60%),
+                      radial-gradient(circle at 80% 80%, hsl(220 80% 97%) 0%, transparent 60%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  .dark body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    background-image: 
+      radial-gradient(circle at 10% 10%, rgba(139, 92, 246, 0.12) 0%, transparent 60%),
+      radial-gradient(circle at 90% 90%, rgba(59, 130, 246, 0.12) 0%, transparent 60%),
+      radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.5) 0%, transparent 100%);
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: linear-gradient(180deg, #FFB5C8, #D5B7FF);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #FF99B4, #C098FF);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .docs-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .docs-sidebar-scroll:hover {
+    scrollbar-color: #D5B7FF transparent;
+  }
+
+  .docs-sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .docs-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .docs-sidebar-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .docs-sidebar-scroll:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #B5D5FF, #D5B7FF);
+  }
+
+  .docs-sidebar-scroll:hover::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #99C4FF, #C098FF);
+  }
+
+  /* Adaptive Highlight.js Theme - High Contrast Version */
+  .hljs {
+    color: #1f2937; /* Gray 800 */
+  }
+  .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section {
+    color: #7c3aed; /* Violet 600 - Deep enough for light mode */
+    font-weight: 700;
+  }
+  .dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-literal, .dark .hljs-section {
+    color: #a78bfa; /* Violet 400 */
+  }
+  
+  .hljs-string, .hljs-title, .hljs-name, .hljs-type, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition {
+    color: #0891b2; /* Cyan 600 */
+  }
+  .dark .hljs-string, .dark .hljs-title, .dark .hljs-name, .dark .hljs-type, .dark .hljs-attr, .dark .hljs-symbol, .dark .hljs-bullet, .dark .hljs-addition {
+    color: #22d3ee; /* Cyan 400 */
+  }
+  
+  .hljs-comment, .hljs-meta, .hljs-quote {
+    color: #6b7280; /* Gray 500 */
+    font-style: italic;
+  }
+  .dark .hljs-comment, .dark .hljs-meta, .dark .hljs-quote {
+    color: #9ca3af; /* Gray 400 */
+  }
+  
+  .hljs-variable, .hljs-template-variable, .hljs-attribute {
+    color: #be185d; /* Pink 700 */
+  }
+  .dark .hljs-variable, .dark .hljs-template-variable, .dark .hljs-attribute {
+    color: #f472b6; /* Pink 400 */
+  }
+  
+  .hljs-number, .hljs-built_in, .hljs-regexp {
+    color: #ea580c; /* Orange 600 */
+  }
+  .dark .hljs-number, .dark .hljs-built_in, .dark .hljs-regexp {
+    color: #fb923c; /* Orange 400 */
+  }

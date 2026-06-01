@@ -1,0 +1,4 @@
+ALTER TABLE organizations
+    ADD COLUMN IF NOT EXISTS use_custom_ip_policy BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS ip_allowlist TEXT,
+    ADD COLUMN IF NOT EXISTS ip_blocklist TEXT;
