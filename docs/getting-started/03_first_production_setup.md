@@ -126,7 +126,7 @@ Create:
 
 Best starting point:
 
-- copy [rooiam-server/.env.template](/home/theparitt/work/rooiam/rooiam-server/.env.template)
+- copy [rooiam-server/.env.template](/rooiam-server/.env.template)
 - keep `.env.template` unchanged
 - put your real values in `rooiam-server/.env`
 

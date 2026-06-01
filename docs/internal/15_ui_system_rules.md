@@ -61,7 +61,7 @@ Use the shared page-header pattern instead of ad hoc top titles.
 
 Admin:
 
-- [PageHeader.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/PageHeader.tsx)
+- [PageHeader.tsx](/rooiam-admin/src/components/ui/PageHeader.tsx)
 
 Rules:
 
@@ -86,12 +86,12 @@ Use the shared section-card shell for normal page sections.
 
 Tenant:
 
-- [PortalSectionCard.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalSectionCard.tsx)
-- [PortalSectionHeader.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalSectionHeader.tsx)
+- [PortalSectionCard.tsx](/rooiam-app/src/components/portal/PortalSectionCard.tsx)
+- [PortalSectionHeader.tsx](/rooiam-app/src/components/portal/PortalSectionHeader.tsx)
 
 Admin:
 
-- [SectionHeader.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/SectionHeader.tsx)
+- [SectionHeader.tsx](/rooiam-admin/src/components/ui/SectionHeader.tsx)
 
 Rules:
 
@@ -119,15 +119,15 @@ Shared patterns already exist and should be reused.
 
 Admin:
 
-- [OverviewStatCard.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/OverviewStatCard.tsx)
-- [OverviewInfoCard.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/OverviewInfoCard.tsx)
-- [OverviewPanel.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/OverviewPanel.tsx)
+- [OverviewStatCard.tsx](/rooiam-admin/src/components/ui/OverviewStatCard.tsx)
+- [OverviewInfoCard.tsx](/rooiam-admin/src/components/ui/OverviewInfoCard.tsx)
+- [OverviewPanel.tsx](/rooiam-admin/src/components/ui/OverviewPanel.tsx)
 
 Tenant:
 
-- [PortalOverviewStatCard.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalOverviewStatCard.tsx)
-- [PortalOverviewInfoCard.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalOverviewInfoCard.tsx)
-- [PortalOverviewPanel.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalOverviewPanel.tsx)
+- [PortalOverviewStatCard.tsx](/rooiam-app/src/components/portal/PortalOverviewStatCard.tsx)
+- [PortalOverviewInfoCard.tsx](/rooiam-app/src/components/portal/PortalOverviewInfoCard.tsx)
+- [PortalOverviewPanel.tsx](/rooiam-app/src/components/portal/PortalOverviewPanel.tsx)
 
 Rules:
 
@@ -149,11 +149,11 @@ Use shared pill components instead of retyping badge classes.
 
 Admin:
 
-- [Pill.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/Pill.tsx)
+- [Pill.tsx](/rooiam-admin/src/components/ui/Pill.tsx)
 
 Tenant:
 
-- [PortalPill.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalPill.tsx)
+- [PortalPill.tsx](/rooiam-app/src/components/portal/PortalPill.tsx)
 
 Rules:
 
@@ -173,11 +173,11 @@ Shared role-pill helpers:
 
 Admin:
 
-- [WorkspaceRolePill.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/components/ui/WorkspaceRolePill.tsx)
+- [WorkspaceRolePill.tsx](/rooiam-admin/src/components/ui/WorkspaceRolePill.tsx)
 
 Tenant:
 
-- [PortalWorkspaceRolePill.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalWorkspaceRolePill.tsx)
+- [PortalWorkspaceRolePill.tsx](/rooiam-app/src/components/portal/PortalWorkspaceRolePill.tsx)
 
 Locked color mapping:
 
@@ -201,9 +201,9 @@ Audit event appearance must stay consistent across admin and tenant surfaces.
 
 Tenant shared pieces:
 
-- [audit-events.ts](/home/theparitt/work/rooiam/rooiam-app/src/lib/audit-events.ts)
-- [PortalAuditEventItem.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalAuditEventItem.tsx)
-- [PortalAuditEventTableRow.tsx](/home/theparitt/work/rooiam/rooiam-app/src/components/portal/PortalAuditEventTableRow.tsx)
+- [audit-events.ts](/rooiam-app/src/lib/audit-events.ts)
+- [PortalAuditEventItem.tsx](/rooiam-app/src/components/portal/PortalAuditEventItem.tsx)
+- [PortalAuditEventTableRow.tsx](/rooiam-app/src/components/portal/PortalAuditEventTableRow.tsx)
 
 Rules:
 

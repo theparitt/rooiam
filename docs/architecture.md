@@ -272,7 +272,7 @@ The next level is:
 - which `client` the user is entering
 - which `workspace` or organization context is intended
 
-Current org switching already exists through `current_org_id`, but app-aware tenant context is still a gap. The design for closing that gap is tracked in [client_workspace_context.md](/home/theparitt/work/rooiam/docs/client_workspace_context.md).
+Current org switching already exists through `current_org_id`, but app-aware tenant context is still a gap. The design for closing that gap is tracked in [client_workspace_context.md](/docs/client_workspace_context.md).
 
 ### 6. Identity graph matters early
 

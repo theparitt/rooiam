@@ -46,7 +46,7 @@ See:
 Run the release smoke suite:
 
 ```bash
-cd /home/theparitt/work/rooiam/test
+cd rooiam/test
 bash run_security_smoke.sh
 ```
 

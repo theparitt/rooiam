@@ -527,7 +527,7 @@ Revoke a specific session by UUID.
 List the current user's own audit log entries. Paginated.
 
 - **Auth:** `session`
-- **Query params:** `page` (default 1), `page_size` (default 25, max 100)
+- **Query params:** `page` (default 1), `page_size` (default 25, max 1000)
 - **Response 200:**
 
 ```json
@@ -2369,4 +2369,4 @@ Mark setup as completed. Subsequent calls to guarded setup endpoints will requir
 
 ---
 
-*Document updated 2026-03-23. Reflects Rooiam server migrations 0001–0016 plus security fixes: `FOR UPDATE` on OIDC auth code exchange, `post_logout_redirect_uri` validation on `end_session`, auth middleware idle-timeout fail-safe, PII removed from magic link and invite logs.*
+*Document updated 2026-06-01. Reflects Rooiam server migrations 0001–0057 plus security fixes: `FOR UPDATE` on OIDC auth code exchange, `post_logout_redirect_uri` validation on `end_session`, auth middleware idle-timeout fail-safe, PII removed from magic link and invite logs.*

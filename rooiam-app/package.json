@@ -4,9 +4,12 @@
     "version": "0.1.0",
     "type": "module",
     "scripts": {
-        "dev": "vite",
-        "demo": "vite --mode demo --host 0.0.0.0 --port 5182 --strictPort",
-        "build": "tsc && vite build",
+        "dev": "vite --mode prod-local",
+        "dev:prod-local": "vite --mode prod-local --port 5172 --strictPort",
+        "dev:demo-local": "vite --mode demo-local --port 5182 --strictPort",
+        "build": "tsc && vite build --mode prod-online",
+        "build:prod-online": "tsc && vite build --mode prod-online",
+        "build:demo-online": "tsc && vite build --mode demo-online",
         "start": "vite preview",
         "pages:dev": "wrangler pages dev dist",
         "pages:deploy": "wrangler pages deploy"

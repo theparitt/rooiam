@@ -2,7 +2,7 @@
 
 This document turns the account-linking design into concrete Rooiam implementation tickets.
 
-Use this after reading [account_linking.md](/home/theparitt/work/rooiam/docs/account_linking.md).
+Use this after reading [account_linking.md](/docs/account_linking.md).
 
 ## Goal
 
@@ -56,9 +56,9 @@ Suggested response shape:
 
 Backend files:
 
-- add handler(s) under [identity/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/handlers.rs)
-- extend [identity/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/repository.rs)
-- extend [identity/models.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/models.rs)
+- add handler(s) under [identity/handlers.rs](/rooiam-server/src/modules/identity/handlers.rs)
+- extend [identity/repository.rs](/rooiam-server/src/modules/identity/repository.rs)
+- extend [identity/models.rs](/rooiam-server/src/modules/identity/models.rs)
 
 Implementation notes:
 
@@ -84,7 +84,7 @@ Required intents:
 
 Backend files:
 
-- update [oauth/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oauth/handlers.rs)
+- update [oauth/handlers.rs](/rooiam-server/src/modules/oauth/handlers.rs)
 
 Implementation notes:
 
@@ -124,9 +124,9 @@ API:
 
 Backend files:
 
-- add routes under [identity/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/handlers.rs)
-- reuse OAuth URL generation from [oauth/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oauth/handlers.rs)
-- use [RequireAuth middleware](/home/theparitt/work/rooiam/rooiam-server/src/http/middleware/auth.rs)
+- add routes under [identity/handlers.rs](/rooiam-server/src/modules/identity/handlers.rs)
+- reuse OAuth URL generation from [oauth/handlers.rs](/rooiam-server/src/modules/oauth/handlers.rs)
+- use [RequireAuth middleware](/rooiam-server/src/http/middleware/auth.rs)
 
 Implementation notes:
 
@@ -147,9 +147,9 @@ Goal:
 
 Backend files:
 
-- extend [oauth/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oauth/handlers.rs)
-- reuse [oauth/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oauth/service.rs)
-- extend [identity/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/repository.rs)
+- extend [oauth/handlers.rs](/rooiam-server/src/modules/oauth/handlers.rs)
+- reuse [oauth/service.rs](/rooiam-server/src/modules/oauth/service.rs)
+- extend [identity/repository.rs](/rooiam-server/src/modules/identity/repository.rs)
 
 Implementation notes:
 
@@ -186,7 +186,7 @@ Goal:
 
 UI location:
 
-- add a section or tab in [PlatformSettings.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformSettings.tsx)
+- add a section or tab in [PlatformSettings.tsx](/rooiam-admin/src/pages/PlatformSettings.tsx)
 
 Suggested label:
 
@@ -210,8 +210,8 @@ Actions:
 
 Frontend files:
 
-- extend [api.ts](/home/theparitt/work/rooiam/rooiam-admin/src/lib/api.ts)
-- extend [PlatformSettings.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformSettings.tsx)
+- extend [api.ts](/rooiam-admin/src/lib/api.ts)
+- extend [PlatformSettings.tsx](/rooiam-admin/src/pages/PlatformSettings.tsx)
 
 Done when:
 
@@ -229,8 +229,8 @@ API:
 
 Backend files:
 
-- add handler(s) under [identity/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/handlers.rs)
-- extend [identity/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/repository.rs)
+- add handler(s) under [identity/handlers.rs](/rooiam-server/src/modules/identity/handlers.rs)
+- extend [identity/repository.rs](/rooiam-server/src/modules/identity/repository.rs)
 
 Suggested repository helper:
 
@@ -254,7 +254,7 @@ Goal:
 
 Backend files:
 
-- extend [identity/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/repository.rs)
+- extend [identity/repository.rs](/rooiam-server/src/modules/identity/repository.rs)
 - add service logic under identity or auth module
 
 Guard conditions should consider:
@@ -291,7 +291,7 @@ Events to add:
 
 Backend files:
 
-- reuse [audit/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/audit/service.rs)
+- reuse [audit/service.rs](/rooiam-server/src/modules/audit/service.rs)
 - emit from linking/unlink handlers
 
 Metadata suggestions:
@@ -322,8 +322,8 @@ Possible implementation:
 
 Backend files:
 
-- extend [mfa/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/mfa/service.rs)
-- possibly extend [session/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/session/service.rs)
+- extend [mfa/service.rs](/rooiam-server/src/modules/mfa/service.rs)
+- possibly extend [session/service.rs](/rooiam-server/src/modules/session/service.rs)
 
 This can be a later hardening ticket if you want a smaller first release.
 
@@ -349,7 +349,7 @@ What changes:
 
 Backend files:
 
-- mostly already handled in [oauth/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oauth/handlers.rs)
+- mostly already handled in [oauth/handlers.rs](/rooiam-server/src/modules/oauth/handlers.rs)
 
 Done when:
 

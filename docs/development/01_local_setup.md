@@ -135,7 +135,7 @@ Re-run this script after every WSL restart (the WSL IP changes each time).
 ## Migrations
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-server
+cd rooiam/rooiam-server
 cargo install sqlx-cli --no-default-features --features postgres
 sqlx migrate run --database-url "$ROOIAM_DATABASE_URL"
 ```

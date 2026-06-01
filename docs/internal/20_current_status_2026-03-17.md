@@ -289,7 +289,7 @@ These were originally in Phase 4 but are enterprise/complex — moved to later p
 
 Run all tests:
 ```bash
-cd /home/theparitt/work/rooiam/test
+cd rooiam/test
 hurl --variables-file dev.vars *.http --test --jobs 1
 ```
 

@@ -30,7 +30,7 @@ Do this first:
 Recommended command:
 
 ```bash
-cd /home/theparitt/work/rooiam
+cd rooiam
 cp rooiam-server/.env.template rooiam-server/.env
 ```
 
@@ -77,7 +77,7 @@ Then add SMTP and OAuth values in the next chapters.
 
 Recommended workflow:
 
-- copy [rooiam-server/.env.template](/home/theparitt/work/rooiam/rooiam-server/.env.template)
+- copy [rooiam-server/.env.template](/rooiam-server/.env.template)
 - create `rooiam-server/.env`
 - fill in the real production values for database, redis, allowed origins, and public URLs
 - optionally fill SMTP and Google / Microsoft OAuth here too
@@ -134,9 +134,9 @@ Current behavior is split into two groups:
 
 These env vars can appear as default values in the setup wizard connection step:
 
-- `ROOIAM_ISSUER_URL`
-- `FRONTEND_URL`
-- `ADMIN_URL`
+- `ROOIAM_SERVER_URL`
+- `ROOIAM_APP_URL`
+- `ROOIAM_ADMIN_URL`
 
 Those map to:
 
@@ -183,14 +183,14 @@ Important:
 ## 🗄️ Run Database Migrations
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-server
+cd rooiam/rooiam-server
 sqlx migrate run --database-url "$ROOIAM_DATABASE_URL"
 ```
 
 ## 🚀 Start the Server
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-server
+cd rooiam/rooiam-server
 SQLX_OFFLINE=true cargo run
 ```
 
@@ -199,7 +199,7 @@ On startup, the server prints a configuration summary including whether it is ru
 ## 🖥️ Start `rooiam-admin`
 
 ```bash
-cd /home/theparitt/work/rooiam/rooiam-admin
+cd rooiam/rooiam-admin
 npm install
 npm run dev
 ```

@@ -227,7 +227,7 @@ Goal:
 
 Reference:
 
-- [client_workspace_context.md](/home/theparitt/work/rooiam/docs/client_workspace_context.md)
+- [client_workspace_context.md](/docs/client_workspace_context.md)
 
 Repo targets:
 

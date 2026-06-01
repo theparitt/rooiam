@@ -205,7 +205,7 @@ The following test files cover the security scenarios identified in the admin UI
 
 Run all new tests:
 ```bash
-cd /home/theparitt/work/rooiam
+cd rooiam
 hurl --variables-file test/dev.vars test/50_magic_link_security.http
 hurl --variables-file test/dev.vars test/51_role_guard_matrix.http
 hurl --variables-file test/dev.vars test/52_suspend_session_revocation.http

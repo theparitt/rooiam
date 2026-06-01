@@ -1,0 +1,75 @@
+# Local infra only: Postgres + MinIO (+ bucket init) exposed to the HOST so you
+# can source-run the server (`cargo run`) against them.
+#
+# Host ports are chosen to avoid conflicts with other projects already using
+# 5432 (cosilock) and 9000/9001 (jotjum):
+#   Postgres     -> localhost:5434
+#   MinIO API    -> localhost:9002
+#   MinIO console-> localhost:9003
+#
+# Start:  docker compose -f docker-compose.local-infra.yml up -d
+# Stop:   docker compose -f docker-compose.local-infra.yml down
+# Wipe:   docker compose -f docker-compose.local-infra.yml down -v   (deletes data)
+#
+# Credentials (match .env.docker.local.prod):
+#   Postgres: rooiam / rooiam_local   db: rooiam
+#   MinIO:    rooiam / rooiam_local_minio   bucket: rooiam
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rooiam-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rooiam
+      POSTGRES_USER: rooiam
+      POSTGRES_PASSWORD: rooiam_local
+    ports:
+      - "5434:5432"
+    volumes:
+      - rooiam_local_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rooiam -d rooiam"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: rooiam-local-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: rooiam
+      MINIO_ROOT_PASSWORD: rooiam_local_minio
+    ports:
+      - "9002:9000"   # S3 API
+      - "9003:9001"   # web console
+    volumes:
+      - rooiam_local_minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 rooiam rooiam_local_minio; do
+          echo "waiting for minio..."
+          sleep 2
+        done
+        mc mb --ignore-existing local/rooiam
+        echo "bucket ready"
+    restart: "no"
+
+volumes:
+  rooiam_local_postgres_data:
+  rooiam_local_minio_data:

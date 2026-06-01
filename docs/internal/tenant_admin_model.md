@@ -111,8 +111,8 @@ That is the cleaner long-term product model for Rooiam.
 
 Related UI planning:
 
-- [tenant_ui_plan.md](/home/theparitt/work/rooiam/docs/tenant_ui_plan.md)
-- [tenant_api_access.md](/home/theparitt/work/rooiam/docs/tenant_api_access.md)
+- [tenant_ui_plan.md](/docs/internal/tenant_ui_plan.md)
+- [tenant_api_access.md](/docs/tenant_api_access.md)
 
 ## Ownership Table
 

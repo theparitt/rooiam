@@ -69,7 +69,7 @@ Exit criteria:
 
 Status: Completed
 
-Detailed implementation tickets: [phase3_implementation.md](/home/theparitt/work/rooiam/docs/phase3_implementation.md)
+Detailed implementation tickets: [phase3_implementation.md](/docs/internal/phase3_implementation.md)
 
 - [x] OIDC discovery endpoint
 - [x] JWKS endpoint
@@ -102,9 +102,9 @@ Post-phase watchlist:
 
 Status: Completed
 
-Design reference: [tenant_admin_model.md](/home/theparitt/work/rooiam/docs/tenant_admin_model.md)
-UI plan: [tenant_ui_plan.md](/home/theparitt/work/rooiam/docs/tenant_ui_plan.md)
-Implementation tickets: [phase4_implementation.md](/home/theparitt/work/rooiam/docs/phase4_implementation.md)
+Design reference: [tenant_admin_model.md](/docs/internal/tenant_admin_model.md)
+UI plan: [tenant_ui_plan.md](/docs/internal/tenant_ui_plan.md)
+Implementation tickets: [phase4_implementation.md](/docs/internal/phase4_implementation.md)
 
 Context: `rooiam-admin` is the operator console. `rooiam-app` is the tenant-facing portal where organizations manage their own identity experience.
 
@@ -155,7 +155,7 @@ Checklist: [phase5_demo_checklist.md](./phase5_demo_checklist.md)
 
 - [x] build `rooiam-demo` as the smallest public example app
 - [x] show real Rooiam login in an app
-- [x] validate client + workspace context through a real app flow in [client_workspace_context.md](/home/theparitt/work/rooiam/docs/client_workspace_context.md)
+- [x] validate client + workspace context through a real app flow in [client_workspace_context.md](/docs/client_workspace_context.md)
 - [x] show real session handling after sign-in
 - [x] show redirect and callback logic clearly
 - [x] document the example app flow so other developers can copy it

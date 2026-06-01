@@ -5,7 +5,7 @@ This walkthrough is the shortest path to validate the current Rooiam feature sur
 ## 1. Start The Docker Stack
 
 ```bash
-cd /home/theparitt/work/rooiam
+cd rooiam
 docker compose up --build -d
 ```
 

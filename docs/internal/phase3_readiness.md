@@ -105,4 +105,4 @@ After Phase 3, move to `Phase 4: Tenant Branding And Tenant Admin`:
 - separate operator admin from tenant admin more explicitly
 - make `rooiam-app` the tenant-facing auth and tenant-admin surface
 - add tenant/company branding and auth policy
-- document the model in [tenant_admin_model.md](/home/theparitt/work/rooiam/docs/tenant_admin_model.md)
+- document the model in [tenant_admin_model.md](/docs/internal/tenant_admin_model.md)

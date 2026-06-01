@@ -11,7 +11,7 @@ This document defines the recommended v1 account-linking model for:
 
 Implementation breakdown:
 
-- [Account Linking Implementation Plan](/home/theparitt/work/rooiam/docs/account_linking_implementation.md)
+- [Account Linking Implementation Plan](/docs/account_linking_implementation.md)
 
 ## Goal
 

@@ -20,9 +20,9 @@ API:
 
 Backend files:
 
-- update [router.rs](/home/theparitt/work/rooiam/rooiam-server/src/bootstrap/router.rs)
-- extend [oidc/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/handlers.rs)
-- extend [config.rs](/home/theparitt/work/rooiam/rooiam-server/src/bootstrap/config.rs)
+- update [router.rs](/rooiam-server/src/bootstrap/router.rs)
+- extend [oidc/handlers.rs](/rooiam-server/src/modules/oidc/handlers.rs)
+- extend [config.rs](/rooiam-server/src/bootstrap/config.rs)
 
 Implementation notes:
 
@@ -46,9 +46,9 @@ API:
 
 Backend files:
 
-- extend [oidc/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/handlers.rs)
-- extend [oidc/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/service.rs)
-- extend [config.rs](/home/theparitt/work/rooiam/rooiam-server/src/bootstrap/config.rs)
+- extend [oidc/handlers.rs](/rooiam-server/src/modules/oidc/handlers.rs)
+- extend [oidc/service.rs](/rooiam-server/src/modules/oidc/service.rs)
+- extend [config.rs](/rooiam-server/src/bootstrap/config.rs)
 
 Implementation notes:
 
@@ -72,10 +72,10 @@ API:
 
 Backend files:
 
-- extend [oidc/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/handlers.rs)
-- extend [oidc/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/service.rs)
-- possibly add bearer-token middleware under [http/middleware](/home/theparitt/work/rooiam/rooiam-server/src/http/middleware)
-- reuse [identity/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/repository.rs)
+- extend [oidc/handlers.rs](/rooiam-server/src/modules/oidc/handlers.rs)
+- extend [oidc/service.rs](/rooiam-server/src/modules/oidc/service.rs)
+- possibly add bearer-token middleware under [http/middleware](/rooiam-server/src/http/middleware)
+- reuse [identity/repository.rs](/rooiam-server/src/modules/identity/repository.rs)
 
 Implementation notes:
 
@@ -95,9 +95,9 @@ Goal:
 
 Backend files:
 
-- update [oidc/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/oidc/service.rs)
-- update [config.rs](/home/theparitt/work/rooiam/rooiam-server/src/bootstrap/config.rs)
-- update docs in [DocsPage.tsx](/home/theparitt/work/rooiam/rooiam-landing/src/pages/DocsPage.tsx)
+- update [oidc/service.rs](/rooiam-server/src/modules/oidc/service.rs)
+- update [config.rs](/rooiam-server/src/bootstrap/config.rs)
+- update docs in `rooiam-landing/src/pages/DocsPage.tsx` (removed)
 
 Implementation notes:
 
@@ -118,7 +118,7 @@ Goal:
 
 Migration:
 
-- add a new migration after [0004_system_settings.sql](/home/theparitt/work/rooiam/rooiam-server/migrations/0004_system_settings.sql)
+- add a new migration after [0004_system_settings.sql](/rooiam-server/migrations/0004_system_settings.sql)
 
 Suggested tables:
 
@@ -145,12 +145,12 @@ Suggested tables:
 
 Backend files:
 
-- new module under [modules](/home/theparitt/work/rooiam/rooiam-server/src/modules)
+- new module under [modules](/rooiam-server/src/modules)
 - likely `modules/webauthn/handlers.rs`
 - likely `modules/webauthn/service.rs`
 - likely `modules/webauthn/repository.rs`
-- update [modules/mod.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/mod.rs)
-- update [router.rs](/home/theparitt/work/rooiam/rooiam-server/src/bootstrap/router.rs)
+- update [modules/mod.rs](/rooiam-server/src/modules/mod.rs)
+- update [router.rs](/rooiam-server/src/bootstrap/router.rs)
 
 Done when:
 
@@ -170,12 +170,12 @@ API:
 Backend files:
 
 - new WebAuthn module
-- reuse [auth.rs](/home/theparitt/work/rooiam/rooiam-server/src/http/middleware/auth.rs) for authenticated registration
+- reuse [auth.rs](/rooiam-server/src/http/middleware/auth.rs) for authenticated registration
 
 UI files:
 
-- add passkey enrollment UI to [PlatformSettings.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformSettings.tsx)
-- optionally expose it later in [rooiam-app](/home/theparitt/work/rooiam/rooiam-app)
+- add passkey enrollment UI to [PlatformSettings.tsx](/rooiam-admin/src/pages/PlatformSettings.tsx)
+- optionally expose it later in [rooiam-app](/rooiam-app)
 
 Done when:
 
@@ -195,13 +195,13 @@ API:
 Backend files:
 
 - new WebAuthn module
-- reuse [session/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/session/service.rs)
-- reuse [cookie.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/session/cookie.rs)
+- reuse [session/service.rs](/rooiam-server/src/modules/session/service.rs)
+- reuse [cookie.rs](/rooiam-server/src/modules/session/cookie.rs)
 
 UI files:
 
-- add passkey login button to [MagicLink.tsx](/home/theparitt/work/rooiam/rooiam-app/src/pages/MagicLink.tsx)
-- update hosted login flow in [rooiam-app](/home/theparitt/work/rooiam/rooiam-app)
+- add passkey login button to [MagicLink.tsx](/rooiam-app/src/pages/MagicLink.tsx)
+- update hosted login flow in [rooiam-app](/rooiam-app)
 
 Done when:
 
@@ -240,12 +240,12 @@ Migration:
 
 Backend files:
 
-- new module under [modules](/home/theparitt/work/rooiam/rooiam-server/src/modules)
+- new module under [modules](/rooiam-server/src/modules)
 
 UI files:
 
-- extend [PlatformSettings.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformSettings.tsx)
-- possibly add step-up prompts in [rooiam-app](/home/theparitt/work/rooiam/rooiam-app)
+- extend [PlatformSettings.tsx](/rooiam-admin/src/pages/PlatformSettings.tsx)
+- possibly add step-up prompts in [rooiam-app](/rooiam-app)
 
 Done when:
 
@@ -273,14 +273,14 @@ API:
 
 Backend files:
 
-- [identity/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/identity/handlers.rs)
-- [session/repository.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/session/repository.rs)
-- [session/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/session/service.rs)
+- [identity/handlers.rs](/rooiam-server/src/modules/identity/handlers.rs)
+- [session/repository.rs](/rooiam-server/src/modules/session/repository.rs)
+- [session/service.rs](/rooiam-server/src/modules/session/service.rs)
 
 UI files:
 
-- add a real sessions page or card to [rooiam-admin](/home/theparitt/work/rooiam/rooiam-admin)
-- remove placeholder dashboard session stats in [PlatformOverview.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformOverview.tsx)
+- add a real sessions page or card to [rooiam-admin](/rooiam-admin)
+- remove placeholder dashboard session stats in [PlatformOverview.tsx](/rooiam-admin/src/pages/PlatformOverview.tsx)
 
 Done when:
 
@@ -303,8 +303,8 @@ Suggested events:
 
 Backend files:
 
-- [audit/service.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/audit/service.rs)
-- [auth/handlers.rs](/home/theparitt/work/rooiam/rooiam-server/src/modules/auth/handlers.rs)
+- [audit/service.rs](/rooiam-server/src/modules/audit/service.rs)
+- [auth/handlers.rs](/rooiam-server/src/modules/auth/handlers.rs)
 - new MFA/WebAuthn modules
 
 Done when:
@@ -319,8 +319,8 @@ Goal:
 
 Current weak spots:
 
-- [PlatformOverview.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformOverview.tsx)
-- [PlatformSettings.tsx](/home/theparitt/work/rooiam/rooiam-admin/src/pages/PlatformSettings.tsx)
+- [PlatformOverview.tsx](/rooiam-admin/src/pages/PlatformOverview.tsx)
+- [PlatformSettings.tsx](/rooiam-admin/src/pages/PlatformSettings.tsx)
 
 Implementation notes:
 

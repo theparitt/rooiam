@@ -110,8 +110,8 @@ Phase 4 focus:
 - [x] tenant-scoped API access matches what tenant admins can see in `rooiam-app`
 
 Reference:
-- [client_workspace_context.md](/home/theparitt/work/rooiam/docs/client_workspace_context.md)
-- [tenant_ui_plan.md](/home/theparitt/work/rooiam/docs/tenant_ui_plan.md)
+- [client_workspace_context.md](/docs/client_workspace_context.md)
+- [tenant_ui_plan.md](/docs/internal/tenant_ui_plan.md)
 
 ## Validation
 
