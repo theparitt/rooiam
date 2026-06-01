@@ -11,7 +11,7 @@ const plans = [
     {
         icon: <Github className="w-7 h-7" />,
         name: 'Self-Host',
-        tagline: 'Open Source · AGPL v3',
+        tagline: 'Open Source · Apache 2.0',
         price: 'Free',
         priceNote: 'forever',
         color: '#B5EFD5',
@@ -81,9 +81,9 @@ export default function Pricing()
                             <Github className="w-6 h-6 text-white" />
                         </div>
                         <div className="text-center sm:text-left">
-                            <p className="font-black text-gray-800">100% Open Source · AGPL v3</p>
+                            <p className="font-black text-gray-800">100% Open Source · Apache 2.0</p>
                             <p className="text-sm font-semibold text-gray-500">
-                                No vendor lock-in. Run it yourself, inspect the code, and share modifications under the same license.
+                                No vendor lock-in. Run it yourself, inspect the code, and use it freely in commercial or open projects.
                             </p>
                         </div>
                         <a

@@ -2,7 +2,7 @@
 
 **Open Source Passwordless Identity & Access Management — Free. Self-hosted. Yours.**
 
-[![AGPL-3.0 License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Apache-2.0 License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust%20🦀-orange)](https://www.rust-lang.org/)
 
 ---
@@ -1029,4 +1029,4 @@ Source-of-truth docs:
 
 ## License
 
-AGPL-3.0 — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).

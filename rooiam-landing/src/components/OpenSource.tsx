@@ -3,7 +3,7 @@ import { DOCS_HOME_URL, GITHUB_REPO_URL } from '../lib/site'
 
 const perks = [
     { icon: <Github className="w-5 h-5" />, title: 'Source First', desc: 'The current release path is source-based, with docs and code living side by side.' },
-    { icon: <Star className="w-5 h-5" />, title: 'AGPL v3 License', desc: 'Use it freely — modifications must be shared under the same license.' },
+    { icon: <Star className="w-5 h-5" />, title: 'Apache 2.0 License', desc: 'Use it freely in any project, commercial or open — permissive with patent protection.' },
     { icon: <GitPullRequest className="w-5 h-5" />, title: 'Contributions Welcome', desc: 'Bug fixes, feature work, and documentation changes are all fair game.' },
     { icon: <Heart className="w-5 h-5" />, title: 'Self-Host Friendly', desc: 'Postgres, Redis, Rust server, and frontends you can run locally without hidden hosted dependencies.' },
 ]
@@ -21,7 +21,7 @@ export default function OpenSource()
                             {/* Left */}
                             <div className="flex-1">
                                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gray-900 text-white text-xs font-black mb-6">
-                                    <Github className="w-3.5 h-3.5" /> Open Source · AGPL v3
+                                    <Github className="w-3.5 h-3.5" /> Open Source · Apache 2.0
                                 </div>
                                 <h2 className="text-4xl md:text-5xl font-black text-gray-800 mb-4 leading-tight">
                                     Own your SaaS<br />identity stack.
@@ -66,7 +66,7 @@ export default function OpenSource()
                         <div className="flex flex-wrap items-center justify-between gap-4">
                             <p className="text-sm font-bold text-gray-500">
                                 Built with <span className="text-orange-500">Rust 🦀</span> ·
-                                React frontend · PostgreSQL + Redis · AGPL v3 Licensed
+                                React frontend · PostgreSQL + Redis · Apache 2.0 Licensed
                             </p>
                             <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
                                 className="text-sm font-black text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1.5">

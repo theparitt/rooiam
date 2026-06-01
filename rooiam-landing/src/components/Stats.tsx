@@ -1,5 +1,5 @@
 const stats = [
-    { value: 'AGPL', label: 'License', sub: 'GNU Affero GPL v3' },
+    { value: 'Apache 2.0', label: 'License', sub: 'Permissive · commercial-friendly' },
     { value: 'Rust', label: 'Backend', sub: 'Actix + SQLx + Postgres' },
     { value: 'OIDC', label: 'Client Flow', sub: 'Auth code + token exchange' },
     { value: 'Cookie', label: 'Sessions', sub: 'Opaque and revocable' },

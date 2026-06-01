@@ -1,6 +1,6 @@
 # Contributing to Rooiam
 
-Thanks for your interest in contributing! Rooiam is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) and we welcome PRs, bug reports, and suggestions.
+Thanks for your interest in contributing! Rooiam is licensed under the Apache License 2.0 (Apache-2.0) and we welcome PRs, bug reports, and suggestions.
 
 ## Ways to Contribute
 
@@ -75,4 +75,4 @@ These ports are fixed. If a service starts on a different port, treat it as a co
 
 ## License
 
-By contributing, you agree your contributions are licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+By contributing, you agree your contributions are licensed under the Apache License 2.0 (Apache-2.0).

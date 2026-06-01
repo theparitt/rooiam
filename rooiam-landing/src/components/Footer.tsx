@@ -57,7 +57,7 @@ export default function Footer()
                         © 2026 Rooiam. Built for teams that want to own their identity model.
                     </p>
                     <p className="text-xs font-semibold text-gray-400">
-                        Open Source · AGPL v3 · Rust + React + Postgres
+                        Open Source · Apache 2.0 · Rust + React + Postgres
                     </p>
                 </div>
             </div>

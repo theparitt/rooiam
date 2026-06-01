@@ -33,7 +33,7 @@ export default function Hero()
                 {/* Badge */}
                 <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full mb-5 border"
                     style={{ background: '#F0FFF8', borderColor: '#90DDB5' }}>
-                    <span className="text-sm font-black text-gray-700">Open Source · AGPL v3 · Free Forever</span>
+                    <span className="text-sm font-black text-gray-700">Open Source · Apache 2.0 · Free Forever</span>
                 </div>
 
                 <h1 className="text-3xl md:text-5xl font-black text-gray-900 leading-[1.08] mb-6">
