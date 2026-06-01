@@ -1,0 +1,21 @@
+# gitleaks configuration for rooiam
+# Extends the default ruleset and excludes build artifacts / generated files
+# that produce high-entropy false positives (Rust .rmeta, Next.js build cache,
+# lockfiles) and local-only env files that are gitignored anyway.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist: build artifacts, generated files, and local env files"
+paths = [
+  '''.*/target/.*''',            # Rust build output (.rmeta crypto-crate constants)
+  '''.*\.next/.*''',             # Next.js build cache
+  '''.*/dist/.*''',              # bundled frontend output
+  '''.*/node_modules/.*''',
+  '''.*\.wrangler/.*''',
+  '''.*package-lock\.json''',    # npm integrity hashes look like secrets
+  '''.*\.env$''',                # real local env files (gitignored; never committed)
+  '''.*\.env\.local$''',
+  '''\.mynote''',                # personal scratch notes (gitignored)
+]
