@@ -248,12 +248,12 @@ These three URL vars must be set correctly **before** the server starts for the 
 
 | Variable | Local demo value | Public demo value | Why it matters |
 |---|---|---|---|
-| `ROOIAM_ISSUER_URL` | `http://localhost:5170` | `https://demo-api.yourdomain.com` | Used in OIDC tokens and JWKS endpoint |
-| `ROOIAM_FRONTEND_URL` | `http://localhost:5184` | `https://demo.yourdomain.com` | Controls redirect URIs seeded into demo OAuth clients |
+| `ROOIAM_SERVER_URL` | `http://localhost:5170` | `https://demo-api.yourdomain.com` | Used in OIDC tokens and JWKS endpoint |
+| `ROOIAM_ENDUSER_URL` | `http://localhost:5184` | `https://demo.yourdomain.com` | Controls redirect URIs seeded into demo OAuth clients (downstream end-user app) |
 | `ROOIAM_ADMIN_URL` | `http://localhost:5181` | `https://demo-admin.yourdomain.com` | Controls admin redirect URIs seeded into demo OAuth clients |
 | `ROOIAM_DATABASE_URL` | `postgres://user:pass@localhost:5432/rooiam` | `postgres://rooiam:rooiam@postgres:5432/rooiam_demo` | In demo mode the server auto-switches to `rooiam_demo` database |
 
-**If you change `ROOIAM_FRONTEND_URL` or `ROOIAM_ADMIN_URL` after the seed has already run**, the old redirect URIs stay in the database. You must delete the demo OAuth clients and restart:
+**If you change `ROOIAM_APP_URL` or `ROOIAM_ADMIN_URL` after the seed has already run**, the old redirect URIs stay in the database. You must delete the demo OAuth clients and restart:
 
 ```bash
 # Local
@@ -425,10 +425,13 @@ Important:
 
 ### Alternate Demo-Only UI Ports
 
-If you want to run isolated demo frontends without disturbing the normal local stack, use:
+If you want to run isolated demo frontends without disturbing the normal local stack,
+start each on its demo port (they talk to the demo server on `5180`):
 
 ```bash
-bash /home/theparitt/work/rooiam/start_demo.sh
+cd rooiam/rooiam-admin && npm run dev:demo-local   # → 5181
+cd rooiam/rooiam-app   && npm run dev:demo-local   # → 5182
+cd rooiam/candycloud-web && npm run dev:demo       # → 5184
 ```
 
 Demo-only UI ports:
@@ -518,7 +521,7 @@ Storage rule:
 
 Setup wizard prefill rule:
 
-- `ROOIAM_ISSUER_URL`, `ROOIAM_FRONTEND_URL`, and `ROOIAM_ADMIN_URL` can appear as default values in the setup wizard connection step
+- `ROOIAM_SERVER_URL`, `ROOIAM_APP_URL`, and `ROOIAM_ADMIN_URL` can appear as default values in the setup wizard connection step
 - if `ROOIAM_SETUP_TOKEN` is set for public first-time setup, paste the same value into the setup wizard `Setup Token` field
 - SMTP and OAuth env vars are runtime fallback values, but they do not currently prefill the setup wizard fields
 - once saved through setup or admin settings, those values come back from the database and do appear in later setup/settings views
@@ -697,7 +700,7 @@ Rooiam is configured via environment variables, plus optional SMTP/OAuth setting
 
 Recommended first-start workflow:
 
-1. copy [rooiam-server/.env.template](/home/theparitt/work/rooiam/rooiam-server/.env.template) to `rooiam-server/.env`
+1. copy [rooiam-server/.env.template](/rooiam-server/.env.template) to `rooiam-server/.env`
 2. fill the required runtime values first: database, redis, allowed origins, issuer URL, login URL, admin URL
 3. optionally fill `ROOIAM_SMTP_*`, `ROOIAM_GOOGLE_*`, and `ROOIAM_MICROSOFT_*` in `.env`
 4. start the server and open the setup wizard
@@ -715,7 +718,7 @@ Practical rule:
 
 Important behavior:
 
-- `ROOIAM_ISSUER_URL`, `ROOIAM_FRONTEND_URL`, and `ROOIAM_ADMIN_URL` can appear as setup-wizard defaults
+- `ROOIAM_SERVER_URL`, `ROOIAM_APP_URL`, and `ROOIAM_ADMIN_URL` can appear as setup-wizard defaults
 - `ROOIAM_SETUP_TOKEN`, if set, must be pasted into the `Setup Token` field during remote first-time setup
 - `ROOIAM_SMTP_*`, `ROOIAM_GOOGLE_*`, and `ROOIAM_MICROSOFT_*` work as runtime fallback values, but they do not currently appear prefilled in the wizard on first boot
 - once SMTP or OAuth values are saved through setup or admin settings, those saved values reappear later in the forms
@@ -727,8 +730,8 @@ Important behavior:
 | `ROOIAM_HOST` | Optional | API bind host, defaults to `0.0.0.0` |
 | `ROOIAM_PORT` | Optional | API port, defaults to `5170` |
 | `ROOIAM_ALLOWED_ORIGINS` | Optional | Comma-separated CORS origins |
-| `ROOIAM_ISSUER_URL` | Optional | Bootstrap public issuer/base URL used for OIDC metadata and OAuth callback generation; can be overridden later in setup/settings |
-| `ROOIAM_FRONTEND_URL` | Optional | Bootstrap hosted auth UI URL used in generated magic-link emails; can be overridden later in setup/settings |
+| `ROOIAM_SERVER_URL` | Optional | Bootstrap public issuer/base URL used for OIDC metadata and OAuth callback generation; can be overridden later in setup/settings |
+| `ROOIAM_APP_URL` | Optional | Bootstrap hosted auth UI URL used in generated magic-link emails; can be overridden later in setup/settings |
 | `ROOIAM_ADMIN_URL` | Optional | Bootstrap admin UI URL shown in setup/settings; can be overridden later in setup/settings |
 | `ROOIAM_SETUP_TOKEN` | Optional | Required for first-time setup from a public/non-loopback browser when remote bootstrap protection is enabled |
 | `VITE_API_URL` | Frontend build | Required API base URL for `rooiam-app` / `rooiam-admin`; the frontends do not guess a default |
@@ -1003,7 +1006,7 @@ Before going to production:
 
 - [ ] Set `ROOIAM_COOKIE_SECURE=true` — required when serving over HTTPS
 - [ ] Set `ROOIAM_COOKIE_DOMAIN` to your actual domain
-- [ ] Set `ROOIAM_ISSUER_URL` to your real public API URL (used in OIDC metadata and OAuth callbacks)
+- [ ] Set `ROOIAM_SERVER_URL` to your real public API URL (used in OIDC metadata and OAuth callbacks)
 - [ ] Set `FRONTEND_URL` to your real hosted login app URL (used in magic-link emails)
 - [ ] Set a strong `ROOIAM_OIDC_SIGNING_SECRET` or provide RSA keys via `ROOIAM_OIDC_PRIVATE_KEY_PEM` / `ROOIAM_OIDC_PUBLIC_KEY_PEM`
 - [ ] Do **not** set `ROOIAM_ENABLE_DEMO_SEED=true` in production
