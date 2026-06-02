@@ -3,6 +3,9 @@ use actix_web::{web, App, HttpServer};
 use actix_cors::Cors;
 use actix_web::http::header;
 use rooiam_server_lib::{bootstrap, http, infra, modules, shared};
+use rooiam_server_lib::openapi::ApiDoc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use rooiam_server_lib::shared::storage_config::{load_platform_storage_config, StorageBackend};
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -263,6 +266,11 @@ async fn main() -> std::io::Result<()>
                 Files::new("/assets", server_assets_dir)
                     .prefer_utf8(true)
                     .use_last_modified(true)
+            )
+            // OpenAPI: serves the generated spec at /openapi.json and Swagger UI at /docs.
+            .service(
+                SwaggerUi::new("/docs/{_:.*}")
+                    .url("/openapi.json", ApiDoc::openapi())
             )
             .configure(bootstrap::router::register_routes(config.rate_limit.clone(), config.mode.clone()));
 

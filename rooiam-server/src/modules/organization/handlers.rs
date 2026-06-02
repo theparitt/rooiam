@@ -68,7 +68,19 @@ async fn resolve_workspace_api_owner_user_id(
     .ok_or_else(|| AppError::Validation("Workspace owner not found for API-key management.".into()))
 }
 
-async fn list_workspace_integration_members(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/members",
+    tag = "integrations",
+    params(MemberListQuery),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Paginated workspace members"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the members.read permission"),
+    ),
+)]
+pub async fn list_workspace_integration_members(
     req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<MemberListQuery>,
@@ -117,9 +129,9 @@ async fn list_workspace_integration_members(
     Ok(HttpResponse::Ok().json(PaginatedActivityResponse { items, total, page, page_size }))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct UpdateWorkspaceIntegrationMemberProfileRequest {
+pub struct UpdateWorkspaceIntegrationMemberProfileRequest {
     display_name: Option<String>,
     avatar_url: Option<String>,
 }
@@ -225,7 +237,20 @@ async fn load_workspace_integration_invite_detail(
     .ok_or_else(|| AppError::NotFound("Invite not found in this workspace.".into()))
 }
 
-async fn get_workspace_integration_member_detail(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/members/{member_id}",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Member detail"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the members.read permission"),
+        (status = 404, description = "Member not found in this workspace"),
+    ),
+)]
+pub async fn get_workspace_integration_member_detail(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -245,7 +270,16 @@ async fn get_workspace_integration_member_detail(
     Ok(HttpResponse::Ok().json(member))
 }
 
-async fn update_workspace_integration_member_profile(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/members/{member_id}/profile",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    request_body = UpdateWorkspaceIntegrationMemberProfileRequest,
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Member profile updated"), (status = 400), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn update_workspace_integration_member_profile(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -302,7 +336,15 @@ async fn update_workspace_integration_member_profile(
     get_workspace_integration_member_detail(req, state, web::Path::from(member_id)).await
 }
 
-async fn list_workspace_integration_member_sessions(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/members/{member_id}/sessions",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Member's active sessions"), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn list_workspace_integration_member_sessions(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -354,7 +396,15 @@ async fn list_workspace_integration_member_sessions(
     Ok(HttpResponse::Ok().json(sessions))
 }
 
-async fn revoke_workspace_integration_member_sessions(
+#[utoipa::path(
+    delete,
+    path = "/v1/orgs/integrations/members/{member_id}/sessions",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Revoked the member's sessions"), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn revoke_workspace_integration_member_sessions(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -404,7 +454,19 @@ async fn revoke_workspace_integration_member_sessions(
     })))
 }
 
-async fn list_workspace_integration_invites(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/invites",
+    tag = "integrations",
+    params(InviteListQuery),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Paginated pending workspace invites"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the invites.read permission"),
+    ),
+)]
+pub async fn list_workspace_integration_invites(
     req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<InviteListQuery>,
@@ -445,7 +507,20 @@ async fn list_workspace_integration_invites(
     Ok(HttpResponse::Ok().json(PaginatedActivityResponse { items, total, page, page_size }))
 }
 
-async fn get_workspace_integration_invite_detail(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/invites/{invite_id}",
+    tag = "integrations",
+    params(("invite_id" = Uuid, Path, description = "Invite UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Invite detail"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the invites.read permission"),
+        (status = 404, description = "Invite not found in this workspace"),
+    ),
+)]
+pub async fn get_workspace_integration_invite_detail(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<InvitePath>,
@@ -456,7 +531,15 @@ async fn get_workspace_integration_invite_detail(
     Ok(HttpResponse::Ok().json(invite))
 }
 
-async fn list_workspace_integration_activity(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/activity",
+    tag = "integrations",
+    params(ActivityQuery),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Workspace activity (audit) log"), (status = 401), (status = 403)),
+)]
+pub async fn list_workspace_integration_activity(
     req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<ActivityQuery>,
@@ -529,7 +612,15 @@ async fn list_workspace_integration_activity(
     }))
 }
 
-async fn list_workspace_integration_member_activity(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/members/{member_id}/activity",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID"), ActivityQuery),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Member activity (audit) log"), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn list_workspace_integration_member_activity(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -645,7 +736,18 @@ async fn list_workspace_integration_member_activity(
     }))
 }
 
-async fn get_workspace_integration_effective_policy(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/effective-policy",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Effective auth/security policy for this workspace"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the effective_policy.read permission"),
+    ),
+)]
+pub async fn get_workspace_integration_effective_policy(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -747,7 +849,18 @@ async fn get_workspace_integration_effective_policy(
     })))
 }
 
-async fn get_workspace_integration_policy_summary(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/policy-summary",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Human-readable summary of enabled login methods + policy"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the effective_policy.read permission"),
+    ),
+)]
+pub async fn get_workspace_integration_policy_summary(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -829,7 +942,18 @@ async fn get_workspace_integration_policy_summary(
     }))
 }
 
-async fn get_workspace_integration_api_key_me(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/api-keys/me",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Metadata + granted permissions for the calling API key"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the workspace.read permission"),
+    ),
+)]
+pub async fn get_workspace_integration_api_key_me(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -849,7 +973,18 @@ async fn get_workspace_integration_api_key_me(
     }))
 }
 
-async fn list_workspace_integration_roles(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/roles",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Roles assignable to workspace members"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the members.read permission"),
+    ),
+)]
+pub async fn list_workspace_integration_roles(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -870,7 +1005,18 @@ async fn list_workspace_integration_roles(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "roles": roles })))
 }
 
-async fn list_workspace_integration_permissions(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/permissions",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Catalog of permissions known to the workspace"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the workspace.read permission"),
+    ),
+)]
+pub async fn list_workspace_integration_permissions(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -881,7 +1027,18 @@ async fn list_workspace_integration_permissions(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "permissions": perms })))
 }
 
-async fn list_workspace_integration_audit_actions(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/audit/actions",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Distinct audit action codes available for filtering"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the activity.read permission"),
+    ),
+)]
+pub async fn list_workspace_integration_audit_actions(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -899,7 +1056,18 @@ async fn list_workspace_integration_audit_actions(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "actions": actions })))
 }
 
-async fn get_workspace_integration_widget_preview_config(
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/widget-preview-config",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Config needed to render the hosted login widget preview"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the branding.read permission"),
+    ),
+)]
+pub async fn get_workspace_integration_widget_preview_config(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -969,7 +1137,20 @@ async fn get_workspace_integration_widget_preview_config(
     }))
 }
 
-async fn update_workspace_integration_branding(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/branding",
+    tag = "integrations",
+    request_body = UpdateCurrentOrganizationBrandingRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Updated workspace branding"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the branding.write permission"),
+    ),
+)]
+pub async fn update_workspace_integration_branding(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<UpdateCurrentOrganizationBrandingRequest>,
@@ -1078,7 +1259,20 @@ async fn update_workspace_integration_branding(
     get_workspace_integration_branding(req, state).await
 }
 
-async fn update_workspace_integration_auth_config(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/auth-config",
+    tag = "integrations",
+    request_body = UpdateTenantAuthConfigRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Updated workspace auth provider + SMTP configuration"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the auth_config.write permission"),
+    ),
+)]
+pub async fn update_workspace_integration_auth_config(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<UpdateTenantAuthConfigRequest>,
@@ -1201,7 +1395,20 @@ async fn update_workspace_integration_auth_config(
     get_workspace_integration_auth_config(req, state).await
 }
 
-async fn create_workspace_integration_client(
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/integrations/clients",
+    tag = "integrations",
+    request_body = CreateOrgClientRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Created OAuth client/app (includes the one-time client secret)"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.create permission"),
+    ),
+)]
+pub async fn create_workspace_integration_client(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<CreateOrgClientRequest>,
@@ -1328,7 +1535,22 @@ async fn create_workspace_integration_client(
     }))
 }
 
-async fn update_workspace_integration_client(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/clients/{client_id}",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    request_body = UpdateOrgClientRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Updated OAuth client/app"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.update permission"),
+        (status = 404, description = "Client not found in this workspace"),
+    ),
+)]
+pub async fn update_workspace_integration_client(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<uuid::Uuid>,
@@ -1439,7 +1661,22 @@ async fn update_workspace_integration_client(
     }))
 }
 
-async fn update_workspace_integration_client_status(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/clients/{client_id}/status",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    request_body = UpdateOrgClientStatusRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Updated client status"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.status permission"),
+        (status = 404, description = "Client not found in this workspace"),
+    ),
+)]
+pub async fn update_workspace_integration_client_status(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<uuid::Uuid>,
@@ -1493,7 +1730,20 @@ async fn update_workspace_integration_client_status(
     Ok(HttpResponse::Ok().json(updated))
 }
 
-async fn rotate_workspace_integration_client_secret(
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/integrations/clients/{client_id}/rotate-secret",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Rotated client secret (includes the new one-time secret)"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.rotate_secret permission"),
+        (status = 404, description = "Client not found in this workspace"),
+    ),
+)]
+pub async fn rotate_workspace_integration_client_secret(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<uuid::Uuid>,
@@ -1546,7 +1796,20 @@ async fn rotate_workspace_integration_client_secret(
     }))
 }
 
-async fn delete_workspace_integration_client(
+#[utoipa::path(
+    delete,
+    path = "/v1/orgs/integrations/clients/{client_id}",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Client deleted"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.delete permission"),
+        (status = 404, description = "Client not found in this workspace"),
+    ),
+)]
+pub async fn delete_workspace_integration_client(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<uuid::Uuid>,
@@ -1582,7 +1845,20 @@ async fn delete_workspace_integration_client(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
 
-async fn send_workspace_integration_invite(
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/integrations/invites",
+    tag = "integrations",
+    request_body = SendInviteRequest,
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Invite created and email queued"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the invites.create permission"),
+    ),
+)]
+pub async fn send_workspace_integration_invite(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<SendInviteRequest>,
@@ -1641,7 +1917,20 @@ async fn send_workspace_integration_invite(
     })))
 }
 
-async fn revoke_workspace_integration_invite(
+#[utoipa::path(
+    delete,
+    path = "/v1/orgs/integrations/invites/{invite_id}",
+    tag = "integrations",
+    params(("invite_id" = Uuid, Path, description = "Invite UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Invite revoked"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the invites.delete permission"),
+        (status = 404, description = "Invite not found in this workspace"),
+    ),
+)]
+pub async fn revoke_workspace_integration_invite(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<InvitePath>,
@@ -1670,7 +1959,16 @@ async fn revoke_workspace_integration_invite(
     })))
 }
 
-async fn update_workspace_integration_member_role(
+#[utoipa::path(
+    patch,
+    path = "/v1/orgs/integrations/members/{member_id}/role",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    request_body = UpdateMemberRoleRequest,
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Member role updated"), (status = 400), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn update_workspace_integration_member_role(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -1744,7 +2042,15 @@ async fn update_workspace_integration_member_role(
     })))
 }
 
-async fn remove_workspace_integration_member(
+#[utoipa::path(
+    delete,
+    path = "/v1/orgs/integrations/members/{member_id}",
+    tag = "integrations",
+    params(("member_id" = Uuid, Path, description = "Member UUID")),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Member removed from the workspace"), (status = 401), (status = 403), (status = 404)),
+)]
+pub async fn remove_workspace_integration_member(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -1801,52 +2107,79 @@ pub struct CreateOrganizationRequest {
     pub slug: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
-struct ActivityQuery {
+#[into_params(parameter_in = Query)]
+pub struct ActivityQuery {
+    /// Page number (1-based)
     page: Option<i64>,
+    /// Items per page (max 1000)
     page_size: Option<i64>,
+    /// Search term
     search: Option<String>,
+    /// Search term (alias)
     q: Option<String>,
+    /// Filter by audit action
     action: Option<String>,
+    /// ISO date lower bound
     date_from: Option<String>,
+    /// ISO date upper bound
     date_to: Option<String>,
+    /// Sort field
     sort_by: Option<String>,
+    /// asc | desc
     sort_order: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
 pub struct ClientListQuery {
+    /// Page number (1-based)
     pub page: Option<i64>,
+    /// Items per page (max 1000)
     pub page_size: Option<i64>,
+    /// Search by app name / client id
     pub q: Option<String>,
+    /// Filter by status
     pub status: Option<String>,
+    /// Filter by app type (web | spa | native)
     pub app_type: Option<String>,
+    /// Sort field
     pub sort_by: Option<String>,
+    /// asc | desc
     pub sort_order: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
-struct MemberListQuery {
+#[into_params(parameter_in = Query)]
+pub struct MemberListQuery {
+    /// Page number (1-based, default 1)
     page: Option<i64>,
+    /// Items per page (default 20, max 1000)
     page_size: Option<i64>,
+    /// Search by display name, email, or role
     q: Option<String>,
+    /// Filter by role code, or "all"
     role: Option<String>,
+    /// Filter by status, or "all"
     status: Option<String>,
+    /// Sort field: display_name | email | status | role | created_at | last_seen_at
     sort_by: Option<String>,
+    /// Sort direction: asc | desc
     sort_order: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
-struct InviteListQuery {
-    page: Option<i64>,
-    page_size: Option<i64>,
-    q: Option<String>,
-    sort_by: Option<String>,
-    sort_order: Option<String>,
+pub struct InviteListQuery {
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+    pub q: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
 }
 
 pub fn sort_order_or_error(value: Option<&str>) -> Result<&'static str, AppError> {
@@ -1896,7 +2229,7 @@ pub struct TenantPortalResponse {
     pub max_allowed_embed_origins_per_app: i32,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateCurrentOrganizationBrandingRequest {
     pub name: Option<String>,
@@ -3391,13 +3724,13 @@ async fn list_org_members(
     Ok(HttpResponse::Ok().json(members))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SendInviteRequest {
     pub email: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateMemberRoleRequest {
     pub role_code: String,
@@ -3411,8 +3744,8 @@ pub struct AcceptInviteRequest {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct InvitePath {
-    invite_id: Uuid,
+pub struct InvitePath {
+    pub invite_id: Uuid,
 }
 
 /// Send an invitation to join an organization
@@ -3784,7 +4117,7 @@ pub struct OrgClientResponse {
     pub client_secret: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateOrgClientRequest {
     pub app_name: String,
@@ -3802,13 +4135,13 @@ pub struct RotateOrgClientSecretResponse {
     pub client_secret: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateOrgClientStatusRequest {
     pub status: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateOrgClientRequest {
     pub app_name: String,
@@ -4390,7 +4723,7 @@ pub struct TenantAuthConfigResponse {
     pub smtp_security: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateTenantAuthConfigRequest {
     // Google (all three must be provided together to set; send null to clear)

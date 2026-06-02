@@ -10,6 +10,9 @@ name = "rooiam_server_lib"
 [dependencies]
 actix-web = "4"
 actix-cors = "0.7"
+# OpenAPI: utoipa generates the spec from the code; swagger-ui serves the docs page.
+utoipa = { version = "5", features = ["actix_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "8", features = ["actix-web"] }
 actix-files = "0.6"
 actix-multipart = "0.7"
 serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,1920 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Rooiam API",
+        "description": "Self-hosted passwordless IAM for multi-tenant SaaS.",
+        "license": {
+            "name": "Apache-2.0",
+            "identifier": "Apache-2.0"
+        },
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/v1/orgs/integrations/activity": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_activity",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number (1-based)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "description": "Items per page (max 1000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search term",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Search term (alias)",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "action",
+                        "in": "query",
+                        "description": "Filter by audit action",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "description": "ISO date lower bound",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "description": "ISO date upper bound",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "description": "Sort field",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "description": "asc | desc",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workspace activity (audit) log"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/api-keys/me": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_api_key_me",
+                "responses": {
+                    "200": {
+                        "description": "Metadata + granted permissions for the calling API key"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the workspace.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/audit/actions": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_audit_actions",
+                "responses": {
+                    "200": {
+                        "description": "Distinct audit action codes available for filtering"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the activity.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/auth-config": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_auth_config",
+                "responses": {
+                    "200": {
+                        "description": "Workspace auth provider + SMTP configuration (secrets redacted)"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the auth_config.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_auth_config",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateTenantAuthConfigRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated workspace auth provider + SMTP configuration"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the auth_config.write permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/branding": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_branding",
+                "responses": {
+                    "200": {
+                        "description": "Workspace branding configuration"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the branding.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_branding",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateCurrentOrganizationBrandingRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated workspace branding"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the branding.write permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/clients": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_clients",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number (1-based)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "description": "Items per page (max 1000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Search by app name / client id",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Filter by status",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "app_type",
+                        "in": "query",
+                        "description": "Filter by app type (web | spa | native)",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "description": "Sort field",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "description": "asc | desc",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated workspace OAuth clients/apps"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "create_workspace_integration_client",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateOrgClientRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Created OAuth client/app (includes the one-time client secret)"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.create permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/clients/{client_id}": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_client_detail",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Client/app detail"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "delete_workspace_integration_client",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Client deleted"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.delete permission"
+                    },
+                    "404": {
+                        "description": "Client not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_client",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateOrgClientRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated OAuth client/app"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.update permission"
+                    },
+                    "404": {
+                        "description": "Client not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/clients/{client_id}/rotate-secret": {
+            "post": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "rotate_workspace_integration_client_secret",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Rotated client secret (includes the new one-time secret)"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.rotate_secret permission"
+                    },
+                    "404": {
+                        "description": "Client not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/clients/{client_id}/secret-metadata": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_client_secret_metadata",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Client secret metadata (last rotation, presence flag; never the secret itself)"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.read permission"
+                    },
+                    "404": {
+                        "description": "Client not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/clients/{client_id}/status": {
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_client_status",
+                "parameters": [
+                    {
+                        "name": "client_id",
+                        "in": "path",
+                        "description": "Client UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateOrgClientStatusRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated client status"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the clients.status permission"
+                    },
+                    "404": {
+                        "description": "Client not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/effective-policy": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_effective_policy",
+                "responses": {
+                    "200": {
+                        "description": "Effective auth/security policy for this workspace"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the effective_policy.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/invites": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_invites",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated pending workspace invites"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the invites.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "send_workspace_integration_invite",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SendInviteRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Invite created and email queued"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the invites.create permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/invites/{invite_id}": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_invite_detail",
+                "parameters": [
+                    {
+                        "name": "invite_id",
+                        "in": "path",
+                        "description": "Invite UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Invite detail"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the invites.read permission"
+                    },
+                    "404": {
+                        "description": "Invite not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "revoke_workspace_integration_invite",
+                "parameters": [
+                    {
+                        "name": "invite_id",
+                        "in": "path",
+                        "description": "Invite UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Invite revoked"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the invites.delete permission"
+                    },
+                    "404": {
+                        "description": "Invite not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_members",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number (1-based, default 1)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "description": "Items per page (default 20, max 1000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Search by display name, email, or role",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "role",
+                        "in": "query",
+                        "description": "Filter by role code, or \"all\"",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Filter by status, or \"all\"",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "description": "Sort field: display_name | email | status | role | created_at | last_seen_at",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "description": "Sort direction: asc | desc",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated workspace members"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the members.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members/{member_id}": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_member_detail",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Member detail"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the members.read permission"
+                    },
+                    "404": {
+                        "description": "Member not found in this workspace"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "remove_workspace_integration_member",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Member removed from the workspace"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members/{member_id}/activity": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_member_activity",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number (1-based)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "description": "Items per page (max 1000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search term",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "Search term (alias)",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "action",
+                        "in": "query",
+                        "description": "Filter by audit action",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "description": "ISO date lower bound",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "description": "ISO date upper bound",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "description": "Sort field",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "description": "asc | desc",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Member activity (audit) log"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members/{member_id}/profile": {
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_member_profile",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateWorkspaceIntegrationMemberProfileRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Member profile updated"
+                    },
+                    "400": {
+                        "description": ""
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members/{member_id}/role": {
+            "patch": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "update_workspace_integration_member_role",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateMemberRoleRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Member role updated"
+                    },
+                    "400": {
+                        "description": ""
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/members/{member_id}/sessions": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_member_sessions",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Member's active sessions"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "revoke_workspace_integration_member_sessions",
+                "parameters": [
+                    {
+                        "name": "member_id",
+                        "in": "path",
+                        "description": "Member UUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Revoked the member's sessions"
+                    },
+                    "401": {
+                        "description": ""
+                    },
+                    "403": {
+                        "description": ""
+                    },
+                    "404": {
+                        "description": ""
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/permissions": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_permissions",
+                "responses": {
+                    "200": {
+                        "description": "Catalog of permissions known to the workspace"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the workspace.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/policy-summary": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_policy_summary",
+                "responses": {
+                    "200": {
+                        "description": "Human-readable summary of enabled login methods + policy"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the effective_policy.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/roles": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "list_workspace_integration_roles",
+                "responses": {
+                    "200": {
+                        "description": "Roles assignable to workspace members"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the members.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/widget-preview-config": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_widget_preview_config",
+                "responses": {
+                    "200": {
+                        "description": "Config needed to render the hosted login widget preview"
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the branding.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        },
+        "/v1/orgs/integrations/workspace": {
+            "get": {
+                "tags": [
+                    "integrations"
+                ],
+                "operationId": "get_workspace_integration_info",
+                "responses": {
+                    "200": {
+                        "description": "Workspace info for the authenticated API key",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkspaceIntegrationInfoResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid workspace API key"
+                    },
+                    "403": {
+                        "description": "API key lacks the workspace.read permission"
+                    }
+                },
+                "security": [
+                    {
+                        "workspace_api_key": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CreateOrgClientRequest": {
+                "type": "object",
+                "required": [
+                    "app_name",
+                    "app_type",
+                    "redirect_uris"
+                ],
+                "properties": {
+                    "allowed_embed_origins": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "app_name": {
+                        "type": "string"
+                    },
+                    "app_type": {
+                        "type": "string"
+                    },
+                    "confirm_multi_origin": {
+                        "type": "boolean"
+                    },
+                    "redirect_uris": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "additionalProperties": false
+            },
+            "SendInviteRequest": {
+                "type": "object",
+                "required": [
+                    "email"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateCurrentOrganizationBrandingRequest": {
+                "type": "object",
+                "properties": {
+                    "brand_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "button_style": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "card_bg_color2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "card_bg_style": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "card_border_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "card_border_width": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "card_radius": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "icon_container": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "icon_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_display_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_container": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_size": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_method_order": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "login_subtitle": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "show_login_logo": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "show_login_subtitle": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "show_login_title": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "show_powered_by": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "widget_radius": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "widget_shadow": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateMemberRoleRequest": {
+                "type": "object",
+                "required": [
+                    "role_code"
+                ],
+                "properties": {
+                    "role_code": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateOrgClientRequest": {
+                "type": "object",
+                "required": [
+                    "app_name",
+                    "redirect_uris"
+                ],
+                "properties": {
+                    "allowed_embed_origins": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "app_name": {
+                        "type": "string"
+                    },
+                    "confirm_multi_origin": {
+                        "type": "boolean"
+                    },
+                    "redirect_uris": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateOrgClientStatusRequest": {
+                "type": "object",
+                "required": [
+                    "status"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateTenantAuthConfigRequest": {
+                "type": "object",
+                "properties": {
+                    "clear_google": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "clear_microsoft": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "clear_smtp": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    },
+                    "google_client_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "google_client_secret": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "microsoft_client_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "microsoft_client_secret": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "microsoft_tenant_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "smtp_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "smtp_host": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "smtp_password": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "smtp_port": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "format": "int32"
+                    },
+                    "smtp_security": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "smtp_user": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
+            "UpdateWorkspaceIntegrationMemberProfileRequest": {
+                "type": "object",
+                "properties": {
+                    "avatar_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "display_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
+            "WorkspaceIntegrationInfoResponse": {
+                "type": "object",
+                "required": [
+                    "workspace_id",
+                    "workspace_slug",
+                    "workspace_name",
+                    "key_label",
+                    "key_prefix",
+                    "permission_preset",
+                    "allowed_permissions"
+                ],
+                "properties": {
+                    "allowed_permissions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "brand_color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "icon_container": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "icon_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "key_label": {
+                        "type": "string"
+                    },
+                    "key_prefix": {
+                        "type": "string"
+                    },
+                    "login_display_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_container": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_size": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "login_logo_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "permission_preset": {
+                        "type": "string"
+                    },
+                    "workspace_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "workspace_name": {
+                        "type": "string"
+                    },
+                    "workspace_slug": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "workspace_api_key": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "Workspace API key, sent as `Authorization: Bearer <key>`."
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "integrations",
+            "description": "Workspace integration API (workspace API key auth)"
+        }
+    ]
+}

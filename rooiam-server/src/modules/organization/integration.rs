@@ -14,7 +14,7 @@ use crate::modules::organization::handlers::{
 use crate::shared::error::AppError;
 use crate::shared::request_ip::client_ip_string_from_http_request;
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct WorkspaceIntegrationInfoResponse {
     workspace_id: Uuid,
     workspace_slug: String,
@@ -268,6 +268,17 @@ pub async fn resolve_workspace_api_key_context(
     Ok(row)
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/workspace",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Workspace info for the authenticated API key", body = WorkspaceIntegrationInfoResponse),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the workspace.read permission"),
+    ),
+)]
 pub async fn get_workspace_integration_info(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -293,6 +304,17 @@ pub async fn get_workspace_integration_info(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/branding",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Workspace branding configuration"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the branding.read permission"),
+    ),
+)]
 pub async fn get_workspace_integration_branding(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -344,6 +366,17 @@ pub async fn get_workspace_integration_branding(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/auth-config",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Workspace auth provider + SMTP configuration (secrets redacted)"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the auth_config.read permission"),
+    ),
+)]
 pub async fn get_workspace_integration_auth_config(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -427,6 +460,14 @@ async fn load_workspace_integration_client_response(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/clients",
+    tag = "integrations",
+    params(ClientListQuery),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Paginated workspace OAuth clients/apps"), (status = 401), (status = 403)),
+)]
 pub async fn list_workspace_integration_clients(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -553,6 +594,14 @@ pub async fn list_workspace_integration_clients(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/clients/{client_id}",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    security(("workspace_api_key" = [])),
+    responses((status = 200, description = "Client/app detail"), (status = 401), (status = 403), (status = 404)),
+)]
 pub async fn get_workspace_integration_client_detail(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -565,6 +614,19 @@ pub async fn get_workspace_integration_client_detail(
     Ok(HttpResponse::Ok().json(response))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/clients/{client_id}/secret-metadata",
+    tag = "integrations",
+    params(("client_id" = Uuid, Path, description = "Client UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Client secret metadata (last rotation, presence flag; never the secret itself)"),
+        (status = 401, description = "Missing or invalid workspace API key"),
+        (status = 403, description = "API key lacks the clients.read permission"),
+        (status = 404, description = "Client not found in this workspace"),
+    ),
+)]
 pub async fn get_workspace_integration_client_secret_metadata(
     req: HttpRequest,
     state: web::Data<AppState>,
