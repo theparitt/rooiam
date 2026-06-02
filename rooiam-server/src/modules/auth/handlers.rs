@@ -28,7 +28,7 @@ use sqlx::Row;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StartMagicLinkRequest {
     pub email: String,
@@ -45,7 +45,7 @@ pub struct StartMagicLinkResponse {
     pub widget_login_context: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VerifyMagicLinkRequest {
     pub token: String,
@@ -692,7 +692,18 @@ async fn complete_magic_link_verification(
     })
 }
 
-async fn start_magic_link(
+#[utoipa::path(
+    post,
+    path = "/v1/auth/magic-link/start",
+    tag = "browser",
+    request_body = StartMagicLinkRequest,
+    responses(
+        (status = 200, description = "Magic-link email queued (response does not reveal whether the email exists)"),
+        (status = 400, description = "Validation error"),
+        (status = 429, description = "Rate limited"),
+    ),
+)]
+pub async fn start_magic_link(
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<StartMagicLinkRequest>,
@@ -806,7 +817,17 @@ async fn start_magic_link(
     }))
 }
 
-async fn verify_magic_link(
+#[utoipa::path(
+    post,
+    path = "/v1/auth/magic-link/verify",
+    tag = "browser",
+    request_body = VerifyMagicLinkRequest,
+    responses(
+        (status = 200, description = "Token accepted; sets the session cookie and returns the signed-in user / next step (e.g. MFA)"),
+        (status = 400, description = "Invalid or expired token"),
+    ),
+)]
+pub async fn verify_magic_link(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<VerifyMagicLinkRequest>,
@@ -938,7 +959,16 @@ async fn log_suspicious_login_if_needed(state: &web::Data<AppState>, ip: Option<
     }
 }
 
-async fn logout(req: actix_web::HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    post,
+    path = "/v1/auth/logout",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Session revoked and cookie cleared (idempotent)"),
+    ),
+)]
+pub async fn logout(req: actix_web::HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     if let Some(cookie) = req.cookie(ROOIAM_SESSION_COOKIE) {
         let session_repo = SessionRepository::new(state.db.clone());
         let session_service = SessionService::new(session_repo.clone(), state.db.clone());

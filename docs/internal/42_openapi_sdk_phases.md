@@ -1,6 +1,6 @@
 # OpenAPI + SDK — Phased Plan
 
-Status: **In progress — Phases A, B, C done (2026-06-02). Next: Phase D (browser SDK).**
+Status: **In progress — Phases A–D done (2026-06-02). Next: Phase E (refactor consumers) or Phase D backfill (OIDC/PKCE, webauthn, mfa).**
 
 Goal: a typed, language-agnostic SDK layer so downstream apps integrate with
 Rooiam through generated clients, not hand-rolled `fetch`. The server's OpenAPI
@@ -136,18 +136,65 @@ stable + tested against the real server — the bar for refactoring consumers is
 
 ---
 
-## Phase D — `@rooiam/sdk-browser` (TypeScript)
+## Phase D — `@rooiam/sdk-browser` (TypeScript) ✅ (core slice done 2026-06-02)
 
-- [ ] Scaffold `rooiam-sdk/packages/js-browser`
-- [ ] Annotate the public/auth endpoints the browser needs
-      (`/orgs/public/branding`, `/setup/auth-methods`, `/setup/login-bootstrap`,
-      OIDC authorize/token/userinfo) in the server spec
-- [ ] Implement: mount login widget, OIDC + PKCE login/callback, getUser, logout,
-      read branding/auth-methods. NO secrets.
-- [ ] Follows the widget redirect contract
-      ([[project_rooiam_widget_redirect_contract]])
+Cookie-based, NO secrets. Every request uses `credentials: 'include'`; auth is the
+opaque `rooiam_session` cookie. A new `browser` tag + `session_cookie` (apiKey in
+cookie) security scheme were added to the spec; `workspace_api_key` and
+`session_cookie` now coexist. Spec is up to **40 operations** total.
 
-Exit test: same stability bar — tested against the live server, all green.
+Server endpoints annotated (7, all `pub`):
+- [x] `GET /setup/auth-methods`, `GET /setup/login-bootstrap` (public; `PublicAuthMethodsQuery` got `IntoParams`)
+- [x] `POST /auth/magic-link/start`, `POST /auth/magic-link/verify` (public; sets session cookie)
+- [x] `POST /auth/logout`, `GET /identity/me`, `PATCH /identity/me/profile` (session cookie)
+- DTOs deriving `ToSchema`: `StartMagicLinkRequest`, `VerifyMagicLinkRequest`, `UpdateProfileRequest`
+
+SDK (`@rooiam/sdk-browser`, `RooiamBrowser`):
+- [x] Public flow: `authMethods()`, `loginBootstrap()`, `startLogin()`, `verifyLogin()`
+- [x] Session self-service: `me()`, `updateProfile()`, `logout()`
+- [x] `RooiamError` (status + body); `credentials: 'include'` baked in; no Authorization header ever
+- [x] Follows the widget redirect contract ([[project_rooiam_widget_redirect_contract]])
+
+Exit test (stability bar) — **CLEARED**: live-tested against the source-run server.
+**16/16 pass** (13 unit + 3 live). Live block exercises the public endpoints
+(`auth-methods`/`login-bootstrap` → 200, `me()` → 401 with no cookie). Session-cookie
+calls aren't live-tested headlessly (would need a minted login cookie) — covered by unit tests.
+
+Deferred to a later Phase-D pass (not in the core slice): OIDC authorize/token/userinfo
++ PKCE helpers, webauthn/passkeys, mfa/totp, the rest of `/identity/me/*`
+(sessions, linked-accounts, email-change, delete, audit-logs). The pipeline +
+cookie-auth + the stability bar are proven; these are mechanical backfill.
+
+### Phase D backfill #1 — OIDC client flow + PKCE ✅ (done 2026-06-02)
+
+The standard OIDC login flow downstream apps use. New `oidc` tag +
+`oidc_access_token` bearer scheme. Spec is up to **45 operations**.
+
+Server endpoints annotated (5, already `pub`):
+- [x] `GET /.well-known/openid-configuration` (discovery), `GET /.well-known/jwks.json`
+      — these live at the ORIGIN root, **not** under `/v1`
+- [x] `GET /v1/oidc/authorize` (`AuthorizeRequest` → `IntoParams`; 302 redirect)
+- [x] `POST /v1/oidc/token` (`TokenRequest` → `ToSchema`; **form-encoded**, so
+      `request_body(content = TokenRequest, content_type = "application/x-www-form-urlencoded")`)
+- [x] `GET /v1/oidc/userinfo` (`oidc_access_token` bearer)
+
+SDK additions (`@rooiam/sdk-browser`):
+- [x] PKCE helpers (Web Crypto, exported standalone): `generateCodeVerifier()`,
+      `deriveCodeChallenge()`, `createPkcePair()` — S256, verified against the
+      RFC 7636 Appendix B test vector
+- [x] `oidc.{discovery, jwks, authorizeUrl, exchangeCode, userinfo}` —
+      `authorizeUrl()` is pure string-building; `exchangeCode()` sends
+      `application/x-www-form-urlencoded` with the verifier and NO client secret
+      (public client); `userinfo()` sends the access token as a Bearer header
+
+**Live contract finding #2:** discovery + JWKS are served at the **origin root**
+(`/.well-known/*`), and `/v1/.well-known/*` is a 404. The SDK's normal `request()`
+prepends `apiBase` (which includes `/v1`), so those two methods pass an explicit
+`base: this.origin` override. Caught by the live test before shipping.
+
+Exit test — **CLEARED**: **25/25 pass** (20 unit + 5 live). Live block exercises
+discovery + jwks against the source-run server; a manual probe confirmed
+`POST /oidc/token` parses the form body (returns an OAuth error, not a 415).
 
 ---
 

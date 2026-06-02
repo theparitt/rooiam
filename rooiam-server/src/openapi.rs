@@ -60,6 +60,20 @@ use utoipa::{Modify, OpenApi};
         crate::modules::organization::handlers::list_workspace_integration_permissions,
         crate::modules::organization::handlers::get_workspace_integration_api_key_me,
         crate::modules::organization::handlers::get_workspace_integration_widget_preview_config,
+        // --- browser surface (public login flow + session-cookie self-service) ---
+        crate::modules::setup::auth_bootstrap::get_public_auth_methods,
+        crate::modules::setup::auth_bootstrap::get_login_bootstrap,
+        crate::modules::auth::handlers::start_magic_link,
+        crate::modules::auth::handlers::verify_magic_link,
+        crate::modules::auth::handlers::logout,
+        crate::modules::identity::handlers::get_me,
+        crate::modules::identity::handlers::update_me,
+        // --- OIDC client flow (discovery + PKCE code exchange) ---
+        crate::modules::oidc::handlers::discovery,
+        crate::modules::oidc::handlers::jwks_with_state,
+        crate::modules::oidc::handlers::authorize,
+        crate::modules::oidc::handlers::token,
+        crate::modules::oidc::handlers::userinfo,
     ),
     components(
         schemas(
@@ -72,20 +86,30 @@ use utoipa::{Modify, OpenApi};
             crate::modules::organization::handlers::UpdateOrgClientRequest,
             crate::modules::organization::handlers::UpdateOrgClientStatusRequest,
             crate::modules::organization::handlers::SendInviteRequest,
+            // browser DTOs
+            crate::modules::auth::handlers::StartMagicLinkRequest,
+            crate::modules::auth::handlers::VerifyMagicLinkRequest,
+            crate::modules::identity::handlers::UpdateProfileRequest,
+            // OIDC DTOs
+            crate::modules::oidc::handlers::TokenRequest,
         ),
     ),
     tags(
         (name = "integrations", description = "Workspace integration API (workspace API key auth)"),
+        (name = "browser", description = "Browser-facing API: public login flow + session-cookie self-service (no secrets)"),
+        (name = "oidc", description = "OpenID Connect provider: discovery, JWKS, authorize, token (PKCE), userinfo"),
     ),
 )]
 pub struct ApiDoc;
 
-/// Registers the `workspace_api_key` bearer scheme referenced by every
-/// integration endpoint's `security(("workspace_api_key" = []))`.
+/// Registers the security schemes referenced by endpoint `security(...)` attrs:
+/// `workspace_api_key` (Bearer, server SDK) and `session_cookie` (browser SDK).
 struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::ApiKey;
+        use utoipa::openapi::security::ApiKeyValue;
         let components = openapi.components.get_or_insert_with(Default::default);
         components.add_security_scheme(
             "workspace_api_key",
@@ -94,6 +118,24 @@ impl Modify for SecurityAddon {
                     .scheme(HttpAuthScheme::Bearer)
                     .description(Some(
                         "Workspace API key, sent as `Authorization: Bearer <key>`.",
+                    ))
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "session_cookie",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
+                "rooiam_session",
+                "Opaque session cookie set on magic-link verify; sent automatically by the browser.",
+            ))),
+        );
+        components.add_security_scheme(
+            "oidc_access_token",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .description(Some(
+                        "OIDC access token from /oidc/token, sent as `Authorization: Bearer <token>`.",
                     ))
                     .build(),
             ),

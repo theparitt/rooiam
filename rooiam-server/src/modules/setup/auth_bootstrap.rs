@@ -218,12 +218,22 @@ fn select_login_bootstrap_redirect_uri
 
 
 
+#[utoipa::path(
+    get,
+    path = "/v1/setup/auth-methods",
+    tag = "browser",
+    params(PublicAuthMethodsQuery),
+    responses(
+        (status = 200, description = "Login methods enabled for the resolved workspace (public; no auth)"),
+        (status = 400, description = "Validation error"),
+    ),
+)]
 pub async fn get_public_auth_methods
 (
     state: web::Data<AppState>,
     query: web::Query<PublicAuthMethodsQuery>,
-) 
--> Result<HttpResponse, AppError> 
+)
+-> Result<HttpResponse, AppError>
 {
     Ok(HttpResponse::Ok().json(load_public_auth_methods(&state, &query).await?))
 }
@@ -376,12 +386,22 @@ pub async fn load_public_auth_methods
 
 
 
+#[utoipa::path(
+    get,
+    path = "/v1/setup/login-bootstrap",
+    tag = "browser",
+    params(PublicAuthMethodsQuery),
+    responses(
+        (status = 200, description = "Everything the hosted login widget needs to render: auth methods + workspace branding (public; no auth)"),
+        (status = 400, description = "Validation error"),
+    ),
+)]
 pub async fn get_login_bootstrap
 (
     state: web::Data<AppState>,
     query: web::Query<PublicAuthMethodsQuery>,
-) 
--> Result<HttpResponse, AppError> 
+)
+-> Result<HttpResponse, AppError>
 {
     let total_start = Instant::now();
     let auth = load_public_auth_methods(&state, &query).await?;

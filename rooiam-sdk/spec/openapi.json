@@ -10,6 +10,294 @@
         "version": "0.1.0"
     },
     "paths": {
+        "/.well-known/jwks.json": {
+            "get": {
+                "tags": [
+                    "oidc"
+                ],
+                "operationId": "jwks_with_state",
+                "responses": {
+                    "200": {
+                        "description": "JSON Web Key Set for verifying issued ID tokens"
+                    }
+                }
+            }
+        },
+        "/.well-known/openid-configuration": {
+            "get": {
+                "tags": [
+                    "oidc"
+                ],
+                "operationId": "discovery",
+                "responses": {
+                    "200": {
+                        "description": "OIDC discovery document (issuer, endpoints, supported algs)"
+                    }
+                }
+            }
+        },
+        "/v1/auth/logout": {
+            "post": {
+                "tags": [
+                    "browser"
+                ],
+                "operationId": "logout",
+                "responses": {
+                    "200": {
+                        "description": "Session revoked and cookie cleared (idempotent)"
+                    }
+                },
+                "security": [
+                    {
+                        "session_cookie": []
+                    }
+                ]
+            }
+        },
+        "/v1/auth/magic-link/start": {
+            "post": {
+                "tags": [
+                    "browser"
+                ],
+                "operationId": "start_magic_link",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StartMagicLinkRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Magic-link email queued (response does not reveal whether the email exists)"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "429": {
+                        "description": "Rate limited"
+                    }
+                }
+            }
+        },
+        "/v1/auth/magic-link/verify": {
+            "post": {
+                "tags": [
+                    "browser"
+                ],
+                "operationId": "verify_magic_link",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VerifyMagicLinkRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Token accepted; sets the session cookie and returns the signed-in user / next step (e.g. MFA)"
+                    },
+                    "400": {
+                        "description": "Invalid or expired token"
+                    }
+                }
+            }
+        },
+        "/v1/identity/me": {
+            "get": {
+                "tags": [
+                    "browser"
+                ],
+                "summary": "Retrieve the active user's current identity profile",
+                "operationId": "get_me",
+                "responses": {
+                    "200": {
+                        "description": "The signed-in user's profile"
+                    },
+                    "401": {
+                        "description": "No valid session cookie"
+                    }
+                },
+                "security": [
+                    {
+                        "session_cookie": []
+                    }
+                ]
+            }
+        },
+        "/v1/identity/me/profile": {
+            "patch": {
+                "tags": [
+                    "browser"
+                ],
+                "summary": "Update the active user's identity profile",
+                "operationId": "update_me",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateProfileRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated profile"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "No valid session cookie"
+                    }
+                },
+                "security": [
+                    {
+                        "session_cookie": []
+                    }
+                ]
+            }
+        },
+        "/v1/oidc/authorize": {
+            "get": {
+                "tags": [
+                    "oidc"
+                ],
+                "operationId": "authorize",
+                "parameters": [
+                    {
+                        "name": "response_type",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "scope",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "nonce",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "code_challenge",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "code_challenge_method",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect: to login if no session, else back to the client's redirect_uri with an authorization code (or an error)"
+                    },
+                    "400": {
+                        "description": "Invalid authorize request (bad client_id/redirect_uri/response_type)"
+                    }
+                }
+            }
+        },
+        "/v1/oidc/token": {
+            "post": {
+                "tags": [
+                    "oidc"
+                ],
+                "operationId": "token",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Token response: access_token, id_token, optional refresh_token"
+                    },
+                    "400": {
+                        "description": "OAuth error (invalid_grant, invalid_request, etc.)"
+                    },
+                    "401": {
+                        "description": "Client authentication failed"
+                    }
+                }
+            }
+        },
+        "/v1/oidc/userinfo": {
+            "get": {
+                "tags": [
+                    "oidc"
+                ],
+                "operationId": "userinfo",
+                "responses": {
+                    "200": {
+                        "description": "Claims for the user the access token was issued for"
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token"
+                    }
+                },
+                "security": [
+                    {
+                        "oidc_access_token": []
+                    }
+                ]
+            }
+        },
         "/v1/orgs/integrations/activity": {
             "get": {
                 "tags": [
@@ -1465,6 +1753,122 @@
                     }
                 ]
             }
+        },
+        "/v1/setup/auth-methods": {
+            "get": {
+                "tags": [
+                    "browser"
+                ],
+                "operationId": "get_public_auth_methods",
+                "parameters": [
+                    {
+                        "name": "workspace_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "org",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "workspace",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "client_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "widget_embed_origin",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Login methods enabled for the resolved workspace (public; no auth)"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/v1/setup/login-bootstrap": {
+            "get": {
+                "tags": [
+                    "browser"
+                ],
+                "operationId": "get_login_bootstrap",
+                "parameters": [
+                    {
+                        "name": "workspace_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "org",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "workspace",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "client_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "widget_embed_origin",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Everything the hosted login widget needs to render: auth methods + workspace branding (public; no auth)"
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -1509,6 +1913,88 @@
                 "properties": {
                     "email": {
                         "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "StartMagicLinkRequest": {
+                "type": "object",
+                "required": [
+                    "email"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string"
+                    },
+                    "redirect_uri": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "surface": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "widget_embed_origin": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "widget_login_context": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
+            "TokenRequest": {
+                "type": "object",
+                "required": [
+                    "grant_type",
+                    "client_id"
+                ],
+                "properties": {
+                    "client_id": {
+                        "type": "string"
+                    },
+                    "client_secret": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "code_verifier": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "grant_type": {
+                        "type": "string"
+                    },
+                    "redirect_uri": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "refresh_token": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "additionalProperties": false
@@ -1712,6 +2198,24 @@
                 },
                 "additionalProperties": false
             },
+            "UpdateProfileRequest": {
+                "type": "object",
+                "properties": {
+                    "avatar_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "display_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
             "UpdateTenantAuthConfigRequest": {
                 "type": "object",
                 "properties": {
@@ -1821,6 +2325,18 @@
                 },
                 "additionalProperties": false
             },
+            "VerifyMagicLinkRequest": {
+                "type": "object",
+                "required": [
+                    "token"
+                ],
+                "properties": {
+                    "token": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            },
             "WorkspaceIntegrationInfoResponse": {
                 "type": "object",
                 "required": [
@@ -1904,6 +2420,17 @@
             }
         },
         "securitySchemes": {
+            "oidc_access_token": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "OIDC access token from /oidc/token, sent as `Authorization: Bearer <token>`."
+            },
+            "session_cookie": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "rooiam_session",
+                "description": "Opaque session cookie set on magic-link verify; sent automatically by the browser."
+            },
             "workspace_api_key": {
                 "type": "http",
                 "scheme": "bearer",
@@ -1915,6 +2442,14 @@
         {
             "name": "integrations",
             "description": "Workspace integration API (workspace API key auth)"
+        },
+        {
+            "name": "browser",
+            "description": "Browser-facing API: public login flow + session-cookie self-service (no secrets)"
+        },
+        {
+            "name": "oidc",
+            "description": "OpenID Connect provider: discovery, JWKS, authorize, token (PKCE), userinfo"
         }
     ]
 }

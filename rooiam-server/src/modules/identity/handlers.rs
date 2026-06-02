@@ -26,7 +26,7 @@ use crate::shared::runtime_config::{effective_admin_url, effective_app_url};
 use super::{repository::IdentityRepository, service::IdentityService};
 use super::models::{LinkedAccountsResponse, LinkedMagicLinkStatus, LinkedProviderStatus, SecurityCapabilitiesResponse};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateProfileRequest {
     pub display_name: Option<String>,
@@ -319,7 +319,17 @@ async fn list_my_audit_logs_bearer(
 }
 
 /// Retrieve the active user's current identity profile
-async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    get,
+    path = "/v1/identity/me",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "The signed-in user's profile"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
 
     let repo = IdentityRepository::new(state.db.clone());
@@ -331,7 +341,19 @@ async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResp
 }
 
 /// Update the active user's identity profile
-async fn update_me(
+#[utoipa::path(
+    patch,
+    path = "/v1/identity/me/profile",
+    tag = "browser",
+    request_body = UpdateProfileRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Updated profile"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn update_me(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<UpdateProfileRequest>,

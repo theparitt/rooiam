@@ -44,7 +44,8 @@ pub struct EndSessionRequest {
     pub client_id: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct AuthorizeRequest {
     pub response_type: String,
@@ -57,7 +58,7 @@ pub struct AuthorizeRequest {
     pub code_challenge_method: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TokenRequest {
     pub grant_type: String,
@@ -186,6 +187,14 @@ fn oauth_authorize_error_redirect(
         .finish())
 }
 
+#[utoipa::path(
+    get,
+    path = "/.well-known/openid-configuration",
+    tag = "oidc",
+    responses(
+        (status = 200, description = "OIDC discovery document (issuer, endpoints, supported algs)"),
+    ),
+)]
 pub async fn discovery(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let runtime_config = load_runtime_app_config(state.get_ref()).await?;
     let issuer = runtime_config.server.issuer_url.clone();
@@ -211,6 +220,14 @@ pub async fn discovery(state: web::Data<AppState>) -> Result<HttpResponse, AppEr
     Ok(HttpResponse::Ok().json(metadata))
 }
 
+#[utoipa::path(
+    get,
+    path = "/.well-known/jwks.json",
+    tag = "oidc",
+    responses(
+        (status = 200, description = "JSON Web Key Set for verifying issued ID tokens"),
+    ),
+)]
 pub async fn jwks_with_state(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     use super::service::oidc_jwks_from_db;
     Ok(HttpResponse::Ok().json(JwksResponse {
@@ -218,6 +235,16 @@ pub async fn jwks_with_state(state: web::Data<AppState>) -> Result<HttpResponse,
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/oidc/authorize",
+    tag = "oidc",
+    params(AuthorizeRequest),
+    responses(
+        (status = 302, description = "Redirect: to login if no session, else back to the client's redirect_uri with an authorization code (or an error)"),
+        (status = 400, description = "Invalid authorize request (bad client_id/redirect_uri/response_type)"),
+    ),
+)]
 pub async fn authorize(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -460,6 +487,17 @@ pub async fn authorize(
     })
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/oidc/token",
+    tag = "oidc",
+    request_body(content = TokenRequest, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Token response: access_token, id_token, optional refresh_token"),
+        (status = 400, description = "OAuth error (invalid_grant, invalid_request, etc.)"),
+        (status = 401, description = "Client authentication failed"),
+    ),
+)]
 pub async fn token(
     state: web::Data<AppState>,
     form: web::Form<TokenRequest>,
@@ -502,6 +540,16 @@ pub async fn token(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/oidc/userinfo",
+    tag = "oidc",
+    security(("oidc_access_token" = [])),
+    responses(
+        (status = 200, description = "Claims for the user the access token was issued for"),
+        (status = 401, description = "Missing or invalid access token"),
+    ),
+)]
 pub async fn userinfo(
     req: HttpRequest,
     state: web::Data<AppState>,

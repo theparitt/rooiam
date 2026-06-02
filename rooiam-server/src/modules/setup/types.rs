@@ -194,7 +194,8 @@ pub struct DemoAppCatalogItem {
     pub demo_email: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct PublicAuthMethodsQuery {
     pub workspace_id: Option<String>,
