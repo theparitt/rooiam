@@ -6,35 +6,32 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cargo install sqlx-cli --locked --no-default-features --features rustls,postgres
+# sqlx-cli is NOT installed: the server auto-runs migrations in code on boot
+# (sqlx::migrate! in bootstrap/state.rs), so the CLI is redundant and its
+# from-source install added many minutes to every build.
 
 COPY rooiam-server /build
 
+ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 FROM debian:bookworm-slim
 
 WORKDIR /app
 
+# Runtime only needs ca-certificates (TLS) and curl (compose healthcheck).
+# hurl was only used by the test scripts (test/*.hurl), never at runtime — its
+# install made a GitHub API call + .deb download that slowed the build by minutes.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl libxml2 \
-    && HURL_VERSION=$(curl -s https://api.github.com/repos/Orange-OpenSource/hurl/releases/latest | grep '"tag_name"' | cut -d'"' -f4) \
-    && curl -fsSL "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb" -o /tmp/hurl.deb \
-    && dpkg -i /tmp/hurl.deb \
-    && rm /tmp/hurl.deb \
-    && apt-get remove -y curl \
-    && apt-get autoremove -y \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/rooiam-server /usr/local/bin/rooiam-server
-COPY --from=builder /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 COPY rooiam-server/migrations /app/migrations
 COPY rooiam-server/templates /app/templates
 COPY rooiam-server/assets /app/assets
-COPY docker-entrypoint.server.sh /usr/local/bin/docker-entrypoint.server.sh
-
-RUN chmod +x /usr/local/bin/docker-entrypoint.server.sh
 
 EXPOSE 5170
 
-CMD ["/usr/local/bin/docker-entrypoint.server.sh"]
+# The server connects to Postgres and runs migrations itself on startup, then serves.
+CMD ["/usr/local/bin/rooiam-server"]

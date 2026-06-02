@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${ROOIAM_DEMO_DB_USER?}
       POSTGRES_PASSWORD: ${ROOIAM_DEMO_DB_PASSWORD?}
     volumes:
-      - rooiam_demo_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${ROOIAM_DEMO_DB_USER?} -d ${ROOIAM_DEMO_DB_NAME?}"]
       interval: 5s
@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
-      - rooiam_demo_redis_data:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,7 +38,7 @@ services:
     ports:
       - "9001:9001"
     volumes:
-      - rooiam_demo_minio_data:/data
+      - minio_data:/data
 
   minio-init:
     image: minio/mc:latest
@@ -105,56 +105,15 @@ services:
     ports:
       - "5180:5170"
     volumes:
-      - rooiam_demo_server_data:/data/rooiam
+      - server_data:/data/rooiam
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5170/health"]
       interval: 10s
       timeout: 5s
       retries: 20
 
-  demo-admin:
-    build:
-      context: .
-      dockerfile: Dockerfile.admin
-      args:
-        VITE_API_URL: ${ROOIAM_DEMO_SERVER_URL}/v1
-        VITE_DOCS_URL: ${ROOIAM_DOCS_URL?}
-    restart: unless-stopped
-    depends_on:
-      demo-server:
-        condition: service_healthy
-    ports:
-      - "5181:80"
-
-  demo-app:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
-      args:
-        VITE_API_URL: ${ROOIAM_DEMO_SERVER_URL}/v1
-    restart: unless-stopped
-    depends_on:
-      demo-server:
-        condition: service_healthy
-    ports:
-      - "5182:80"
-
-  demo:
-    build:
-      context: .
-      dockerfile: Dockerfile.demo
-      args:
-        VITE_API_URL: ${ROOIAM_DEMO_CANDYCLOUD_API_URL?}
-        VITE_LOGIN_WIDGET_URL: ${ROOIAM_DEMO_SERVER_URL?}
-    restart: unless-stopped
-    depends_on:
-      demo-server:
-        condition: service_healthy
-    ports:
-      - "5184:80"
-
 volumes:
-  rooiam_demo_postgres_data:
-  rooiam_demo_redis_data:
-  rooiam_demo_minio_data:
-  rooiam_demo_server_data:
+  postgres_data:
+  redis_data:
+  minio_data:
+  server_data:
