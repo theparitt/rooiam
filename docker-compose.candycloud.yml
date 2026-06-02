@@ -26,10 +26,19 @@ services:
       CANDYCLOUD_PORT: 5185
       CANDYCLOUD_REDIS_URL: redis://redis:6379
       CANDYCLOUD_DB_PATH: /data/candycloud.db
+      ROOIAM_API_URL: ${ROOIAM_API_URL?}
+      CANDYCLOUD_COOKIE_SECURE: ${CANDYCLOUD_COOKIE_SECURE?}
+      CANDYCLOUD_COOKIE_DOMAIN: ${CANDYCLOUD_COOKIE_DOMAIN:-}
+      CANDYCLOUD_ALLOWED_ORIGINS: ${CANDYCLOUD_ALLOWED_ORIGINS?}
     ports:
       - "5185:5185"
     volumes:
       - candycloud_data:/data
+    # Lets ROOIAM_API_URL=http://host.docker.internal:... reach a rooiam server
+    # running on the host (e.g. the local demo on :5180). No effect when
+    # ROOIAM_API_URL is a public https domain.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5185/health"]
       interval: 10s

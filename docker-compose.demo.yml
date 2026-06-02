@@ -1,6 +1,7 @@
 name: rooiam-demo
 
 services:
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -8,8 +9,10 @@ services:
       POSTGRES_DB: ${ROOIAM_DEMO_DB_NAME?}
       POSTGRES_USER: ${ROOIAM_DEMO_DB_USER?}
       POSTGRES_PASSWORD: ${ROOIAM_DEMO_DB_PASSWORD?}
+    ports:
+      - "${ROOIAM_DEMO_POSTGRES_BIND?}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - rooiam_demo_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${ROOIAM_DEMO_DB_USER?} -d ${ROOIAM_DEMO_DB_NAME?}"]
       interval: 5s
@@ -20,8 +23,10 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "${ROOIAM_DEMO_REDIS_BIND?}:6379"
     volumes:
-      - redis_data:/data
+      - rooiam_demo_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -36,38 +41,37 @@ services:
       MINIO_ROOT_USER: ${ROOIAM_DEMO_MINIO_USER?}
       MINIO_ROOT_PASSWORD: ${ROOIAM_DEMO_MINIO_PASSWORD?}
     ports:
-      - "9001:9001"
+      - "${ROOIAM_DEMO_MINIO_BIND?}:9000"
+      - "${ROOIAM_DEMO_MINIO_CONSOLE_BIND?}:9001"
     volumes:
-      - minio_data:/data
+      - rooiam_demo_minio_data:/data
 
   minio-init:
     image: minio/mc:latest
     depends_on:
       minio:
         condition: service_started
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        until mc alias set local http://minio:9000 "${ROOIAM_DEMO_MINIO_USER?}" "${ROOIAM_DEMO_MINIO_PASSWORD?}"; do
-          echo "waiting for minio..."
-          sleep 2
-        done
-        mc mb --ignore-existing local/${ROOIAM_DEMO_MINIO_BUCKET?}
-    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+        sleep 5;
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+        mc mb --ignore-existing local/$$MINIO_BUCKET;
+        mc anonymous set public local/$$MINIO_BUCKET;
+        exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${ROOIAM_DEMO_MINIO_USER?}
+      MINIO_ROOT_PASSWORD: ${ROOIAM_DEMO_MINIO_PASSWORD?}
+      MINIO_BUCKET: ${ROOIAM_DEMO_MINIO_BUCKET?}
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
-    restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${ROOIAM_DEMO_MAILHOG_SMTP_BIND?}:1025"
+      - "${ROOIAM_DEMO_MAILHOG_UI_BIND?}:8025"
 
   demo-server:
-    image: rooiam-demo-server
-    build:
-      context: .
-      dockerfile: Dockerfile.server.prod
+    image: ghcr.io/theparitt/rooiam-demo-server:latest
     restart: unless-stopped
     depends_on:
       postgres:
@@ -79,12 +83,13 @@ services:
       mailhog:
         condition: service_started
     environment:
-      ROOIAM_MODE: demo
+      ROOIAM_MODE: ${ROOIAM_MODE?}
       ROOIAM_DEPLOY_TARGET: ${ROOIAM_DEMO_DEPLOY_TARGET?}
-      ROOIAM_HOST: 0.0.0.0
-      ROOIAM_PORT: 5170
+      ROOIAM_HOST: ${ROOIAM_DEMO_HOST?}
+      ROOIAM_PORT: ${ROOIAM_DEMO_PORT?}
       ROOIAM_COOKIE_SECURE: ${ROOIAM_DEMO_COOKIE_SECURE?}
       ROOIAM_COOKIE_DOMAIN: ${ROOIAM_DEMO_COOKIE_DOMAIN:-}
+      ROOIAM_DOCS_URL: ${ROOIAM_DOCS_URL:-}
       ROOIAM_SERVER_URL: ${ROOIAM_DEMO_SERVER_URL?}
       ROOIAM_APP_URL: ${ROOIAM_DEMO_APP_URL?}
       ROOIAM_ENDUSER_URL: ${ROOIAM_DEMO_ENDUSER_URL?}
@@ -92,7 +97,7 @@ services:
       ROOIAM_ALLOWED_ORIGINS: ${ROOIAM_DEMO_ALLOWED_ORIGINS?}
       ROOIAM_DATABASE_URL: ${ROOIAM_DEMO_DATABASE_URL?}
       ROOIAM_REDIS_URL: ${ROOIAM_DEMO_REDIS_URL?}
-      ROOIAM_STORAGE_ROOT: /data/rooiam
+      ROOIAM_STORAGE_ROOT: ${ROOIAM_DEMO_STORAGE_ROOT?}
       ROOIAM_PUBLIC_MEDIA_BASE: ${ROOIAM_DEMO_PUBLIC_MEDIA_BASE?}
       ROOIAM_MINIO_ENDPOINT: ${ROOIAM_DEMO_MINIO_ENDPOINT?}
       ROOIAM_MINIO_BUCKET: ${ROOIAM_DEMO_MINIO_BUCKET?}
@@ -102,18 +107,16 @@ services:
       ROOIAM_DEMO_SMTP_PORT: ${ROOIAM_DEMO_SMTP_PORT?}
       ROOIAM_DEMO_SMTP_FROM: ${ROOIAM_DEMO_SMTP_FROM?}
       ROOIAM_DEMO_MAILBOX_URL: ${ROOIAM_DEMO_MAILBOX_URL?}
+      ROOIAM_DEMO_APP_URL: ${ROOIAM_DEMO_APP_URL?}
+      ROOIAM_DEMO_ADMIN_URL: ${ROOIAM_DEMO_ADMIN_URL?}
+      CANDYCLOUD_API_URL: ${ROOIAM_DEMO_CANDYCLOUD_API_URL?}
     ports:
-      - "5180:5170"
+      - "${ROOIAM_DEMO_SERVER_BIND?}:${ROOIAM_DEMO_PORT?}"
     volumes:
-      - server_data:/data/rooiam
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5170/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      - rooiam_demo_server_data:${ROOIAM_DEMO_STORAGE_ROOT?}
 
 volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
-  server_data:
+  rooiam_demo_server_data:
+  rooiam_demo_postgres_data:
+  rooiam_demo_redis_data:
+  rooiam_demo_minio_data:
