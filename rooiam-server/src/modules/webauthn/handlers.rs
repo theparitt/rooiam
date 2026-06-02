@@ -25,9 +25,9 @@ use crate::shared::widget_login_context::{
 
 use super::{repository::WebauthnRepository, service::WebauthnService};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct StartLoginRequest {
+pub struct StartLoginRequest {
     email: String,
     redirect_uri: Option<String>,
     widget_login_context: Option<String>,
@@ -35,32 +35,36 @@ struct StartLoginRequest {
     surface: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct FinishRegistrationRequest {
+pub struct FinishRegistrationRequest {
     challenge_id: Uuid,
     name: Option<String>,
+    /// The raw WebAuthn `PublicKeyCredential` from the browser's `navigator.credentials.create()`.
+    #[schema(value_type = Object)]
     credential: serde_json::Value,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct FinishLoginRequest {
+pub struct FinishLoginRequest {
     challenge_id: Uuid,
+    /// The raw WebAuthn assertion from `navigator.credentials.get()`.
+    #[schema(value_type = Object)]
     credential: serde_json::Value,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct ReportLoginFailureRequest {
+pub struct ReportLoginFailureRequest {
     email: Option<String>,
     stage: String,
     reason: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct RenamePasskeyRequest {
+pub struct RenamePasskeyRequest {
     name: String,
 }
 
@@ -79,7 +83,17 @@ fn webauthn_service(state: &web::Data<AppState>) -> WebauthnService {
     )
 }
 
-async fn list_passkeys(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    get,
+    path = "/v1/webauthn/passkeys",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "The signed-in user's registered passkeys"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn list_passkeys(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let service = webauthn_service(&state);
     let passkeys = service.list_my_passkeys(session.user_id).await?;
@@ -102,7 +116,17 @@ async fn list_passkeys(req: HttpRequest, state: web::Data<AppState>) -> Result<H
     Ok(HttpResponse::Ok().json(response))
 }
 
-async fn start_login(
+#[utoipa::path(
+    post,
+    path = "/v1/webauthn/login/start",
+    tag = "browser",
+    request_body = StartLoginRequest,
+    responses(
+        (status = 200, description = "WebAuthn assertion options + challenge_id for login/finish (public)"),
+        (status = 400, description = "Validation error"),
+    ),
+)]
+pub async fn start_login(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<StartLoginRequest>,
@@ -208,7 +232,17 @@ async fn start_login(
     })))
 }
 
-async fn start_registration(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    post,
+    path = "/v1/webauthn/register/start",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "WebAuthn creation options + challenge_id to pass to register/finish"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn start_registration(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let service = webauthn_service(&state);
     let result = service.start_registration(session.user_id).await?;
@@ -221,7 +255,17 @@ async fn start_registration(req: HttpRequest, state: web::Data<AppState>) -> Res
     })))
 }
 
-async fn finish_login(
+#[utoipa::path(
+    post,
+    path = "/v1/webauthn/login/finish",
+    tag = "browser",
+    request_body = FinishLoginRequest,
+    responses(
+        (status = 200, description = "Passkey verified; sets the session cookie (or returns next step, e.g. MFA)"),
+        (status = 400, description = "Invalid assertion or expired challenge"),
+    ),
+)]
+pub async fn finish_login(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<FinishLoginRequest>,
@@ -510,7 +554,19 @@ async fn demo_login(
     .await
 }
 
-async fn finish_registration(
+#[utoipa::path(
+    post,
+    path = "/v1/webauthn/register/finish",
+    tag = "browser",
+    request_body = FinishRegistrationRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Passkey registered"),
+        (status = 400, description = "Invalid credential or expired challenge"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn finish_registration(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<FinishRegistrationRequest>,
@@ -542,7 +598,16 @@ async fn finish_registration(
     })))
 }
 
-async fn report_login_failure(
+#[utoipa::path(
+    post,
+    path = "/v1/webauthn/login/report-failure",
+    tag = "browser",
+    request_body = ReportLoginFailureRequest,
+    responses(
+        (status = 200, description = "Client-side login failure recorded for audit (public)"),
+    ),
+)]
+pub async fn report_login_failure(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<ReportLoginFailureRequest>,
@@ -566,7 +631,20 @@ async fn report_login_failure(
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
 
-async fn delete_passkey(
+#[utoipa::path(
+    delete,
+    path = "/v1/webauthn/passkeys/{id}",
+    tag = "browser",
+    params(("id" = Uuid, Path, description = "Passkey ID")),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Passkey deleted"),
+        (status = 400, description = "Cannot delete the last login method"),
+        (status = 401, description = "No valid session cookie"),
+        (status = 404, description = "Passkey not found"),
+    ),
+)]
+pub async fn delete_passkey(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -593,7 +671,21 @@ async fn delete_passkey(
     })))
 }
 
-async fn rename_passkey(
+#[utoipa::path(
+    patch,
+    path = "/v1/webauthn/passkeys/{id}",
+    tag = "browser",
+    params(("id" = Uuid, Path, description = "Passkey ID")),
+    request_body = RenamePasskeyRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Passkey renamed"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+        (status = 404, description = "Passkey not found"),
+    ),
+)]
+pub async fn rename_passkey(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<Uuid>,

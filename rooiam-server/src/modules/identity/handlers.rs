@@ -33,7 +33,7 @@ pub struct UpdateProfileRequest {
     pub avatar_url: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StartLinkRequest {
     pub redirect_uri: Option<String>,
@@ -65,13 +65,14 @@ struct FinishTotpEnrollmentRequest {
     code: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
-struct MyAuditLogQuery {
-    page: Option<i64>,
-    page_size: Option<i64>,
-    date_from: Option<String>,
-    date_to: Option<String>,
+pub struct MyAuditLogQuery {
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
 }
 
 async fn is_platform_staff(state: &web::Data<AppState>, user_id: Uuid) -> Result<bool, AppError> {
@@ -503,7 +504,19 @@ fn validate_avatar_upload_part(
     Ok(ext)
 }
 
-async fn upload_avatar(
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/avatar/upload",
+    tag = "browser",
+    request_body(content = String, content_type = "multipart/form-data", description = "Multipart form with an image file field"),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Avatar uploaded; returns the new avatar URL + updated profile"),
+        (status = 400, description = "Missing/invalid image or file too large"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn upload_avatar(
     req: HttpRequest,
     state: web::Data<AppState>,
     mut payload: Multipart,
@@ -597,17 +610,49 @@ async fn upload_avatar(
     })))
 }
 
-async fn list_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    get,
+    path = "/v1/identity/me/sessions",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "The signed-in user's active sessions"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn list_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     list_sessions_for_actor(&state, &session).await
 }
 
-async fn revoke_all_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/sessions/revoke-all",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "All other sessions revoked"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn revoke_all_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     revoke_all_sessions_for_actor(&req, &state, &session).await
 }
 
-async fn revoke_session(req: HttpRequest, state: web::Data<AppState>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    delete,
+    path = "/v1/identity/me/sessions/{id}",
+    tag = "browser",
+    params(("id" = Uuid, Path, description = "Session ID")),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Session revoked"),
+        (status = 401, description = "No valid session cookie"),
+        (status = 404, description = "Session not found"),
+    ),
+)]
+pub async fn revoke_session(req: HttpRequest, state: web::Data<AppState>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     revoke_one_session_for_actor(&state, &session, path.into_inner()).await
 }
@@ -752,7 +797,17 @@ async fn revoke_session_bearer(
     revoke_one_session_for_actor(&state, &session, path.into_inner()).await
 }
 
-async fn get_linked_accounts(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    get,
+    path = "/v1/identity/me/linked-accounts",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Linked OAuth providers + which can be unlinked"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn get_linked_accounts(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     get_linked_accounts_for_actor(&state, session.user_id).await
 }
@@ -1095,7 +1150,20 @@ async fn disable_totp_bearer(
     })))
 }
 
-async fn start_link_provider(
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/linked-accounts/{provider}/start",
+    tag = "browser",
+    params(("provider" = String, Path, description = "OAuth provider, e.g. google or microsoft")),
+    request_body = StartLinkRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Returns an authorization_url to redirect the user to for linking"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn start_link_provider(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<String>,
@@ -1187,7 +1255,19 @@ async fn start_link_provider_bearer(
     .await
 }
 
-async fn unlink_provider(
+#[utoipa::path(
+    delete,
+    path = "/v1/identity/me/linked-accounts/{provider}",
+    tag = "browser",
+    params(("provider" = String, Path, description = "OAuth provider to unlink")),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Provider unlinked"),
+        (status = 400, description = "Cannot unlink the last login method"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn unlink_provider(
     req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<String>,
@@ -1274,16 +1354,28 @@ async fn unlink_provider_bearer(
 
 // ── Email change flow ────────────────────────────────────────────────────────
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct RequestEmailChangeRequest {
-    new_email: String,
-    surface: Option<String>,
+pub struct RequestEmailChangeRequest {
+    pub new_email: String,
+    pub surface: Option<String>,
 }
 
 /// POST /v1/identity/me/email-change/request
 /// Sends a verification link to the new email address.
-async fn request_email_change(
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/email-change/request",
+    tag = "browser",
+    request_body = RequestEmailChangeRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Verification link sent to the new email"),
+        (status = 400, description = "Invalid email address"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn request_email_change(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<RequestEmailChangeRequest>,
@@ -1400,15 +1492,27 @@ async fn request_email_change(
     })))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct VerifyEmailChangeRequest {
-    token: String,
+pub struct VerifyEmailChangeRequest {
+    pub token: String,
 }
 
 /// POST /v1/identity/me/email-change/verify
 /// Confirms the email change by consuming the token.
-async fn verify_email_change(
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/email-change/verify",
+    tag = "browser",
+    request_body = VerifyEmailChangeRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Email changed; returns the new primary email"),
+        (status = 400, description = "Invalid or expired token"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn verify_email_change(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<VerifyEmailChangeRequest>,
@@ -1528,7 +1632,18 @@ async fn verify_email_change(
     })))
 }
 
-async fn list_my_audit_logs(
+#[utoipa::path(
+    get,
+    path = "/v1/identity/me/audit-logs",
+    tag = "browser",
+    params(MyAuditLogQuery),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "The signed-in user's own audit log (paginated)"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn list_my_audit_logs(
     req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<MyAuditLogQuery>,
@@ -1598,7 +1713,17 @@ async fn list_my_audit_logs(
 
 /// POST /v1/identity/me/delete/request
 /// Step 1: Send a confirmation email before account deletion. Token expires in 1 hour.
-async fn request_delete_account(
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/delete/request",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Account-deletion confirmation email sent"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn request_delete_account(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
@@ -1708,17 +1833,29 @@ async fn request_delete_account(
     })))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct ConfirmDeleteAccountRequest {
-    token: String,
+pub struct ConfirmDeleteAccountRequest {
+    pub token: String,
 }
 
 /// DELETE /v1/identity/me/delete/confirm
 /// Step 2: Permanently delete the account after email confirmation.
 /// Revokes all sessions and OIDC tokens, anonymizes audit logs, removes org
 /// memberships, and hard-deletes the user row.
-async fn delete_account(
+#[utoipa::path(
+    delete,
+    path = "/v1/identity/me/delete/confirm",
+    tag = "browser",
+    request_body = ConfirmDeleteAccountRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Account permanently deleted; session ended"),
+        (status = 400, description = "Invalid or expired token"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn delete_account(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<ConfirmDeleteAccountRequest>,

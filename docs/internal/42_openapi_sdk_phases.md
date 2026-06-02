@@ -1,6 +1,6 @@
 # OpenAPI + SDK — Phased Plan
 
-Status: **In progress — Phases A–D done (2026-06-02). Next: Phase E (refactor consumers) or Phase D backfill (OIDC/PKCE, webauthn, mfa).**
+Status: **In progress — Phases A–D done + 3 D-backfills; browser + OIDC surface 100% covered (2026-06-02). Spec at 76 ops. Next: Phase E (refactor consumers).**
 
 Goal: a typed, language-agnostic SDK layer so downstream apps integrate with
 Rooiam through generated clients, not hand-rolled `fetch`. The server's OpenAPI
@@ -195,6 +195,64 @@ prepends `apiBase` (which includes `/v1`), so those two methods pass an explicit
 Exit test — **CLEARED**: **25/25 pass** (20 unit + 5 live). Live block exercises
 discovery + jwks against the source-run server; a manual probe confirmed
 `POST /oidc/token` parses the form body (returns an OAuth error, not a 415).
+
+### Phase D backfill #2 — security self-service (sessions, passkeys, MFA, account) ✅ (done 2026-06-02)
+
+The logged-in user's security surface (what `rooiam-app`'s account/security pages
+call). All session-cookie auth, `browser` tag. Spec is up to **66 operations**
+(28 `browser` ops).
+
+Server endpoints annotated (21, all made `pub`):
+- [x] sessions: list, revoke `{id}`, revoke-all
+- [x] linked-accounts: list, start `{provider}`, unlink `{provider}`
+- [x] audit-logs (`MyAuditLogQuery` → `IntoParams`), email-change request/verify, delete request/confirm
+- [x] passkeys (webauthn session scope): register start/finish, list, rename `{id}`, delete `{id}`
+- [x] mfa (totp session scope): status, totp start/finish, recovery-codes/regenerate, totp DELETE
+- 7 DTOs got `ToSchema`. `FinishRegistrationRequest.credential` (a `serde_json::Value`)
+  needed `#[schema(value_type = Object)]`. Two DTOs have a same-named bearer-variant
+  twin in `identity::handlers`; the session handlers use the webauthn/mfa-module
+  versions, which are the ones registered.
+
+SDK additions (`@rooiam/sdk-browser`): `sessions.{list,revoke,revokeAll}`,
+`account.{linkedAccounts,startLink,unlink,auditLogs,requestEmailChange,verifyEmailChange,requestDelete,confirmDelete}`,
+`passkeys.{list,registerStart,registerFinish,rename,delete}`,
+`mfa.{status,totpStart,totpFinish,disableTotp,regenerateBackupCodes}`.
+
+Exit test — **CLEARED**: **37/37 pass** (31 unit + 6 live). New live probe confirms
+all 5 read endpoints (sessions/linked-accounts/audit-logs/passkeys/mfa-status) return
+**401 without a session cookie**. Mutations + the full logged-in flow are unit-tested
+(a headless test can't mint a login cookie). js-server stays green (26/31) against
+the grown 66-op spec.
+
+### Phase D backfill #3 — login flows + OIDC extras + avatar ✅ (done 2026-06-02)
+
+The last of the browser surface. Spec is now **76 operations** (35 `browser`,
+8 `oidc`, 33 `integrations`). With this, the browser/OIDC surface is fully covered.
+
+Server endpoints annotated (13, all made `pub`):
+- [x] WebAuthn login (pre-session): `/webauthn/login/{start,finish,report-failure}`
+- [x] MFA login (pre-session): `/mfa/login/{enroll/start,enroll/finish,verify}`
+- [x] OIDC extras: `POST /oidc/revoke` (RFC 7009), `POST /oidc/introspect` (RFC 7662),
+      `GET /oidc/end-session` (RP-initiated logout; `EndSessionRequest` → `IntoParams`)
+- [x] `POST /identity/me/avatar/upload` (multipart/form-data)
+- 8 DTOs got `ToSchema` (`FinishLoginRequest.credential` needed `#[schema(value_type = Object)]`);
+  revoke/introspect are form-encoded like `/oidc/token`.
+
+SDK additions (`@rooiam/sdk-browser`):
+- `login.{passkeyStart, passkeyFinish, reportFailure, mfaVerify, mfaEnrollStart, mfaEnrollFinish}`
+  — the pre-session flows (no cookie)
+- `oidc.{revoke, introspect, endSessionUrl}`
+- `account.uploadAvatar(Blob | FormData)` — multipart; `request()` gained a `rawBody`
+  flag so it skips the default JSON Content-Type (lets the runtime set the multipart
+  boundary / form-encoding)
+
+Exit test — **CLEARED**: **47/47 pass** (40 unit + 7 live). New live probe confirms
+the pre-session login endpoints parse their bodies and reject cleanly with 4xx
+(route + body shape wired, not 5xx). js-server stays green (26/31) vs the 76-op spec.
+
+**Browser + OIDC surface is now 100% covered.** (Remaining un-annotated endpoints are
+all the admin/operator console + setup-wizard + first-party `/orgs/current/*` trees,
+which belong to a future admin-SDK effort, not the browser/server SDKs.)
 
 ---
 

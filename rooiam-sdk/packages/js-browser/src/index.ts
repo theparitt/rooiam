@@ -63,6 +63,13 @@ export interface ProfileUpdate {
   avatar_url?: string | null
 }
 
+export interface AuditLogQuery {
+  page?: number
+  page_size?: number
+  date_from?: string
+  date_to?: string
+}
+
 // ---------------------------------------------------------------------------
 // PKCE helpers (RFC 7636). Use the Web Crypto API; works in browsers and in any
 // runtime that exposes `globalThis.crypto.subtle` (modern Node, Deno, workers).
@@ -131,9 +138,9 @@ export class RooiamBrowser {
 
   private async request<T>(
     path: string,
-    init?: RequestInit & { query?: Query; base?: string },
+    init?: RequestInit & { query?: Query; base?: string; rawBody?: boolean },
   ): Promise<T> {
-    const { query, base, headers, ...rest } = init ?? {}
+    const { query, base, headers, rawBody, ...rest } = init ?? {}
     const url = new URL((base ?? this.apiBase) + path)
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -145,7 +152,9 @@ export class RooiamBrowser {
       credentials: 'include',
       ...rest,
       headers: {
-        ...(rest.body ? { 'Content-Type': 'application/json' } : {}),
+        // JSON by default; skip for rawBody (e.g. multipart, form-encoded) so the
+        // runtime can set the right Content-Type (and multipart boundary).
+        ...(rest.body && !rawBody ? { 'Content-Type': 'application/json' } : {}),
         ...(headers as Record<string, string> | undefined),
       },
     })
@@ -194,6 +203,55 @@ export class RooiamBrowser {
     })
   }
 
+  /**
+   * Pre-session login flows: passkey (WebAuthn) sign-in, and the MFA steps a
+   * magic-link / passkey login may require before the session cookie is set.
+   * These run BEFORE a session exists, so they take no cookie.
+   */
+  readonly login = {
+    /** POST /webauthn/login/start — get assertion options + challenge_id for a passkey login. */
+    passkeyStart: (input: StartLoginInput): Promise<GetResp<'/v1/webauthn/login/start'>> =>
+      this.request('/webauthn/login/start', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** POST /webauthn/login/finish — finish a passkey login; sets the session cookie. */
+    passkeyFinish: (input: { challenge_id: string; credential: unknown }) =>
+      this.request('/webauthn/login/finish', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** POST /webauthn/login/report-failure — record a client-side login failure for audit. */
+    reportFailure: (input: { stage: string; reason: string; email?: string }) =>
+      this.request('/webauthn/login/report-failure', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** POST /mfa/login/verify — submit the TOTP/backup code an in-progress login requires. */
+    mfaVerify: (challengeId: string, code: string) =>
+      this.request('/mfa/login/verify', {
+        method: 'POST',
+        body: JSON.stringify({ challenge_id: challengeId, code }),
+      }),
+
+    /** POST /mfa/login/enroll/start — first-login TOTP enrollment context. */
+    mfaEnrollStart: (challengeId: string): Promise<GetResp<'/v1/mfa/login/enroll/start'>> =>
+      this.request('/mfa/login/enroll/start', {
+        method: 'POST',
+        body: JSON.stringify({ challenge_id: challengeId }),
+      }),
+
+    /** POST /mfa/login/enroll/finish — finish first-login TOTP enrollment; completes sign-in. */
+    mfaEnrollFinish: (challengeId: string, code: string) =>
+      this.request('/mfa/login/enroll/finish', {
+        method: 'POST',
+        body: JSON.stringify({ challenge_id: challengeId, code }),
+      }),
+  }
+
   // ---- session-cookie self-service ----
 
   /** GET /identity/me — the signed-in user, or a RooiamError(401) if not logged in. */
@@ -212,6 +270,152 @@ export class RooiamBrowser {
   /** POST /auth/logout — revoke the session and clear the cookie (idempotent). */
   logout() {
     return this.request('/auth/logout', { method: 'POST' })
+  }
+
+  // ---- session-cookie security self-service ----
+
+  readonly sessions = {
+    /** GET /identity/me/sessions — the user's active sessions. */
+    list: (): Promise<GetResp<'/v1/identity/me/sessions'>> =>
+      this.request('/identity/me/sessions'),
+
+    /** DELETE /identity/me/sessions/{id} — revoke one session. */
+    revoke: (sessionId: string) =>
+      this.request(`/identity/me/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+      }),
+
+    /** POST /identity/me/sessions/revoke-all — revoke every other session. */
+    revokeAll: () =>
+      this.request('/identity/me/sessions/revoke-all', { method: 'POST' }),
+  }
+
+  readonly account = {
+    /** GET /identity/me/linked-accounts — linked OAuth providers. */
+    linkedAccounts: (): Promise<GetResp<'/v1/identity/me/linked-accounts'>> =>
+      this.request('/identity/me/linked-accounts'),
+
+    /**
+     * POST /identity/me/avatar/upload — upload a new avatar image (multipart).
+     * Pass a `File`/`Blob` (wrapped in FormData under the `file` field) or your
+     * own `FormData`. Do NOT set Content-Type — the browser sets the multipart
+     * boundary automatically.
+     */
+    uploadAvatar: (file: Blob | FormData) => {
+      const form =
+        file instanceof FormData
+          ? file
+          : (() => {
+              const f = new FormData()
+              f.append('file', file)
+              return f
+            })()
+      // No Content-Type header: the browser/runtime sets the multipart boundary.
+      return this.request<{ url: string; user: unknown }>('/identity/me/avatar/upload', {
+        method: 'POST',
+        body: form as unknown as BodyInit,
+        rawBody: true,
+      })
+    },
+
+    /** POST /identity/me/linked-accounts/{provider}/start — get the link authorization URL. */
+    startLink: (provider: string, redirectUri?: string) =>
+      this.request(`/identity/me/linked-accounts/${encodeURIComponent(provider)}/start`, {
+        method: 'POST',
+        body: JSON.stringify(redirectUri ? { redirect_uri: redirectUri } : {}),
+      }),
+
+    /** DELETE /identity/me/linked-accounts/{provider} — unlink a provider. */
+    unlink: (provider: string) =>
+      this.request(`/identity/me/linked-accounts/${encodeURIComponent(provider)}`, {
+        method: 'DELETE',
+      }),
+
+    /** GET /identity/me/audit-logs — the user's own audit log. */
+    auditLogs: (query: AuditLogQuery = {}): Promise<GetResp<'/v1/identity/me/audit-logs'>> =>
+      this.request('/identity/me/audit-logs', { query: query as Query }),
+
+    /** POST /identity/me/email-change/request — send a verification link to a new email. */
+    requestEmailChange: (newEmail: string) =>
+      this.request('/identity/me/email-change/request', {
+        method: 'POST',
+        body: JSON.stringify({ new_email: newEmail }),
+      }),
+
+    /** POST /identity/me/email-change/verify — confirm the email change. */
+    verifyEmailChange: (token: string) =>
+      this.request('/identity/me/email-change/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+
+    /** POST /identity/me/delete/request — send the account-deletion confirmation email. */
+    requestDelete: () =>
+      this.request('/identity/me/delete/request', { method: 'POST' }),
+
+    /** DELETE /identity/me/delete/confirm — permanently delete the account. */
+    confirmDelete: (token: string) =>
+      this.request('/identity/me/delete/confirm', {
+        method: 'DELETE',
+        body: JSON.stringify({ token }),
+      }),
+  }
+
+  readonly passkeys = {
+    /** GET /webauthn/passkeys — the user's registered passkeys. */
+    list: (): Promise<GetResp<'/v1/webauthn/passkeys'>> =>
+      this.request('/webauthn/passkeys'),
+
+    /** POST /webauthn/register/start — get WebAuthn creation options + a challenge_id. */
+    registerStart: (): Promise<GetResp<'/v1/webauthn/register/start'>> =>
+      this.request('/webauthn/register/start', { method: 'POST' }),
+
+    /**
+     * POST /webauthn/register/finish — register the credential produced by
+     * `navigator.credentials.create()`. Pass the `challenge_id` from registerStart
+     * and the raw credential.
+     */
+    registerFinish: (input: { challenge_id: string; credential: unknown; name?: string }) =>
+      this.request('/webauthn/register/finish', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** PATCH /webauthn/passkeys/{id} — rename a passkey. */
+    rename: (passkeyId: string, name: string) =>
+      this.request(`/webauthn/passkeys/${encodeURIComponent(passkeyId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      }),
+
+    /** DELETE /webauthn/passkeys/{id} — delete a passkey. */
+    delete: (passkeyId: string) =>
+      this.request(`/webauthn/passkeys/${encodeURIComponent(passkeyId)}`, {
+        method: 'DELETE',
+      }),
+  }
+
+  readonly mfa = {
+    /** GET /mfa/status — TOTP status + remaining backup codes. */
+    status: (): Promise<GetResp<'/v1/mfa/status'>> => this.request('/mfa/status'),
+
+    /** POST /mfa/totp/start — get the TOTP secret + otpauth URI + challenge_id. */
+    totpStart: (): Promise<GetResp<'/v1/mfa/totp/start'>> =>
+      this.request('/mfa/totp/start', { method: 'POST' }),
+
+    /** POST /mfa/totp/finish — confirm enrollment with a code; returns backup codes. */
+    totpFinish: (challengeId: string, code: string) =>
+      this.request('/mfa/totp/finish', {
+        method: 'POST',
+        body: JSON.stringify({ challenge_id: challengeId, code }),
+      }),
+
+    /** DELETE /mfa/totp — disable TOTP (revokes other sessions). */
+    disableTotp: () => this.request('/mfa/totp', { method: 'DELETE' }),
+
+    /** POST /mfa/recovery-codes/regenerate — issue fresh backup codes. */
+    regenerateBackupCodes: () =>
+      this.request('/mfa/recovery-codes/regenerate', { method: 'POST' }),
   }
 
   // ---- OIDC client flow (discovery + PKCE) ----
@@ -269,6 +473,49 @@ export class RooiamBrowser {
       this.request('/oidc/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       }),
+
+    /** POST /oidc/revoke — revoke a token (RFC 7009). Form-encoded; public client. */
+    revoke: (input: { token: string; clientId: string; tokenTypeHint?: string }) => {
+      const form = new URLSearchParams({ token: input.token, client_id: input.clientId })
+      if (input.tokenTypeHint) form.set('token_type_hint', input.tokenTypeHint)
+      return this.request('/oidc/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+        rawBody: true,
+      })
+    },
+
+    /** POST /oidc/introspect — introspect a token (RFC 7662). Form-encoded. */
+    introspect: (input: { token: string; clientId: string; tokenTypeHint?: string }) => {
+      const form = new URLSearchParams({ token: input.token, client_id: input.clientId })
+      if (input.tokenTypeHint) form.set('token_type_hint', input.tokenTypeHint)
+      return this.request('/oidc/introspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+        rawBody: true,
+      })
+    },
+
+    /**
+     * Build the `/oidc/end-session` (RP-initiated logout) URL to redirect to.
+     * Pure string building — no network call.
+     */
+    endSessionUrl: (input: {
+      idTokenHint?: string
+      postLogoutRedirectUri?: string
+      state?: string
+      clientId?: string
+    }): string => {
+      const url = new URL(this.apiBase + '/oidc/end-session')
+      if (input.idTokenHint) url.searchParams.set('id_token_hint', input.idTokenHint)
+      if (input.postLogoutRedirectUri)
+        url.searchParams.set('post_logout_redirect_uri', input.postLogoutRedirectUri)
+      if (input.state) url.searchParams.set('state', input.state)
+      if (input.clientId) url.searchParams.set('client_id', input.clientId)
+      return url.toString()
+    },
   }
 }
 

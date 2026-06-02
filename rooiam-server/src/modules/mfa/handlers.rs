@@ -44,29 +44,29 @@ fn infer_login_surface(redirect_uri: Option<&str>) -> Option<String> {
 
 use super::{repository::MfaRepository, service::MfaService};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct FinishTotpEnrollmentRequest {
+pub struct FinishTotpEnrollmentRequest {
     challenge_id: Uuid,
     code: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct VerifyLoginMfaRequest {
+pub struct VerifyLoginMfaRequest {
     challenge_id: Uuid,
     code: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct StartLoginEnrollmentRequest {
+pub struct StartLoginEnrollmentRequest {
     challenge_id: Uuid,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-struct FinishLoginEnrollmentRequest {
+pub struct FinishLoginEnrollmentRequest {
     challenge_id: Uuid,
     code: String,
 }
@@ -79,7 +79,17 @@ fn mfa_service(state: &web::Data<AppState>) -> MfaService {
     )
 }
 
-async fn get_status(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    get,
+    path = "/v1/mfa/status",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "TOTP enrollment status + remaining backup codes"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn get_status(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let (enabled, remaining) = mfa_service(&state).totp_status(session.user_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -88,7 +98,17 @@ async fn get_status(req: HttpRequest, state: web::Data<AppState>) -> Result<Http
     })))
 }
 
-async fn start_totp_enrollment(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/totp/start",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "TOTP secret + otpauth URI + challenge_id for totp/finish"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn start_totp_enrollment(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let enrollment = mfa_service(&state).start_totp_enrollment(session.user_id).await?;
 
@@ -99,7 +119,19 @@ async fn start_totp_enrollment(req: HttpRequest, state: web::Data<AppState>) -> 
     })))
 }
 
-async fn finish_totp_enrollment(
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/totp/finish",
+    tag = "browser",
+    request_body = FinishTotpEnrollmentRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "TOTP enabled; returns one-time backup codes"),
+        (status = 400, description = "Invalid code or expired challenge"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn finish_totp_enrollment(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<FinishTotpEnrollmentRequest>,
@@ -126,7 +158,17 @@ async fn finish_totp_enrollment(
     })))
 }
 
-async fn disable_totp(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    delete,
+    path = "/v1/mfa/totp",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "TOTP disabled; other sessions revoked"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn disable_totp(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let deleted = mfa_service(&state).disable_totp(session.user_id).await?;
 
@@ -152,7 +194,18 @@ async fn disable_totp(req: HttpRequest, state: web::Data<AppState>) -> Result<Ht
     })))
 }
 
-async fn regenerate_backup_codes(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/recovery-codes/regenerate",
+    tag = "browser",
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "New backup codes (old ones invalidated)"),
+        (status = 400, description = "TOTP not enabled"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn regenerate_backup_codes(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let result = mfa_service(&state).regenerate_backup_codes(session.user_id).await?;
 
@@ -173,7 +226,17 @@ async fn regenerate_backup_codes(req: HttpRequest, state: web::Data<AppState>) -
     })))
 }
 
-async fn verify_login_mfa(
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/login/verify",
+    tag = "browser",
+    request_body = VerifyLoginMfaRequest,
+    responses(
+        (status = 200, description = "MFA code accepted; completes sign-in and sets the session cookie"),
+        (status = 400, description = "Invalid code or expired challenge"),
+    ),
+)]
+pub async fn verify_login_mfa(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<VerifyLoginMfaRequest>,
@@ -287,7 +350,17 @@ async fn verify_login_mfa(
         })))
 }
 
-async fn start_login_enrollment(
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/login/enroll/start",
+    tag = "browser",
+    request_body = StartLoginEnrollmentRequest,
+    responses(
+        (status = 200, description = "First-login TOTP enrollment context (secret + otpauth URI)"),
+        (status = 400, description = "Invalid or expired login challenge"),
+    ),
+)]
+pub async fn start_login_enrollment(
     state: web::Data<AppState>,
     body: web::Json<StartLoginEnrollmentRequest>,
 ) -> Result<HttpResponse, AppError> {
@@ -303,7 +376,17 @@ async fn start_login_enrollment(
     })))
 }
 
-async fn finish_login_enrollment(
+#[utoipa::path(
+    post,
+    path = "/v1/mfa/login/enroll/finish",
+    tag = "browser",
+    request_body = FinishLoginEnrollmentRequest,
+    responses(
+        (status = 200, description = "TOTP enrolled during login; completes sign-in (sets session) + returns backup codes"),
+        (status = 400, description = "Invalid code or expired challenge"),
+    ),
+)]
+pub async fn finish_login_enrollment(
     req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<FinishLoginEnrollmentRequest>,

@@ -74,6 +74,46 @@ use utoipa::{Modify, OpenApi};
         crate::modules::oidc::handlers::authorize,
         crate::modules::oidc::handlers::token,
         crate::modules::oidc::handlers::userinfo,
+        // --- browser security self-service (session cookie) ---
+        // sessions
+        crate::modules::identity::handlers::list_sessions,
+        crate::modules::identity::handlers::revoke_all_sessions,
+        crate::modules::identity::handlers::revoke_session,
+        // linked accounts
+        crate::modules::identity::handlers::get_linked_accounts,
+        crate::modules::identity::handlers::start_link_provider,
+        crate::modules::identity::handlers::unlink_provider,
+        // audit + email-change + delete
+        crate::modules::identity::handlers::list_my_audit_logs,
+        crate::modules::identity::handlers::request_email_change,
+        crate::modules::identity::handlers::verify_email_change,
+        crate::modules::identity::handlers::request_delete_account,
+        crate::modules::identity::handlers::delete_account,
+        // passkeys (webauthn)
+        crate::modules::webauthn::handlers::start_registration,
+        crate::modules::webauthn::handlers::finish_registration,
+        crate::modules::webauthn::handlers::list_passkeys,
+        crate::modules::webauthn::handlers::delete_passkey,
+        crate::modules::webauthn::handlers::rename_passkey,
+        // mfa (totp)
+        crate::modules::mfa::handlers::get_status,
+        crate::modules::mfa::handlers::start_totp_enrollment,
+        crate::modules::mfa::handlers::finish_totp_enrollment,
+        crate::modules::mfa::handlers::regenerate_backup_codes,
+        crate::modules::mfa::handlers::disable_totp,
+        // avatar
+        crate::modules::identity::handlers::upload_avatar,
+        // --- pre-session login flows ---
+        crate::modules::webauthn::handlers::start_login,
+        crate::modules::webauthn::handlers::finish_login,
+        crate::modules::webauthn::handlers::report_login_failure,
+        crate::modules::mfa::handlers::start_login_enrollment,
+        crate::modules::mfa::handlers::finish_login_enrollment,
+        crate::modules::mfa::handlers::verify_login_mfa,
+        // --- OIDC extras (RFC 7009 revoke, 7662 introspect, RP-initiated logout) ---
+        crate::modules::oidc::handlers::revoke,
+        crate::modules::oidc::handlers::introspect,
+        crate::modules::oidc::handlers::end_session,
     ),
     components(
         schemas(
@@ -92,6 +132,24 @@ use utoipa::{Modify, OpenApi};
             crate::modules::identity::handlers::UpdateProfileRequest,
             // OIDC DTOs
             crate::modules::oidc::handlers::TokenRequest,
+            // browser security self-service DTOs
+            crate::modules::identity::handlers::StartLinkRequest,
+            crate::modules::identity::handlers::RequestEmailChangeRequest,
+            crate::modules::identity::handlers::VerifyEmailChangeRequest,
+            crate::modules::identity::handlers::ConfirmDeleteAccountRequest,
+            crate::modules::webauthn::handlers::FinishRegistrationRequest,
+            crate::modules::webauthn::handlers::RenamePasskeyRequest,
+            crate::modules::mfa::handlers::FinishTotpEnrollmentRequest,
+            // login-flow DTOs
+            crate::modules::webauthn::handlers::StartLoginRequest,
+            crate::modules::webauthn::handlers::FinishLoginRequest,
+            crate::modules::webauthn::handlers::ReportLoginFailureRequest,
+            crate::modules::mfa::handlers::StartLoginEnrollmentRequest,
+            crate::modules::mfa::handlers::FinishLoginEnrollmentRequest,
+            crate::modules::mfa::handlers::VerifyLoginMfaRequest,
+            // OIDC extras DTOs
+            crate::modules::oidc::handlers::RevocationRequest,
+            crate::modules::oidc::handlers::IntrospectionRequest,
         ),
     ),
     tags(

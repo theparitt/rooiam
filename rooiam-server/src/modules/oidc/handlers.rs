@@ -35,7 +35,8 @@ struct JwksResponse {
     keys: Vec<serde_json::Value>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct EndSessionRequest {
     pub id_token_hint: Option<String>,
@@ -70,7 +71,7 @@ pub struct TokenRequest {
     pub code_verifier: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RevocationRequest {
     pub token: String,
@@ -79,7 +80,7 @@ pub struct RevocationRequest {
     pub client_secret: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IntrospectionRequest {
     pub token: String,
@@ -561,6 +562,16 @@ pub async fn userinfo(
     Ok(HttpResponse::Ok().json(payload))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/oidc/revoke",
+    tag = "oidc",
+    request_body(content = RevocationRequest, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Token revoked (always 200 per RFC 7009, even for unknown tokens)"),
+        (status = 401, description = "Client authentication failed"),
+    ),
+)]
 pub async fn revoke(
     state: web::Data<AppState>,
     form: web::Form<RevocationRequest>,
@@ -598,6 +609,16 @@ pub async fn revoke(
     })
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/oidc/introspect",
+    tag = "oidc",
+    request_body(content = IntrospectionRequest, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Token introspection response (RFC 7662): { active, ... }"),
+        (status = 401, description = "Client authentication failed"),
+    ),
+)]
 pub async fn introspect(
     state: web::Data<AppState>,
     form: web::Form<IntrospectionRequest>,
@@ -640,6 +661,16 @@ pub async fn introspect(
 /// Redirects to `post_logout_redirect_uri` only when it matches the registered app callback
 /// (`redirect_uri`) values for the provided client_id.
 /// Validates `id_token_hint` format if provided but does not require it (many RPs don't send it).
+#[utoipa::path(
+    get,
+    path = "/v1/oidc/end-session",
+    tag = "oidc",
+    params(EndSessionRequest),
+    responses(
+        (status = 302, description = "RP-initiated logout: ends the session and redirects to post_logout_redirect_uri if valid"),
+        (status = 400, description = "Invalid post_logout_redirect_uri for the client"),
+    ),
+)]
 pub async fn end_session(
     req: HttpRequest,
     state: web::Data<AppState>,
