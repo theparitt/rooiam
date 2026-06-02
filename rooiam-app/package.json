@@ -16,6 +16,7 @@
         "pages:deploy": "wrangler pages deploy"
     },
     "dependencies": {
+        "@rooiam/sdk-browser": "file:../rooiam-sdk/packages/js-browser",
         "@types/qrcode": "^1.5.6",
         "clsx": "^2.1.0",
         "lucide-react": "^0.320.0",

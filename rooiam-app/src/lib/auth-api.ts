@@ -1,4 +1,37 @@
 import { getApiBase } from './api-base'
+import { RooiamBrowser, RooiamError } from '@rooiam/sdk-browser'
+
+// --- SDK adoption (Phase E) -------------------------------------------------
+// We are migrating tenantAuthApi onto @rooiam/sdk-browser one method at a time.
+// The SDK is the transport; `viaSdk` below preserves authFetch's EXACT error
+// contract so the 24 existing call sites keep catching the same sentinels:
+//   401 -> Error('UNAUTHORIZED'),  429 -> Error('RATE_LIMITED'),
+//   other non-2xx -> Error(server message),  network -> Error('Could not reach ...').
+// Until every method is migrated, both authFetch and the SDK run side by side
+// against the same cookie session — they are interchangeable transports.
+
+let _sdk: RooiamBrowser | null = null
+function sdk(): RooiamBrowser {
+    if (!_sdk) _sdk = new RooiamBrowser({ apiBase: getApiBase() })
+    return _sdk
+}
+
+/** Run an SDK call, mapping RooiamError back to authFetch's error sentinels. */
+async function viaSdk<T>(call: (s: RooiamBrowser) => Promise<T>): Promise<T> {
+    try {
+        return await call(sdk())
+    } catch (err) {
+        if (err instanceof RooiamError) {
+            if (err.status === 401) throw new Error('UNAUTHORIZED')
+            if (err.status === 429) throw new Error('RATE_LIMITED')
+            throw new Error(err.message || 'Request failed')
+        }
+        if (err instanceof TypeError) {
+            throw new Error(`Could not reach ${getApiBase()}. Check that the Rooiam API is running.`)
+        }
+        throw err
+    }
+}
 
 async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
     const apiBase = getApiBase()
@@ -99,7 +132,7 @@ export const tenantAuthApi = {
 
         return data as { url: string; user: TenantProfile }
     },
-    passkeys: () => authFetch<TenantPasskey[]>('/webauthn/passkeys'),
+    passkeys: () => viaSdk((s) => s.passkeys.list() as Promise<TenantPasskey[]>),
     startPasskeyRegistration: () =>
         authFetch<{ challenge_id: string; creation_options: { publicKey: unknown } }>('/webauthn/register/start', {
             method: 'POST',
