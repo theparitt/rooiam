@@ -647,7 +647,12 @@ fn normalize_public_media_base(raw: String) -> String {
         return "/media".to_string();
     }
 
-    let mut normalized = if trimmed.starts_with('/') {
+    // A full URL (e.g. https://api.example.com/media) is kept verbatim — only the
+    // trailing slash is trimmed. A bare path gets a leading slash. The bug this
+    // guards against: blindly prepending "/" to a full URL produced
+    // "/https://api.example.com/media", which then doubled into the asset URL.
+    let is_absolute = trimmed.starts_with("http://") || trimmed.starts_with("https://");
+    let mut normalized = if is_absolute || trimmed.starts_with('/') {
         trimmed.to_string()
     } else {
         format!("/{}", trimmed)
