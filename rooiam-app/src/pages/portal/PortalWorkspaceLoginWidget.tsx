@@ -79,6 +79,10 @@ export default function PortalWorkspaceLoginWidget({
     // Tracks whether the branding form has unsaved edits since the last preview
     // sync, so the "synced" indicator is honest now that the URL never changes.
     const [previewDirty, setPreviewDirty] = React.useState(false)
+    // Real HTTP status of the preview URL. A cross-origin iframe can't report
+    // its load status, so we probe the same URL with fetch() and only surface
+    // the "rejected with 400" note when the preview actually fails.
+    const [previewOk, setPreviewOk] = React.useState<boolean | null>(null)
 
     if (!currentOrg) {
         return (
@@ -127,6 +131,24 @@ export default function PortalWorkspaceLoginWidget({
     React.useEffect(() => {
         setPreviewSrc(previewUrl)
     }, [currentOrg.slug])
+
+    // Probe the preview URL for its real HTTP status. The iframe can't report it
+    // (cross-origin), so a plain GET tells us whether the server accepted the
+    // preview request — if not (e.g. 400), we surface the explanatory note.
+    React.useEffect(() => {
+        let cancelled = false
+        setPreviewOk(null)
+        fetch(previewUrl, { credentials: 'include' })
+            .then((res) => {
+                if (!cancelled) setPreviewOk(res.ok)
+            })
+            .catch(() => {
+                if (!cancelled) setPreviewOk(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [previewUrl, previewReloadKey])
 
     // After "Update Preview" finishes saving branding successfully, remount the
     // iframe (bump reload key) so it re-fetches the freshly-saved DB branding,
@@ -595,9 +617,11 @@ export default function PortalWorkspaceLoginWidget({
                                 <p className="text-sm font-medium text-muted-foreground">
                                     Click Update Preview to refresh. Preview mode is special and not the same contract as the real embed.
                                 </p>
-                                <p className="text-xs font-semibold text-amber-700">
-                                    Legacy preview URLs that append branding or auth-policy query params are rejected by the server with HTTP 400. This preview only sends <code className="font-black">preview</code>, <code className="font-black">workspace_id</code>, and optional <code className="font-black">client_id</code>.
-                                </p>
+                                {previewOk === false ? (
+                                    <p className="text-xs font-semibold text-amber-700">
+                                        The preview was rejected by the server (HTTP 400). Preview URLs may only send <code className="font-black">preview</code>, <code className="font-black">workspace_id</code>, and optional <code className="font-black">client_id</code> — appending branding or auth-policy query params is not allowed.
+                                    </p>
+                                ) : null}
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className="inline-flex h-8 w-8 items-center justify-center">
