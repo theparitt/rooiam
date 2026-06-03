@@ -1403,7 +1403,9 @@ async fn login(
     if let Some(ctx) = widget_login_context.as_ref() {
         let supplied_embed_origin = query.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
-            return Err(AppError::Forbidden("This hosted login session does not match the current site.".into()));
+            return Err(AppError::Forbidden(
+                "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
+            ));
         }
     }
 

@@ -87,7 +87,9 @@ npm run dev:demo-local -- --port 5199
 | `npm run build:prod-online` | build for the production domain |
 | `npm run build:demo-online` | build for the demo domain |
 | `npm run start` | serve the built `dist/` locally (`vite preview`) |
-| `npm run pages:deploy` | deploy `dist/` to Cloudflare Pages |
+| `npm run deploy` | build prod-online and deploy `dist/` to the Pages `main` production branch |
+| `npm run deploy:demo` | build demo-online and deploy `dist/` to the Pages `main` production branch |
+| `npm run pages:deploy` | deploy `dist/` to the Pages `main` production branch |
 
 ---
 

@@ -8,7 +8,7 @@ use crate::shared::error::AppError;
 
 const WIDGET_LOGIN_CONTEXT_TTL_SECONDS: usize = 900;
 pub const WIDGET_LOGIN_CONTEXT_INVALID_MESSAGE: &str =
-    "This hosted login session expired or was already used. Refresh and try again.";
+    "Hosted login session expired, was already used, or is no longer valid for this widget. Refresh the widget and try again.";
 
 /// Temporary hosted-widget login transaction state.
 ///

@@ -1,8 +1,9 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use std::time::Instant;
 use url::Url;
 
 use crate::bootstrap::state::AppState;
+use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::setup::settings::{get_setting, has_setting_or_env};
 use crate::modules::setup::support::{demo_mailbox_url, resolve_workspace};
 use crate::modules::setup::timing::log_timing;
@@ -17,6 +18,8 @@ use crate::modules::setup::types::{
 use crate::shared::auth_policy::admin_console_passkey_allowed;
 use crate::shared::demo_seed::demo_seed_enabled;
 use crate::shared::error::AppError;
+use crate::shared::platform_org::get_platform_org_id;
+use crate::shared::request_ip::client_ip_string_from_http_request;
 use crate::shared::tenant_access::load_tenant_access_policy;
 use crate::shared::widget_login_context::create_widget_login_context;
 use crate::shared::widget_login_context::WidgetLoginContextPayload;
@@ -398,18 +401,80 @@ pub async fn load_public_auth_methods
 )]
 pub async fn get_login_bootstrap
 (
+    req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<PublicAuthMethodsQuery>,
 )
 -> Result<HttpResponse, AppError>
 {
     let total_start = Instant::now();
-    let auth = load_public_auth_methods(&state, &query).await?;
     let workspace_id = query.workspace_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
     let workspace_slug = query.org.as_deref().or(query.workspace.as_deref()).map(str::trim).filter(|value| !value.is_empty());
+    let requested_embed_origin = query
+        .widget_embed_origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let requested_client_id = query.client_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let is_preview_bootstrap = requested_embed_origin.is_none()
+        && requested_client_id.is_none()
+        && (workspace_id.is_some() || workspace_slug.is_some());
+    let log_state = state.clone();
+    let log_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
+    let log_user_agent = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+
+    let log_preview_bootstrap_failure = |reason: &str, detail: &str| {
+        let reason = reason.to_string();
+        let detail = detail.to_string();
+        let log_state = log_state.clone();
+        let log_ip = log_ip.clone();
+        let log_user_agent = log_user_agent.clone();
+        async move {
+        if !is_preview_bootstrap {
+            return;
+        }
+        tracing::warn!(
+            workspace_id = ?workspace_id,
+            workspace_slug = ?workspace_slug,
+            reason = %reason,
+            detail = %detail,
+            "preview widget bootstrap failed"
+        );
+        AuditService::new(log_state.db.clone()).log(AuditEvent {
+            actor_user_id: None,
+            organization_id: get_platform_org_id(&log_state.db).await,
+            action: "auth.widget.preview_bootstrap_failed".into(),
+            target_type: "workspace".into(),
+            target_id: workspace_id.map(str::to_string).or_else(|| workspace_slug.map(str::to_string)),
+            ip: log_ip.clone(),
+            user_agent: log_user_agent.clone(),
+            metadata: serde_json::json!({
+                "reason": reason,
+                "detail": detail,
+                "workspace_id": workspace_id,
+                "workspace": workspace_slug,
+                "path": "/v1/setup/login-bootstrap",
+            }),
+        }).await;
+        }
+    };
+
+    let auth = match load_public_auth_methods(&state, &query).await {
+        Ok(value) => value,
+        Err(err) => {
+            log_preview_bootstrap_failure("auth_methods_load_failed", &err.to_string()).await;
+            return Err(err);
+        }
+    };
 
     let branding_start = Instant::now();
-    let resolved_workspace = resolve_workspace(&state, workspace_id, workspace_slug).await?;
+    let resolved_workspace = match resolve_workspace(&state, workspace_id, workspace_slug).await {
+        Ok(value) => value,
+        Err(err) => {
+            log_preview_bootstrap_failure("workspace_resolution_failed", &err.to_string()).await;
+            return Err(err);
+        }
+    };
     let workspace = resolved_workspace
         .as_ref()
         .map(|org| LoginBootstrapBrandingResponse 
@@ -441,12 +506,6 @@ pub async fn get_login_bootstrap
             login_method_order  : org.login_method_order.clone(),
         });
 
-    let requested_embed_origin = query
-        .widget_embed_origin
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-
     // widget_embed_origin requires client_id — without it we cannot look up the registered
     // redirect_uri or create a widget_login_context. Fail early with a clear error.
     if requested_embed_origin.is_some() {
@@ -459,7 +518,7 @@ pub async fn get_login_bootstrap
                 "login-bootstrap: widget_embed_origin provided without client_id — cannot create widget_login_context"
             );
             return Err(AppError::Validation(
-                "client_id is required when widget_embed_origin is provided".into()
+                "Embedded widget bootstrap requires client_id when widget_embed_origin is provided. Add the workspace app client_id and try again.".into()
             ));
         }
     }
@@ -533,6 +592,10 @@ pub async fn get_login_bootstrap
                     "login-bootstrap: no redirect URI matched embed origin — widget_login_context not created. \
                      Check client allowed_embed_origins and redirect_uri registration."
                 );
+                return Err(AppError::Validation(format!(
+                    "Embedded widget bootstrap failed for site {}. This app does not have a redirect URI with the same origin, or the site is missing from allowed embed origins. Update Workspace Apps and try again.",
+                    embed_origin
+                )));
             }
             None
         }

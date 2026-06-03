@@ -32,6 +32,20 @@ type Props = {
     demoMode?: boolean
 }
 
+function buildHostedLoginPreviewUrl(apiOrigin: string, workspaceId: string, clientId?: string | null): string {
+    // Keep this builder intentionally narrow. The server-side /login-widget
+    // preview contract only accepts preview, workspace_id, workspace, org,
+    // and client_id. Requests that append extra styling or auth-policy params
+    // are rejected by the server with HTTP 400.
+    const previewUrlObject = new URL(`${apiOrigin}/login-widget`)
+    previewUrlObject.searchParams.set('preview', '1')
+    previewUrlObject.searchParams.set('workspace_id', workspaceId)
+    if (clientId?.trim()) {
+        previewUrlObject.searchParams.set('client_id', clientId.trim())
+    }
+    return previewUrlObject.toString()
+}
+
 export default function PortalWorkspaceLoginWidget({
     currentOrg,
     requestedAppName,
@@ -94,9 +108,9 @@ export default function PortalWorkspaceLoginWidget({
         if (byName) return byName
         return availableApps.length === 1 ? availableApps[0] : null
     }, [availableApps, requestedAppName, selectedApp])
-    // Branding is rendered server-side from the DB in preview mode, so these
-    // values are no longer threaded into the preview URL. Only the ones still
-    // used by the page UI (method order, card border color) are kept.
+    // In preview mode the server renders branding from the DB, so branding
+    // edits do not change the iframe URL. The local form state still drives
+    // page UI such as labels, ordering controls, and preview-sync state.
     const brandColor = brandingForm.brand_color || currentOrg.brand_color
     const methodOrder = brandingForm.login_method_order || currentOrg.login_method_order || [...DEFAULT_LOGIN_METHOD_ORDER]
     const effectiveCardBorderColor = brandingForm.card_border_color || brandColor || '#8d72d9'
@@ -109,20 +123,7 @@ export default function PortalWorkspaceLoginWidget({
         loginUrlObject.searchParams.set('client_id', requestedClientId.trim())
     }
     const loginUrl = loginUrlObject.toString()
-    // The server's /login-widget endpoint uses a strict query allowlist
-    // (deny_unknown_fields): only preview, workspace_id, workspace, org, client_id.
-    // Any other param -> HTTP 400 -> the server's error page sends
-    // X-Frame-Options: DENY, which makes the iframe render as a blocked box.
-    // In preview mode the server renders branding from the DB (that is why
-    // "Update Preview" saves branding first, then refreshes the iframe), so the
-    // branding values must NOT be threaded through the URL here.
-    const previewUrlObject = new URL(`${apiOrigin}/login-widget`)
-    previewUrlObject.searchParams.set('preview', '1')
-    previewUrlObject.searchParams.set('workspace_id', currentOrg.id)
-    if (requestedClientId?.trim()) {
-        previewUrlObject.searchParams.set('client_id', requestedClientId.trim())
-    }
-    const previewUrl = previewUrlObject.toString()
+    const previewUrl = buildHostedLoginPreviewUrl(apiOrigin, currentOrg.id, requestedClientId)
     React.useEffect(() => {
         setPreviewSrc(previewUrl)
     }, [currentOrg.slug])
@@ -590,9 +591,14 @@ export default function PortalWorkspaceLoginWidget({
                 >
                     <div className="space-y-4">
                         <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-medium text-muted-foreground">
-                                Click Update Preview to refresh. Preview mode is special and not the same contract as the real embed.
-                            </p>
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-muted-foreground">
+                                    Click Update Preview to refresh. Preview mode is special and not the same contract as the real embed.
+                                </p>
+                                <p className="text-xs font-semibold text-amber-700">
+                                    Legacy preview URLs that append branding or auth-policy query params are rejected by the server with HTTP 400. This preview only sends <code className="font-black">preview</code>, <code className="font-black">workspace_id</code>, and optional <code className="font-black">client_id</code>.
+                                </p>
+                            </div>
                             <div className="flex items-center gap-3">
                                 <span className="inline-flex h-8 w-8 items-center justify-center">
                                     {widgetIsSynced ? (

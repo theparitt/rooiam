@@ -449,11 +449,10 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
         "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: http: https:; connect-src 'self' http: https:; frame-ancestors {}",
         frame_ancestors,
     );
-    // In preview mode there is no client_id and no widget_login_context, so the
-    // widget must NOT send widget_embed_origin to /setup/login-bootstrap — that
-    // endpoint rejects widget_embed_origin without a client_id. Inject an empty
-    // origin so the widget's `if (widgetEmbedOrigin)` guard skips it. Preview is
-    // branding-only and does not need the embed origin.
+    // Preview mode is branding-only. It does not mint a widget_login_context,
+    // so the rendered widget must not send widget_embed_origin back into
+    // /setup/login-bootstrap. Inject an empty origin so the widget script skips
+    // embedded-app bootstrap requirements during preview.
     let widget_embed_origin_for_html = if preview_mode { "" } else { embed_origin.as_str() };
     let html = HOSTED_LOGIN_HTML
         .replace("__INITIAL_WIDGET_LOGIN_CONTEXT__", &initial_widget_login_context)
@@ -738,7 +737,9 @@ pub async fn start_magic_link(
     if let Some(ctx) = widget_login_context.as_ref() {
         let supplied_embed_origin = body.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
-            return Err(AppError::Forbidden("This hosted login session does not match the current site.".into()));
+            return Err(AppError::Forbidden(
+                "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
+            ));
         }
     }
     let effective_redirect_uri = widget_login_context
@@ -1178,8 +1179,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     const params = new URLSearchParams(window.location.search);
     const apiBase = `${window.location.origin}/v1`;
     const previewMode = params.get('preview') === '1';
-    const previewRedirectUri = params.get('preview_redirect_uri') || '';
-    let redirectUri = previewMode ? previewRedirectUri : '';
+    let redirectUri = '';
     const surface = params.get('surface') || 'user';
     const workspaceId = params.get('workspace_id') || '';
     const workspace = params.get('workspace') || params.get('org') || '';
@@ -1221,6 +1221,14 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       'mozza@cheesetown.user',
       'moomoo@whitebakery.demo',
     ]);
+    function stageError(stage, message, fallback) {
+      const raw = typeof message === 'string' && message.trim() ? message.trim() : fallback;
+      if (!raw) return stage;
+      return raw.toLowerCase().startsWith(stage.toLowerCase()) ? raw : `${stage}: ${raw}`;
+    }
+    function hostedLoginConfigError() {
+      return 'Hosted login app configuration is incomplete. Check the workspace app client_id, redirect URIs, and allowed embed origins in Workspace Apps.';
+    }
     function setNotice(message, level='') {
       if (!message) { noticeEl.style.display='none'; noticeEl.textContent=''; noticeEl.className='notice'; return; }
       noticeEl.textContent = message;
@@ -1240,11 +1248,14 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       }
     }
     function isExpiredWidgetContextMessage(message) {
-      return typeof message === 'string' && message.toLowerCase().includes('hosted login session expired or was already used');
+      if (typeof message !== 'string') return false;
+      const normalized = message.toLowerCase();
+      return normalized.includes('hosted login session')
+        && (normalized.includes('expired') || normalized.includes('already used') || normalized.includes('no longer valid'));
     }
     function showExpiredWidgetContextNotice() {
       setNoticeHtml(
-        '<span class="notice-copy">This hosted login session expired or was already used. Refresh the page to try again.</span>' +
+        '<span class="notice-copy">This hosted login session expired, was already used, or is no longer valid for this widget. Refresh the widget and try again.</span>' +
         '<button class="notice-action" type="button" data-refresh-widget>Refresh widget</button>',
         'error'
       );
@@ -1358,15 +1369,6 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         height: fullHeight,
         width: fullWidth,
       }, '*');
-    }
-    function boolParam(name, fallback) {
-      const value = params.get(name);
-      if (value === null) return fallback;
-      return value === 'true';
-    }
-    function textParam(name, fallback) {
-      const value = params.get(name);
-      return value === null ? fallback : value;
     }
     function radiusForCard(value) {
       switch (value) {
@@ -1484,10 +1486,14 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, widget_login_context: widgetLoginContext, widget_embed_origin: widgetEmbedOrigin, surface }),
           });
-          const demoData = await demoRes.json().catch(() => ({}));
-          if (!demoRes.ok) {
-            throw new Error(demoData?.error?.message || 'Demo passkey sign-in failed.');
-          }
+        const demoData = await demoRes.json().catch(() => ({}));
+        if (!demoRes.ok) {
+            throw new Error(stageError(
+              'Demo passkey sign-in failed',
+              demoData?.error?.message,
+              'The server rejected the demo passkey sign-in request.'
+            ));
+        }
           if (demoData.mfa_enrollment_required && demoData.challenge_id) {
             openVerify({ mfa_enrollment_challenge: demoData.challenge_id, redirect_uri: redirectUri });
             return;
@@ -1517,14 +1523,17 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         });
         const startData = await startRes.json().catch(() => ({}));
         if (!startRes.ok) {
-          throw new Error(startData?.error?.message || 'Failed to start passkey sign-in.');
+          throw new Error(stageError(
+            'Passkey sign-in start failed',
+            startData?.error?.message,
+            'The server could not start passkey sign-in.'
+          ));
         }
         if (startData.widget_login_context) {
           widgetLoginContext = startData.widget_login_context;
         }
 
         failureStage = 'browser';
-        button.textContent = 'Waiting for passkey...';
         const publicKey = parseRequestOptionsFromJSON(startData.request_options.publicKey);
         const credential = await navigator.credentials.get({ publicKey });
         if (!credential) {
@@ -1543,7 +1552,11 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         });
         const finishData = await finishRes.json().catch(() => ({}));
         if (!finishRes.ok) {
-          throw new Error(finishData?.error?.message || 'Passkey sign-in failed.');
+          throw new Error(stageError(
+            'Passkey sign-in finish failed',
+            finishData?.error?.message,
+            'The server could not complete passkey sign-in.'
+          ));
         }
         if (finishData.mfa_enrollment_required && finishData.challenge_id) {
           openVerify({ mfa_enrollment_challenge: finishData.challenge_id, redirect_uri: redirectUri });
@@ -1571,7 +1584,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         if (isExpiredWidgetContextMessage(message)) {
           showExpiredWidgetContextNotice();
         } else {
-          setNotice(message, 'error');
+          setNotice(stageError('Passkey sign-in failed', message, 'The passkey flow did not complete.'), 'error');
         }
       } finally {
         setWidgetBusy(false);
@@ -1586,7 +1599,11 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       const res = await fetch(`${apiBase}/setup/login-bootstrap?${qs.toString()}`, { credentials:'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error?.message || data?.message || 'Could not load login settings.');
+        throw new Error(stageError(
+          previewMode ? 'Preview widget bootstrap failed' : 'Hosted login bootstrap failed',
+          data?.error?.message || data?.message,
+          'The server did not return login settings.'
+        ));
       }
       const branding = data.workspace || null;
       const auth = data.auth || {};
@@ -1595,37 +1612,8 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         widgetLoginContext = appConfig.widget_login_context;
       }
       if (clientId && !previewMode && !widgetLoginContext) {
-        setNotice('This app does not have a valid hosted login context configured in Rooiam yet.', 'error');
+        setNotice(hostedLoginConfigError(), 'error');
       }
-      if (previewMode && branding) {
-        const orderParam = params.get('login_method_order');
-        branding.login_title = textParam('login_title', branding.login_title);
-        branding.login_subtitle = textParam('login_subtitle', branding.login_subtitle);
-        branding.login_logo_url = textParam('login_logo_url', branding.login_logo_url);
-        branding.icon_url = textParam('icon_url', branding.icon_url);
-        branding.login_logo_container = textParam('login_logo_container', branding.login_logo_container);
-        branding.login_logo_size = textParam('login_logo_size', branding.login_logo_size);
-        branding.brand_color = textParam('brand_color', branding.brand_color);
-        branding.show_login_logo = boolParam('show_login_logo', branding.show_login_logo);
-        branding.show_login_title = boolParam('show_login_title', branding.show_login_title);
-        branding.show_login_subtitle = boolParam('show_login_subtitle', branding.show_login_subtitle);
-        branding.show_powered_by = boolParam('show_powered_by', branding.show_powered_by);
-        branding.widget_radius = textParam('widget_radius', branding.widget_radius);
-        branding.widget_shadow = textParam('widget_shadow', branding.widget_shadow);
-        branding.card_radius = textParam('card_radius', branding.card_radius);
-        branding.button_style = textParam('button_style', branding.button_style);
-        branding.card_bg_style = textParam('card_bg_style', branding.card_bg_style);
-        branding.card_bg_color2 = textParam('card_bg_color2', branding.card_bg_color2);
-        branding.card_border_width = textParam('card_border_width', branding.card_border_width);
-        branding.card_border_color = textParam('card_border_color', branding.card_border_color);
-        if (orderParam) {
-          branding.login_method_order = orderParam.split(',').map(item => item.trim()).filter(Boolean);
-        }
-      }
-      auth.magic_link_enabled = boolParam('allow_magic_link', auth.magic_link_enabled);
-      auth.passkey_enabled = boolParam('allow_passkey', auth.passkey_enabled);
-      auth.google_enabled = boolParam('allow_google', auth.google_enabled);
-      auth.microsoft_enabled = boolParam('allow_microsoft', auth.microsoft_enabled);
       authState = auth;
       applyWidgetStyles(branding, auth);
       const resolvedTitle = (branding && (branding.login_title || branding.login_display_name || branding.name)) || `Sign in to ${appName}`;
@@ -1677,7 +1665,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
             return;
           }
           if (!widgetLoginContext) {
-            setNotice('This app does not have a valid hosted login context configured in Rooiam yet.', 'error');
+            setNotice(hostedLoginConfigError(), 'error');
             return;
           }
           setNotice('');
@@ -1687,19 +1675,23 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
             await loadBootstrap();
           } catch (error) {
             setWidgetBusy(false);
-            setNotice(error instanceof Error ? error.message : 'Could not refresh the hosted login session. Refresh and try again.', 'error');
+            setNotice(stageError(
+              'Hosted login session refresh failed',
+              error instanceof Error ? error.message : '',
+              'Refresh the widget and try again.'
+            ), 'error');
             reportSize();
             return;
           }
           if (!widgetLoginContext) {
             setWidgetBusy(false);
-            setNotice('This app does not have a valid hosted login context configured in Rooiam yet.', 'error');
+            setNotice(hostedLoginConfigError(), 'error');
             reportSize();
             return;
           }
           if (widgetLoginContext === previousWidgetLoginContext) {
             setWidgetBusy(false);
-            setNotice('Could not refresh the hosted login session. Refresh and try again.', 'error');
+            setNotice('Hosted login session refresh failed: the widget session did not rotate. Refresh the widget and try again.', 'error');
             reportSize();
             return;
           }
@@ -1731,7 +1723,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     async function sendMagicLink(email, resend=false) {
       if (widgetBusy) return;
       if (!email) { setNotice('Enter an email address first.', 'error'); return; }
-      if (!widgetLoginContext) { setNotice('This app does not have a valid hosted login context configured in Rooiam yet.', 'error'); return; }
+      if (!widgetLoginContext) { setNotice(hostedLoginConfigError(), 'error'); return; }
       setNotice('');
       setWidgetBusy(true, resend ? 'magic_link_resend' : 'magic_link');
       try {
@@ -1742,14 +1734,24 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
           body: JSON.stringify({ email, widget_login_context: widgetLoginContext, widget_embed_origin: widgetEmbedOrigin, surface })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error?.message || data?.message || 'Could not send magic link.');
+        if (!res.ok) throw new Error(stageError(
+          resend ? 'Magic link resend failed' : 'Magic link request failed',
+          data?.error?.message || data?.message,
+          'The server could not queue the magic link email.'
+        ));
         if (data.widget_login_context) {
           widgetLoginContext = data.widget_login_context;
         }
         setMagicView('sent', email);
         startResendCountdown(30);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not send magic link.';
+        const message = error instanceof Error
+          ? error.message
+          : stageError(
+              resend ? 'Magic link resend failed' : 'Magic link request failed',
+              '',
+              'The server could not queue the magic link email.'
+            );
         if (isExpiredWidgetContextMessage(message)) {
           showExpiredWidgetContextNotice();
         } else {
@@ -1787,7 +1789,20 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     if (widgetError === 'expired') {
       showExpiredWidgetContextNotice();
     }
-    loadBootstrap().catch(() => setNotice('Could not load login settings.', 'error'));
+    loadBootstrap().catch(error => {
+      const message = error instanceof Error
+        ? error.message
+        : stageError(
+            previewMode ? 'Preview widget startup failed' : 'Hosted login widget startup failed',
+            '',
+            'The widget could not finish loading.'
+          );
+      setNotice(stageError(
+        previewMode ? 'Preview widget startup failed' : 'Hosted login widget startup failed',
+        message,
+        'The widget could not finish loading.'
+      ), 'error');
+    });
     if (window.ResizeObserver && cardEl) {
       new ResizeObserver(() => reportSize()).observe(cardEl);
     }
@@ -1841,6 +1856,11 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
     const titleEl = document.getElementById('title');
     const subtitleEl = document.getElementById('subtitle');
     const noticeEl = document.getElementById('notice');
+    function stageError(stage, message, fallback='') {
+      const raw = typeof message === 'string' && message.trim() ? message.trim() : fallback;
+      if (!raw) return stage;
+      return raw.toLowerCase().startsWith(stage.toLowerCase()) ? raw : `${stage}: ${raw}`;
+    }
     function setNotice(message, level='') {
       if (!message) { noticeEl.style.display='none'; noticeEl.textContent=''; noticeEl.className='notice'; return; }
       noticeEl.textContent = message;
@@ -1854,7 +1874,11 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
         body: JSON.stringify({ challenge_id: mfaChallenge, code })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error?.message || 'Invalid MFA code.');
+      if (!res.ok) throw new Error(stageError(
+        'MFA verification failed',
+        data?.error?.message,
+        'The server rejected the MFA code.'
+      ));
       window.location.href = data.redirect_uri || redirectUri || '/';
     }
     async function loadEnrollment() {
@@ -1863,7 +1887,11 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
         body: JSON.stringify({ challenge_id: enrollmentChallenge })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error?.message || 'Could not start MFA setup.');
+      if (!res.ok) throw new Error(stageError(
+        'MFA setup start failed',
+        data?.error?.message,
+        'The server could not begin MFA setup.'
+      ));
       document.getElementById('enroll-secret').innerHTML = `Authenticator secret:<br><code>${data.secret || ''}</code>`;
     }
     async function finishEnrollment() {
@@ -1873,23 +1901,27 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
         body: JSON.stringify({ challenge_id: enrollmentChallenge, code })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error?.message || 'Could not finish MFA setup.');
+      if (!res.ok) throw new Error(stageError(
+        'MFA setup finish failed',
+        data?.error?.message,
+        'The server could not finish MFA setup.'
+      ));
       window.location.href = data.redirect_uri || redirectUri || '/';
     }
     if (mfaChallenge) {
       titleEl.textContent = 'Enter MFA Code';
       subtitleEl.textContent = 'Finish sign-in with your authenticator or backup code.';
       document.getElementById('totp-box').classList.remove('hidden');
-      document.getElementById('totp-submit').addEventListener('click', () => verifyMfa().catch(err => setNotice(err.message, 'error')));
+      document.getElementById('totp-submit').addEventListener('click', () => verifyMfa().catch(err => setNotice(stageError('MFA verification failed', err?.message, 'The MFA check did not complete.'), 'error')));
     } else if (enrollmentChallenge) {
       titleEl.textContent = 'Set Up MFA';
       subtitleEl.textContent = 'This sign-in requires an authenticator app before continuing.';
       document.getElementById('enroll-box').classList.remove('hidden');
-      document.getElementById('enroll-submit').addEventListener('click', () => finishEnrollment().catch(err => setNotice(err.message, 'error')));
-      loadEnrollment().catch(err => setNotice(err.message, 'error'));
+      document.getElementById('enroll-submit').addEventListener('click', () => finishEnrollment().catch(err => setNotice(stageError('MFA setup finish failed', err?.message, 'The MFA setup step did not complete.'), 'error')));
+      loadEnrollment().catch(err => setNotice(stageError('MFA setup start failed', err?.message, 'The MFA setup step did not start.'), 'error'));
     } else {
       titleEl.textContent = 'Nothing to verify';
-      subtitleEl.textContent = 'This verification page is only used for MFA challenges during sign-in.';
+      subtitleEl.textContent = 'This verification page only works for active MFA sign-in challenges. Start sign-in again if you reached this page directly.';
     }
   </script>
 </body>
