@@ -115,7 +115,7 @@ Normal setups should change `ROOIAM_SERVER_URL`, not try to manage separate prov
 | `ROOIAM_PUBLIC_MEDIA_BASE` | public media base URL | media delivery path |
 | `ROOIAM_MINIO_ENDPOINT` | MinIO/S3 endpoint | object storage |
 | `ROOIAM_MINIO_BUCKET` | MinIO/S3 bucket | object storage |
-| `ROOIAM_MINIO_USERNAME` | storage access key | secret |
+| `ROOIAM_MINIO_USER` | storage access key | secret |
 | `ROOIAM_MINIO_PASSWORD` | storage secret key | secret |
 
 ## Rate Limits And Abuse Control

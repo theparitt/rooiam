@@ -1389,7 +1389,7 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
     if current_backend.is_empty() || current_backend == "local" {
         let endpoint  = std::env::var("ROOIAM_MINIO_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".into());
         let bucket    = std::env::var("ROOIAM_MINIO_BUCKET").unwrap_or_else(|_| "rooiam".into());
-        let access_key = std::env::var("ROOIAM_MINIO_USERNAME").unwrap_or_else(|_| "rooiam".into());
+        let access_key = std::env::var("ROOIAM_MINIO_USER").unwrap_or_else(|_| "rooiam".into());
         let secret_key = std::env::var("ROOIAM_MINIO_PASSWORD").unwrap_or_default();
 
         if !secret_key.is_empty() {

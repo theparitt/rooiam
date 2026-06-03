@@ -92,7 +92,7 @@ pub async fn load_platform_storage_config(db: &PgPool) -> Result<PlatformStorage
     let env_local_path = env_value("ROOIAM_STORAGE_ROOT");
     let env_minio_endpoint = env_value("ROOIAM_MINIO_ENDPOINT");
     let env_minio_bucket = env_value("ROOIAM_MINIO_BUCKET");
-    let env_minio_access_key = env_value("ROOIAM_MINIO_USERNAME");
+    let env_minio_access_key = env_value("ROOIAM_MINIO_USER");
     let env_minio_secret = env_value("ROOIAM_MINIO_PASSWORD");
 
     // Migration 0029 seeds `storage_backend=local` and `storage_minio_use_ssl=true`

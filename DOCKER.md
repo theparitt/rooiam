@@ -86,7 +86,7 @@ Demo mode requires a database whose name ends in `rooiam_demo` (safety check).
    [ UNEXPECTED ] ROOIAM_MINIO_ACCESS_KEY is not a recognized server env variable
    ```
    Fix: `unset ROOIAM_MINIO_ACCESS_KEY ROOIAM_MINIO_SECRET_KEY` (the current names
-   are `ROOIAM_MINIO_USERNAME` / `ROOIAM_MINIO_PASSWORD`). Check with
+   are `ROOIAM_MINIO_USER` / `ROOIAM_MINIO_PASSWORD`). Check with
    `env | grep ROOIAM_MINIO`.
 
 2. **Wrong-mode env vars are fatal.** The strict contract rejects production-only

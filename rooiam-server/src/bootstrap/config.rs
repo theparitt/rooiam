@@ -291,7 +291,7 @@ impl AppConfig {
             "public base URL or path for uploaded media (default /media)");
         check_optional_val("ROOIAM_MINIO_ENDPOINT",  "MinIO endpoint, e.g. http://minio:9000");
         check_optional_val("ROOIAM_MINIO_BUCKET",     "MinIO bucket name");
-        check_optional_secret("ROOIAM_MINIO_USERNAME", "MinIO access key (falls back to MINIO_ROOT_USER)");
+        check_optional_secret("ROOIAM_MINIO_USER", "MinIO access key (falls back to MINIO_ROOT_USER)");
         check_optional_secret("ROOIAM_MINIO_PASSWORD", "MinIO secret key (falls back to MINIO_ROOT_PASSWORD)");
 
         // ── OIDC Signing ───────────────────────────────────────────────────────
@@ -957,7 +957,7 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_PUBLIC_MEDIA_BASE",
         "ROOIAM_MINIO_ENDPOINT",
         "ROOIAM_MINIO_BUCKET",
-        "ROOIAM_MINIO_USERNAME",
+        "ROOIAM_MINIO_USER",
         "ROOIAM_MINIO_PASSWORD",
         "ROOIAM_GOOGLE_CLIENT_ID",
         "ROOIAM_GOOGLE_CLIENT_SECRET",

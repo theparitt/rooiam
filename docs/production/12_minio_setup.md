@@ -67,7 +67,7 @@ Now that the S3 API is answering on port 9000, provide the exact configuration t
 
 ```env
 ROOIAM_MINIO_ENDPOINT=http://rooiam-minio:9000
-ROOIAM_MINIO_USERNAME=rooiam_admin
+ROOIAM_MINIO_USER=rooiam_admin
 ROOIAM_MINIO_PASSWORD=your_super_secret_minio_password
 ROOIAM_MINIO_BUCKET=rooiam-media
 ROOIAM_PUBLIC_MEDIA_BASE=http://localhost:9000/rooiam-media
@@ -79,7 +79,7 @@ If you ever want to abandon MinIO and use AWS S3 or Cloudflare R2, you do not ne
 Just replace the endpoints pointing directly at the Amazon/Cloudflare domains:
 ```env
 ROOIAM_MINIO_ENDPOINT=https://s3.us-east-1.amazonaws.com
-ROOIAM_MINIO_USERNAME=AKIA_REAL_AWS_KEY
+ROOIAM_MINIO_USER=AKIA_REAL_AWS_KEY
 ROOIAM_MINIO_PASSWORD=your_real_aws_secret
 ROOIAM_MINIO_BUCKET=rooiam-production-media
 ROOIAM_PUBLIC_MEDIA_BASE=https://rooiam-production-media.s3.amazonaws.com

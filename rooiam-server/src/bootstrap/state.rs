@@ -124,7 +124,7 @@ impl AppState {
                 let label = format!("MinIO        {}/{}", endpoint.trim_end_matches('/'), bucket);
                 if endpoint.is_empty() || bucket.is_empty() || access.is_empty() || secret.trim().is_empty() {
                     fail(&label, "Effective backend is MinIO, but endpoint, bucket, access key, or secret key is missing.");
-                    println!("            Hint: set ROOIAM_MINIO_ENDPOINT, ROOIAM_MINIO_BUCKET, ROOIAM_MINIO_USERNAME, and ROOIAM_MINIO_PASSWORD.");
+                    println!("            Hint: set ROOIAM_MINIO_ENDPOINT, ROOIAM_MINIO_BUCKET, ROOIAM_MINIO_USER, and ROOIAM_MINIO_PASSWORD.");
                     println!("            Local default: http://localhost:9000 bucket=rooiam user=rooiam password=rooiam_secret");
                     return Err(anyhow::anyhow!(
                         "Storage backend is MinIO, but the effective MinIO configuration is incomplete."
@@ -253,7 +253,7 @@ impl AppState {
             } else {
                 let env_endpoint = std::env::var("ROOIAM_MINIO_ENDPOINT").unwrap_or_default();
                 let env_bucket = std::env::var("ROOIAM_MINIO_BUCKET").unwrap_or_default();
-                let env_access = std::env::var("ROOIAM_MINIO_USERNAME").unwrap_or_default();
+                let env_access = std::env::var("ROOIAM_MINIO_USER").unwrap_or_default();
                 let env_secret = std::env::var("ROOIAM_MINIO_PASSWORD").unwrap_or_default();
 
                 if !env_endpoint.is_empty()
