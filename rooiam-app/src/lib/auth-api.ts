@@ -1,14 +1,12 @@
 import { getApiBase } from './api-base'
 import { RooiamBrowser, RooiamError } from '@rooiam/sdk-browser'
 
-// --- SDK adoption (Phase E) -------------------------------------------------
-// We are migrating tenantAuthApi onto @rooiam/sdk-browser one method at a time.
-// The SDK is the transport; `viaSdk` below preserves authFetch's EXACT error
-// contract so the 24 existing call sites keep catching the same sentinels:
+// --- SDK transport ----------------------------------------------------------
+// Every tenantAuthApi method runs over @rooiam/sdk-browser (cookie session).
+// `viaSdk` maps the SDK's RooiamError back to the error sentinels the existing
+// call sites already catch, so the public contract is unchanged:
 //   401 -> Error('UNAUTHORIZED'),  429 -> Error('RATE_LIMITED'),
 //   other non-2xx -> Error(server message),  network -> Error('Could not reach ...').
-// Until every method is migrated, both authFetch and the SDK run side by side
-// against the same cookie session — they are interchangeable transports.
 
 let _sdk: RooiamBrowser | null = null
 function sdk(): RooiamBrowser {
@@ -16,7 +14,7 @@ function sdk(): RooiamBrowser {
     return _sdk
 }
 
-/** Run an SDK call, mapping RooiamError back to authFetch's error sentinels. */
+/** Run an SDK call, mapping RooiamError back to the legacy error sentinels. */
 async function viaSdk<T>(call: (s: RooiamBrowser) => Promise<T>): Promise<T> {
     try {
         return await call(sdk())
@@ -31,40 +29,6 @@ async function viaSdk<T>(call: (s: RooiamBrowser) => Promise<T>): Promise<T> {
         }
         throw err
     }
-}
-
-async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const apiBase = getApiBase()
-    let response: Response
-    try {
-        response = await fetch(`${apiBase}${path}`, {
-            ...options,
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(options.headers || {}),
-            },
-        })
-    } catch (err) {
-        if (err instanceof TypeError) {
-            throw new Error(`Could not reach ${apiBase}. Check that the Rooiam API is running.`)
-        }
-        throw err
-    }
-
-    if (response.status === 401) { throw new Error('UNAUTHORIZED') }
-    if (response.status === 429) throw new Error('RATE_LIMITED')
-
-    if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data?.error?.message || data?.message || response.statusText || 'Request failed')
-    }
-
-    if (response.status === 204) {
-        return {} as T
-    }
-
-    return response.json()
 }
 
 export type TenantPasskey = {
@@ -110,98 +74,47 @@ export type TenantProfile = {
 
 export const tenantAuthApi = {
     updateProfile: (payload: { display_name?: string | null; avatar_url?: string | null }) =>
-        authFetch<TenantProfile>('/identity/me/profile', {
-            method: 'PATCH',
-            body: JSON.stringify(payload),
-        }),
-    uploadAvatar: async (file: File) => {
-        const apiBase = getApiBase()
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const response = await fetch(`${apiBase}/identity/me/avatar/upload`, {
-            method: 'POST',
-            credentials: 'include',
-            body: formData,
-        })
-
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) {
-            throw new Error(data?.error?.message || data?.message || 'Could not upload avatar.')
-        }
-
-        return data as { url: string; user: TenantProfile }
-    },
+        viaSdk((s) => s.updateProfile(payload) as Promise<TenantProfile>),
+    uploadAvatar: (file: File) =>
+        viaSdk((s) => s.account.uploadAvatar(file) as Promise<{ url: string; user: TenantProfile }>),
     passkeys: () => viaSdk((s) => s.passkeys.list() as Promise<TenantPasskey[]>),
     startPasskeyRegistration: () =>
-        authFetch<{ challenge_id: string; creation_options: { publicKey: unknown } }>('/webauthn/register/start', {
-            method: 'POST',
-            body: JSON.stringify({}),
-        }),
+        viaSdk((s) => s.passkeys.registerStart() as Promise<{ challenge_id: string; creation_options: { publicKey: unknown } }>),
     finishPasskeyRegistration: (payload: { challenge_id: string; name: string; credential: unknown }) =>
-        authFetch<{ ok: boolean; id: string; name: string }>('/webauthn/register/finish', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-        }),
+        viaSdk((s) => s.passkeys.registerFinish(payload) as Promise<{ ok: boolean; id: string; name: string }>),
     deletePasskey: (id: string) =>
-        authFetch<{ ok: boolean; message: string }>(`/webauthn/passkeys/${id}`, { method: 'DELETE' }),
+        viaSdk((s) => s.passkeys.delete(id) as Promise<{ ok: boolean; message: string }>),
     renamePasskey: (id: string, name: string) =>
-        authFetch<{ ok: boolean; name: string }>(`/webauthn/passkeys/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ name }),
-        }),
-    mfaStatus: () => authFetch<TenantMfaStatus>('/mfa/status'),
+        viaSdk((s) => s.passkeys.rename(id, name) as Promise<{ ok: boolean; name: string }>),
+    mfaStatus: () => viaSdk((s) => s.mfa.status() as Promise<TenantMfaStatus>),
     startTotpEnrollment: () =>
-        authFetch<{ challenge_id: string; secret: string; otpauth_uri: string }>('/mfa/totp/start', {
-            method: 'POST',
-            body: JSON.stringify({}),
-        }),
+        viaSdk((s) => s.mfa.totpStart() as Promise<{ challenge_id: string; secret: string; otpauth_uri: string }>),
     finishTotpEnrollment: (payload: { challenge_id: string; code: string }) =>
-        authFetch<{ ok: boolean; backup_codes: string[] }>('/mfa/totp/finish', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-        }),
+        viaSdk((s) => s.mfa.totpFinish(payload.challenge_id, payload.code) as Promise<{ ok: boolean; backup_codes: string[] }>),
     disableTotp: () =>
-        authFetch<{ ok: boolean; disabled: boolean }>('/mfa/totp', { method: 'DELETE' }),
+        viaSdk((s) => s.mfa.disableTotp() as Promise<{ ok: boolean; disabled: boolean }>),
     regenerateRecoveryCodes: () =>
-        authFetch<{ codes: string[]; remaining: number }>('/mfa/recovery-codes/regenerate', {
-            method: 'POST',
-            body: JSON.stringify({}),
-        }),
-    linkedAccounts: () => authFetch<TenantLinkedAccounts>('/identity/me/linked-accounts'),
+        viaSdk((s) => s.mfa.regenerateBackupCodes() as Promise<{ codes: string[]; remaining: number }>),
+    linkedAccounts: () => viaSdk((s) => s.account.linkedAccounts() as Promise<TenantLinkedAccounts>),
     startLinkProvider: (provider: 'google' | 'microsoft', redirect_uri?: string) =>
-        authFetch<{ authorization_url: string }>(`/identity/me/linked-accounts/${provider}/start`, {
-            method: 'POST',
-            body: JSON.stringify({ redirect_uri }),
-        }),
+        viaSdk((s) => s.account.startLink(provider, redirect_uri) as Promise<{ authorization_url: string }>),
     unlinkProvider: (provider: 'google' | 'microsoft') =>
-        authFetch<{ ok: boolean; message: string }>(`/identity/me/linked-accounts/${provider}`, {
-            method: 'DELETE',
-        }),
-    sessions: () => authFetch<TenantSession[]>('/identity/me/sessions'),
+        viaSdk((s) => s.account.unlink(provider) as Promise<{ ok: boolean; message: string }>),
+    sessions: () => viaSdk((s) => s.sessions.list() as Promise<TenantSession[]>),
     revokeSession: (id: string) =>
-        authFetch<{ ok: boolean; message: string }>(`/identity/me/sessions/${id}`, { method: 'DELETE' }),
+        viaSdk((s) => s.sessions.revoke(id) as Promise<{ ok: boolean; message: string }>),
     revokeOtherSessions: () =>
-        authFetch<{ ok: boolean; revoked_count: number }>('/identity/me/sessions/revoke-all', { method: 'POST' }),
+        viaSdk((s) => s.sessions.revokeAll() as Promise<{ ok: boolean; revoked_count: number }>),
     auditLogs: (page = 1, pageSize = 25) =>
-        authFetch<{ items: TenantAuditLog[]; total: number }>(`/identity/me/audit-logs?page=${page}&page_size=${pageSize}`),
+        viaSdk((s) => s.account.auditLogs({ page, page_size: pageSize }) as Promise<{ items: TenantAuditLog[]; total: number }>),
     requestEmailChange: (new_email: string) =>
-        authFetch<{ ok: boolean; message: string }>('/identity/me/email-change/request', {
-            method: 'POST',
-            body: JSON.stringify({ new_email }),
-        }),
+        viaSdk((s) => s.account.requestEmailChange(new_email) as Promise<{ ok: boolean; message: string }>),
     verifyEmailChange: (token: string) =>
-        authFetch<{ ok: boolean; message: string; new_email: string }>('/identity/me/email-change/verify', {
-            method: 'POST',
-            body: JSON.stringify({ token }),
-        }),
+        viaSdk((s) => s.account.verifyEmailChange(token) as Promise<{ ok: boolean; message: string; new_email: string }>),
     requestDeleteAccount: () =>
-        authFetch<{ ok: boolean; message: string }>('/identity/me/delete/request', { method: 'POST' }),
+        viaSdk((s) => s.account.requestDelete() as Promise<{ ok: boolean; message: string }>),
     confirmDeleteAccount: (token: string) =>
-        authFetch<{ ok: boolean; message: string }>('/identity/me/delete/confirm', {
-            method: 'DELETE',
-            body: JSON.stringify({ token }),
-        }),
+        viaSdk((s) => s.account.confirmDelete(token) as Promise<{ ok: boolean; message: string }>),
 }
 
 export type TenantSession = {
