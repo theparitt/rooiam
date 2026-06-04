@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowDown, ArrowUp, CheckCircle2, Code2, Eye, Monitor, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Code2, Eye, Monitor, Sparkles } from 'lucide-react'
 import PortalPageHeader from '../../components/portal/PortalPageHeader'
 import PortalSectionCard from '../../components/portal/PortalSectionCard'
 import { getApiOrigin } from '../../lib/api-base'
@@ -22,6 +22,7 @@ type Props = {
     availableApps: OrgClient[]
     selectedAppId?: string | null
     onOpenApp: (appId: string) => void
+    onOpenRegisterApp: () => void
     brandingForm: BrandingForm
     setBrandingForm: React.Dispatch<React.SetStateAction<BrandingForm>>
     authPolicyForm: AuthPolicyForm
@@ -53,6 +54,7 @@ export default function PortalWorkspaceLoginWidget({
     availableApps,
     selectedAppId = null,
     onOpenApp,
+    onOpenRegisterApp,
     brandingForm,
     setBrandingForm,
     authPolicyForm,
@@ -223,6 +225,75 @@ export default function PortalWorkspaceLoginWidget({
     )
 
     const snippet = mode === 'iframe' ? iframeSnippet : mode === 'js' ? jsSnippet : exampleConfigJson
+    const widgetReadinessIssues = React.useMemo(() => {
+        if (!widgetApp) {
+            return [{
+                id: 'missing-app',
+                title: 'No workspace app selected',
+                detail: 'Create or choose a workspace app first. The embed snippet cannot work without a real RooIAM app client.',
+                actionLabel: 'Open Workspace Apps',
+                action: onOpenRegisterApp,
+            }]
+        }
+
+        const issues: Array<{
+            id: string
+            title: string
+            detail: string
+            actionLabel: string
+            action: () => void
+        }> = []
+
+        if (!widgetApp.client.client_id.trim()) {
+            issues.push({
+                id: 'missing-client-id',
+                title: 'Client ID is missing',
+                detail: 'This workspace app does not have a usable client_id yet. Re-open the app and verify the registration completed correctly.',
+                actionLabel: 'Open App Settings',
+                action: () => onOpenApp(widgetApp.client.id),
+            })
+        }
+
+        if (widgetApp.redirect_uris.length === 0) {
+            issues.push({
+                id: 'missing-redirects',
+                title: 'No redirect URIs configured',
+                detail: 'The hosted widget needs at least one callback URL. After login, RooIAM redirects back to one of these URLs.',
+                actionLabel: 'Add Redirect URIs',
+                action: () => onOpenApp(widgetApp.client.id),
+            })
+        }
+
+        if (widgetApp.allowed_embed_origins.length === 0) {
+            issues.push({
+                id: 'missing-origins',
+                title: 'No allowed embed origins configured',
+                detail: 'The hosted widget will be blocked in an iframe until the embedding site origin is listed on this app.',
+                actionLabel: 'Add Embed Origins',
+                action: () => onOpenApp(widgetApp.client.id),
+            })
+        }
+
+        const redirectOrigins = Array.from(new Set(widgetApp.redirect_uris.map(uri => {
+            try {
+                return new URL(uri).origin
+            } catch {
+                return ''
+            }
+        }).filter(Boolean)))
+        const missingAllowedOrigins = redirectOrigins.filter(origin => !widgetApp.allowed_embed_origins.includes(origin))
+        if (missingAllowedOrigins.length > 0) {
+            issues.push({
+                id: 'origin-mismatch',
+                title: 'Some callback origins are not allowed to embed the widget',
+                detail: `RooIAM expects the iframe site origin to appear in Allowed Embed Origins too. Missing: ${missingAllowedOrigins.slice(0, 3).join(', ')}${missingAllowedOrigins.length > 3 ? '…' : ''}`,
+                actionLabel: 'Fix Origin Mismatch',
+                action: () => onOpenApp(widgetApp.client.id),
+            })
+        }
+
+        return issues
+    }, [onOpenApp, onOpenRegisterApp, widgetApp])
 
     const handleCopy = () => {
         navigator.clipboard.writeText(snippet).then(() => {
@@ -588,6 +659,48 @@ export default function PortalWorkspaceLoginWidget({
                     >
                         <div className="space-y-3">
                             <HighlightedSnippet code={snippet} language={mode} />
+                            {widgetReadinessIssues.length > 0 ? (
+                                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                                        <div className="min-w-0 flex-1 space-y-3">
+                                            <div>
+                                                <p className="text-sm font-black text-amber-950">Widget setup needs attention</p>
+                                                <p className="mt-1 text-sm font-medium text-amber-900">
+                                                    The snippet below may not work yet. Fix the missing app settings first, then copy the embed code.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {widgetReadinessIssues.map(issue => (
+                                                    <div key={issue.id} className="rounded-2xl border border-amber-200 bg-white/70 px-3 py-3">
+                                                        <p className="text-sm font-black text-amber-950">{issue.title}</p>
+                                                        <p className="mt-1 text-xs font-medium leading-5 text-amber-900">{issue.detail}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={issue.action}
+                                                            className="mt-2 inline-flex items-center rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-black text-amber-900 hover:bg-amber-100"
+                                                        >
+                                                            {issue.actionLabel}
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4">
+                                    <div className="flex items-start gap-3">
+                                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+                                        <div>
+                                            <p className="text-sm font-black text-emerald-950">Widget snippet is ready</p>
+                                            <p className="mt-1 text-sm font-medium text-emerald-900">
+                                                This app has a client ID, callback URLs, and allowed embed origins configured. You can copy the snippet and embed it on the matching site.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {mode === 'json' ? (
                                 <p className="text-xs font-medium text-muted-foreground">
                                     Copy this into <code className="font-black">config.local.json</code> for the examples. Runtime widget embeds use app identity only. The preview iframe is the only place that carries a preview-only redirect.

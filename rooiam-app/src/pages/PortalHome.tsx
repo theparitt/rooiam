@@ -1589,6 +1589,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         availableApps={workspaceApps}
                         selectedAppId={widgetWorkspaceApp?.client.id || null}
                         onOpenApp={(appId) => navigate(portalRoutes.workspaceApps(currentOrg?.slug || requestedOrgSlug, appId))}
+                        onOpenRegisterApp={() => navigate(portalRoutes.workspaceRegisterApp(currentOrg?.slug || requestedOrgSlug))}
                         brandingForm={brandingForm}
                         setBrandingForm={setBrandingForm}
                         authPolicyForm={authPolicyForm}
