@@ -73,6 +73,8 @@ ROOIAM_PUBLIC_MEDIA_BASE=/media
 ROOIAM_SETUP_TOKEN=replace-with-a-long-random-secret
 ```
 
+The `Storage` block above is the **local-disk** default: files are written under `ROOIAM_STORAGE_ROOT` and served by the Rooiam server at the `/media` path. If you use **MinIO or S3** instead, the storage settings are different (and `ROOIAM_PUBLIC_MEDIA_BASE` becomes a browser-reachable URL, not just `/media`) — follow [MinIO (S3 Storage) Setup](12_minio_setup.md).
+
 Then add SMTP and OAuth values in the next chapters.
 
 Recommended workflow:
