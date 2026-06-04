@@ -5,7 +5,7 @@ use crate::modules::admin::access::ensure_platform_staff;
 use crate::shared::error::AppError;
 use crate::shared::storage_config::{
     load_platform_storage_config, save_platform_storage_config, set_minio_bucket_public_read,
-    test_local_storage, test_minio_storage, PlatformStorageConfigUpdate,
+    test_local_storage, test_minio_roundtrip, test_minio_storage, PlatformStorageConfigUpdate,
 };
 
 #[derive(serde::Deserialize)]
@@ -121,11 +121,21 @@ pub async fn test_storage_config(
                     )
                     .await
                     {
-                        Ok(_) => "Bucket set to public-read (anonymous GetObject).".to_string(),
+                        Ok(_) => "Bucket set to public-read.".to_string(),
                         Err(e) => format!("WARNING: could not set bucket public-read: {}", e),
                     };
-                    Ok(HttpResponse::Ok()
-                        .json(serde_json::json!({ "ok": true, "message": format!("{} {}", msg, public) })))
+
+                    // Real round-trip: write a probe object and read it back
+                    // anonymously (exactly like a browser). This is the test that
+                    // actually proves uploaded images will be visible. If it fails,
+                    // surface it as a hard error so the operator sees the problem now.
+                    match test_minio_roundtrip(&endpoint, &bucket, &access_key, &secret_key, use_ssl).await {
+                        Ok(rt) => Ok(HttpResponse::Ok().json(serde_json::json!({
+                            "ok": true,
+                            "message": format!("{} {} {}", msg, public, rt),
+                        }))),
+                        Err(rt) => Err(AppError::Validation(format!("{} {}", public, rt))),
+                    }
                 }
                 Err(e) => Err(AppError::Validation(e)),
             }

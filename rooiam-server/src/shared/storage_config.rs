@@ -767,6 +767,77 @@ pub async fn set_minio_bucket_public_read(
     }
 }
 
+/// Full real-world round-trip: write a small probe object (authenticated), read
+/// it back WITHOUT credentials (anonymous, exactly like a browser would), then
+/// delete it. This is the test that actually matters for branding/avatars —
+/// "the connection works" is not enough; the object must be publicly readable.
+///
+/// Returns Ok(message) describing what passed, or Err(message) naming the exact
+/// step that failed (write / anonymous-read / cleanup).
+pub async fn test_minio_roundtrip(
+    endpoint: &str,
+    bucket: &str,
+    access_key: &str,
+    secret_key: &str,
+    use_ssl: bool,
+) -> Result<String, String> {
+    let probe_key = format!("uploads/_healthcheck/{}.txt", uuid::Uuid::new_v4());
+    let probe_body = b"rooiam-storage-roundtrip";
+
+    // 1. Write the probe (authenticated PUT).
+    put_minio_object(
+        endpoint,
+        bucket,
+        &probe_key,
+        probe_body,
+        "text/plain",
+        access_key,
+        secret_key,
+        use_ssl,
+    )
+    .await
+    .map_err(|e| format!("Write failed: {}", e))?;
+
+    // 2. Read it back ANONYMOUSLY (no auth) — this is what a browser does.
+    let base = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+        endpoint.trim_end_matches('/').to_string()
+    } else if use_ssl {
+        format!("https://{}", endpoint.trim_end_matches('/'))
+    } else {
+        format!("http://{}", endpoint.trim_end_matches('/'))
+    };
+    let read_url = format!("{}/{}/{}", base, bucket.trim(), probe_key);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let read_result = client.get(&read_url).send().await;
+
+    // 3. Clean up the probe regardless of the read outcome (best-effort).
+    let _ = delete_minio_object(endpoint, bucket, &probe_key, access_key, secret_key, use_ssl).await;
+
+    match read_result {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            if status == 200 {
+                let got = resp.bytes().await.unwrap_or_default();
+                if got.as_ref() == probe_body {
+                    Ok("Round-trip OK: wrote a probe object and read it back anonymously (bucket is publicly readable).".into())
+                } else {
+                    Err("Anonymous read returned 200 but the content did not match — check for a proxy/CDN rewriting responses.".into())
+                }
+            } else if status == 403 {
+                Err("Wrote the object, but anonymous read was DENIED (HTTP 403). The bucket is not public-read — browsers will not be able to load uploaded images.".into())
+            } else if status == 404 {
+                Err("Wrote the object, but anonymous read returned 404. Either the bucket is private (MinIO hides existence) or the public endpoint does not point at this bucket.".into())
+            } else {
+                Err(format!("Wrote the object, but anonymous read returned HTTP {}.", status))
+            }
+        }
+        Err(e) => Err(format!("Wrote the object, but the anonymous read request failed: {}", e)),
+    }
+}
+
 async fn delete_minio_object(
     endpoint: &str,
     bucket: &str,
