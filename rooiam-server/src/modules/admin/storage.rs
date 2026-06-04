@@ -4,8 +4,8 @@ use crate::bootstrap::state::AppState;
 use crate::modules::admin::access::ensure_platform_staff;
 use crate::shared::error::AppError;
 use crate::shared::storage_config::{
-    load_platform_storage_config, save_platform_storage_config, test_local_storage,
-    test_minio_storage, PlatformStorageConfigUpdate,
+    load_platform_storage_config, save_platform_storage_config, set_minio_bucket_public_read,
+    test_local_storage, test_minio_storage, PlatformStorageConfigUpdate,
 };
 
 #[derive(serde::Deserialize)]
@@ -36,6 +36,36 @@ pub async fn update_storage_config(
 ) -> Result<HttpResponse, AppError> {
     ensure_platform_staff(&req, &state).await?;
     let cfg = save_platform_storage_config(&state.db, &body).await?;
+
+    // When MinIO is the effective backend, make the bucket public-read so the
+    // browser can load uploaded branding/avatars. Best-effort: a failure here
+    // does not block saving — the operator can still fix the bucket manually.
+    if cfg.backend == crate::shared::storage_config::StorageBackend::Minio
+        && !cfg.minio_endpoint.trim().is_empty()
+        && !cfg.minio_bucket.trim().is_empty()
+        && !cfg.minio_access_key.trim().is_empty()
+    {
+        let secret = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM system_settings WHERE key = 'storage_minio_secret_key'",
+        )
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or_default();
+        if !secret.trim().is_empty() {
+            if let Err(e) = set_minio_bucket_public_read(
+                &cfg.minio_endpoint,
+                &cfg.minio_bucket,
+                &cfg.minio_access_key,
+                &secret,
+                cfg.minio_use_ssl,
+            )
+            .await
+            {
+                tracing::warn!("Saved MinIO storage config but could not set bucket public-read: {}", e);
+            }
+        }
+    }
+
     Ok(HttpResponse::Ok().json(cfg))
 }
 
@@ -81,7 +111,22 @@ pub async fn test_storage_config(
             };
 
             match test_minio_storage(&endpoint, &bucket, &access_key, &secret_key, use_ssl).await {
-                Ok(msg) => Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg }))),
+                Ok(msg) => {
+                    // Uploaded branding/avatars must be anonymously readable so a
+                    // browser can load them. Ensure the bucket is public-read; a
+                    // failure here is non-fatal (the connection itself is OK) — we
+                    // just surface it in the message so the operator can fix it.
+                    let public = match set_minio_bucket_public_read(
+                        &endpoint, &bucket, &access_key, &secret_key, use_ssl,
+                    )
+                    .await
+                    {
+                        Ok(_) => "Bucket set to public-read (anonymous GetObject).".to_string(),
+                        Err(e) => format!("WARNING: could not set bucket public-read: {}", e),
+                    };
+                    Ok(HttpResponse::Ok()
+                        .json(serde_json::json!({ "ok": true, "message": format!("{} {}", msg, public) })))
+                }
                 Err(e) => Err(AppError::Validation(e)),
             }
         }

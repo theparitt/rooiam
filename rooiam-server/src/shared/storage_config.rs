@@ -677,6 +677,96 @@ async fn put_minio_object(
     }
 }
 
+/// Set an anonymous public-read (download-only) bucket policy so a browser can
+/// load uploaded branding/avatar assets directly. Equivalent to
+/// `mc anonymous set download <bucket>`. Allows only `s3:GetObject` on
+/// `bucket/*` — no anonymous listing, uploads, or deletes.
+pub async fn set_minio_bucket_public_read(
+    endpoint: &str,
+    bucket: &str,
+    access_key: &str,
+    secret_key: &str,
+    use_ssl: bool,
+) -> Result<(), String> {
+    let endpoint = endpoint.trim();
+    let bucket = bucket.trim();
+    let access_key = access_key.trim();
+    let secret_key = secret_key.trim();
+    let region = "us-east-1";
+
+    let policy = format!(
+        r#"{{"Version":"2012-10-17","Statement":[{{"Effect":"Allow","Principal":{{"AWS":["*"]}},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::{}/*"]}}]}}"#,
+        bucket
+    );
+    let body = policy.into_bytes();
+
+    let base = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+        endpoint.trim_end_matches('/').to_string()
+    } else if use_ssl {
+        format!("https://{}", endpoint.trim_end_matches('/'))
+    } else {
+        format!("http://{}", endpoint.trim_end_matches('/'))
+    };
+    // PUT /{bucket}?policy= — the policy subresource. Note the canonical query
+    // string is "policy=" (empty value), which must be signed.
+    let url = format!("{}/{}?policy=", base, bucket);
+    let host = url::Url::parse(&url)
+        .map_err(|e| format!("Invalid MinIO endpoint: {}", e))?
+        .host_str()
+        .unwrap_or(endpoint)
+        .to_string();
+    let now = chrono::Utc::now();
+    let date_stamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let payload_hash = hex_sha256(&body);
+    let content_length = body.len().to_string();
+    let canonical_headers = format!(
+        "content-length:{}\nhost:{}\nx-amz-content-sha256:{}\nx-amz-date:{}\n",
+        content_length, host, payload_hash, amz_date
+    );
+    let signed_headers = "content-length;host;x-amz-content-sha256;x-amz-date";
+    let canonical_request = format!(
+        "PUT\n/{}\npolicy=\n{}\n{}\n{}",
+        bucket, canonical_headers, signed_headers, payload_hash
+    );
+    let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        amz_date,
+        credential_scope,
+        hex_sha256(canonical_request.as_bytes())
+    );
+    let signing_key = derive_signing_key(secret_key, &date_stamp, region, "s3");
+    let signature = hex_hmac_sha256(&signing_key, string_to_sign.as_bytes());
+    let auth = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{},SignedHeaders={},Signature={}",
+        access_key, credential_scope, signed_headers, signature
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let resp = client
+        .put(&url)
+        .header("host", &host)
+        .header("x-amz-date", &amz_date)
+        .header("x-amz-content-sha256", payload_hash)
+        .header("content-length", content_length)
+        .header("authorization", auth)
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("Cannot reach MinIO: {}", e))?;
+    let status = resp.status().as_u16();
+    if status == 200 || status == 204 {
+        Ok(())
+    } else {
+        let body = resp.text().await.unwrap_or_default();
+        Err(format!("MinIO set bucket policy returned {}: {}", status, body))
+    }
+}
+
 async fn delete_minio_object(
     endpoint: &str,
     bucket: &str,
