@@ -1,6 +1,10 @@
 import React from 'react'
 
+const APP_VERSION = 'v0.1.0'
+
 const entries: { label: string; value: string }[] = [
+  { label: 'VERSION',       value: APP_VERSION },
+  { label: 'BUILD TIME',    value: __BUILD_TIME__ },
   { label: 'VITE_API_URL',  value: import.meta.env.VITE_API_URL  || '(not set)' },
   { label: 'VITE_DOCS_URL', value: import.meta.env.VITE_DOCS_URL || '(not set)' },
 ]
@@ -35,7 +39,7 @@ export default function DebugBadge() {
           userSelect: 'none',
         }}
       >
-        {__BUILD_TIME__}
+        {APP_VERSION} · {__BUILD_TIME__}
       </div>
 
       {open && (
