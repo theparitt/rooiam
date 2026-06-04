@@ -35,7 +35,7 @@ export default function DebugBadge() {
           userSelect: 'none',
         }}
       >
-        v0.1.0
+        {__BUILD_TIME__}
       </div>
 
       {open && (
