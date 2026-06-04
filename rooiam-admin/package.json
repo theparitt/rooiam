@@ -11,6 +11,8 @@
         "build": "tsc && vite build --mode prod-online",
         "build:prod-online": "tsc && vite build --mode prod-online",
         "build:demo-online": "tsc && vite build --mode demo-online",
+        "deploy": "npm run build:prod-online && wrangler pages deploy dist --project-name rooiam-admin --branch main --commit-dirty=true",
+        "deploy:demo": "npm run build:demo-online && wrangler pages deploy dist --project-name rooiam-admin-demo --branch main --commit-dirty=true",
         "pages:dev": "wrangler pages dev",
         "pages:deploy": "wrangler pages deploy",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

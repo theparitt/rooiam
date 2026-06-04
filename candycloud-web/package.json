@@ -8,6 +8,7 @@
     "dev": "vite",
     "dev:demo": "vite --host 0.0.0.0 --port 5184 --strictPort",
     "build": "tsc && vite build",
+    "deploy": "VITE_API_URL=https://candycloud-api.rooiam.com npm run build && npx wrangler pages deploy dist --project-name candycloud-web",
     "preview": "vite preview"
   },
   "dependencies": {
