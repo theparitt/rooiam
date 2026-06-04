@@ -667,13 +667,17 @@ async fn put_minio_object(
         .body(body.to_vec())
         .send()
         .await
-        .map_err(|e| format!("Cannot reach MinIO: {}", e))?;
+        .map_err(|e| format!("cannot reach host {} ({})", host, e))?;
     let status = resp.status().as_u16();
     if status == 200 || status == 201 || status == 204 {
         Ok(())
+    } else if status == 403 {
+        Err(format!("access denied (HTTP 403) — check the access key / secret key for bucket '{}'", bucket))
+    } else if status == 404 {
+        Err(format!("bucket '{}' not found (HTTP 404) — create it first", bucket))
     } else {
         let body = resp.text().await.unwrap_or_default();
-        Err(format!("MinIO PUT object returned {}: {}", status, body))
+        Err(format!("PUT returned HTTP {}: {}", status, body))
     }
 }
 
@@ -784,8 +788,17 @@ pub async fn test_minio_roundtrip(
     let probe_key = format!("uploads/_healthcheck/{}.txt", uuid::Uuid::new_v4());
     let probe_body = b"rooiam-storage-roundtrip";
 
-    // 1. Write the probe (authenticated PUT).
-    put_minio_object(
+    let base = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+        endpoint.trim_end_matches('/').to_string()
+    } else if use_ssl {
+        format!("https://{}", endpoint.trim_end_matches('/'))
+    } else {
+        format!("http://{}", endpoint.trim_end_matches('/'))
+    };
+
+    // 1. WRITE the probe (authenticated PUT). Names the host on failure so the
+    //    operator can see "can't reach 1.2.3.4:9000" vs "access denied".
+    if let Err(e) = put_minio_object(
         endpoint,
         bucket,
         &probe_key,
@@ -796,45 +809,80 @@ pub async fn test_minio_roundtrip(
         use_ssl,
     )
     .await
-    .map_err(|e| format!("Write failed: {}", e))?;
+    {
+        return Err(format!(
+            "[WRITE FAILED] Could not upload a test object to bucket '{}' at {}: {}",
+            bucket, base, e
+        ));
+    }
 
-    // 2. Read it back ANONYMOUSLY (no auth) — this is what a browser does.
-    let base = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
-        endpoint.trim_end_matches('/').to_string()
-    } else if use_ssl {
-        format!("https://{}", endpoint.trim_end_matches('/'))
-    } else {
-        format!("http://{}", endpoint.trim_end_matches('/'))
-    };
+    // 2. READ it back ANONYMOUSLY (no auth) — exactly what a browser does.
     let read_url = format!("{}/{}/{}", base, bucket.trim(), probe_key);
-    let client = reqwest::Client::builder()
+    let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    {
+        Ok(c) => c,
+        Err(e) => return Err(format!("[READ FAILED] Could not build HTTP client: {}", e)),
+    };
     let read_result = client.get(&read_url).send().await;
 
-    // 3. Clean up the probe regardless of the read outcome (best-effort).
-    let _ = delete_minio_object(endpoint, bucket, &probe_key, access_key, secret_key, use_ssl).await;
+    // 3. DELETE the probe (cleanup). Best-effort, but report if it fails so the
+    //    operator knows a stray test object was left behind.
+    let delete_err =
+        delete_minio_object(endpoint, bucket, &probe_key, access_key, secret_key, use_ssl)
+            .await
+            .err();
 
-    match read_result {
+    // Evaluate the anonymous read.
+    let read_outcome: Result<(), String> = match read_result {
         Ok(resp) => {
             let status = resp.status().as_u16();
             if status == 200 {
                 let got = resp.bytes().await.unwrap_or_default();
                 if got.as_ref() == probe_body {
-                    Ok("Round-trip OK: wrote a probe object and read it back anonymously (bucket is publicly readable).".into())
+                    Ok(())
                 } else {
-                    Err("Anonymous read returned 200 but the content did not match — check for a proxy/CDN rewriting responses.".into())
+                    Err("[READ FAILED] Anonymous read returned 200 but the content did not match — a proxy/CDN in front of MinIO is rewriting responses.".into())
                 }
             } else if status == 403 {
-                Err("Wrote the object, but anonymous read was DENIED (HTTP 403). The bucket is not public-read — browsers will not be able to load uploaded images.".into())
+                Err(format!(
+                    "[READ FAILED] Upload worked, but anonymous read of {} was DENIED (HTTP 403). The bucket '{}' is not public-read — browsers cannot load uploaded images.",
+                    read_url, bucket
+                ))
             } else if status == 404 {
-                Err("Wrote the object, but anonymous read returned 404. Either the bucket is private (MinIO hides existence) or the public endpoint does not point at this bucket.".into())
+                Err(format!(
+                    "[READ FAILED] Upload worked, but anonymous read of {} returned 404 (NoSuchKey). Either the bucket is private (MinIO hides existence from anonymous callers) or this endpoint does not serve bucket '{}'.",
+                    read_url, bucket
+                ))
             } else {
-                Err(format!("Wrote the object, but anonymous read returned HTTP {}.", status))
+                Err(format!(
+                    "[READ FAILED] Upload worked, but anonymous read of {} returned HTTP {}.",
+                    read_url, status
+                ))
             }
         }
-        Err(e) => Err(format!("Wrote the object, but the anonymous read request failed: {}", e)),
+        Err(e) => Err(format!(
+            "[READ FAILED] Upload worked, but could not reach {} for the anonymous read: {}",
+            read_url, e
+        )),
+    };
+
+    // Read failure is the important one — surface it (mention cleanup if that also failed).
+    if let Err(read_msg) = read_outcome {
+        return match delete_err {
+            Some(de) => Err(format!("{} (Also: [DELETE FAILED] could not remove the test object: {})", read_msg, de)),
+            None => Err(read_msg),
+        };
+    }
+
+    // Read passed. If only the cleanup failed, that's a soft warning, not a hard error.
+    match delete_err {
+        Some(de) => Ok(format!(
+            "Round-trip OK: uploaded a test object and read it back anonymously (bucket is public-read). WARNING: [DELETE FAILED] could not remove the test object: {}",
+            de
+        )),
+        None => Ok("Round-trip OK: uploaded a test object, read it back anonymously (bucket is public-read), and cleaned it up.".into()),
     }
 }
 
