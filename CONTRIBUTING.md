@@ -16,10 +16,10 @@ The fastest path is Docker:
 ```bash
 git clone https://github.com/theparitt/rooiam
 cd rooiam
-docker compose --profile demo up --build -d
+docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo up -d
 ```
 
-This starts the demo stack with seeded accounts, Mailhog, and all frontends. No Rust toolchain required.
+This starts the demo API (seeded accounts), Postgres, Redis, MinIO, and Mailhog. No Rust toolchain required. The admin/login frontends run separately in dev — see [docs/getting-started/02_run_local_development.md](docs/getting-started/02_run_local_development.md).
 
 For local source-based development, see [docs/getting-started/02_run_local_development.md](docs/getting-started/02_run_local_development.md).
 
@@ -36,7 +36,7 @@ For local source-based development, see [docs/getting-started/02_run_local_devel
 | `http://localhost:5180` | API server (demo) |
 | `http://localhost:5181` | Admin (demo) |
 | `http://localhost:5182` | Portal / login (demo) |
-| `http://localhost:5183` | Demo downstream app |
+| `http://localhost:5184` | Demo downstream app |
 | `http://localhost:5191` | Example 1 — widget |
 | `http://localhost:5192` | Example 2 — account |
 | `http://localhost:5193` | Example 3 — backend |
