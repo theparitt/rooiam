@@ -2086,8 +2086,29 @@ function StorageSettingsTab() {
                     </div>
                 )}
 
-                {testStatus && <p className="text-xs font-bold text-green-700 bg-green-50 rounded-2xl px-4 py-2.5">{testStatus}</p>}
-                {testError && <p className="text-xs font-bold text-red-500 bg-red-50 rounded-2xl px-4 py-2.5">{testError}</p>}
+                {testStatus && (
+                    <div className="rounded-2xl bg-green-50 px-4 py-2.5 text-xs font-bold text-green-700">
+                        {testStatus
+                            .split(/(?<=\.)\s+/)
+                            .filter(Boolean)
+                            .map((line, i) => (
+                                <p key={i} className="flex gap-1.5">
+                                    <span className="text-green-500">✓</span>
+                                    <span>{line}</span>
+                                </p>
+                            ))}
+                    </div>
+                )}
+                {testError && (
+                    <div className="rounded-2xl bg-red-50 px-4 py-2.5 text-xs font-bold text-red-500">
+                        {testError
+                            .split(/(?<=\.)\s+/)
+                            .filter(Boolean)
+                            .map((line, i) => (
+                                <p key={i}>{line}</p>
+                            ))}
+                    </div>
+                )}
                 {saveStatus && <p className="text-xs font-bold text-green-700 bg-green-50 rounded-2xl px-4 py-2.5">{saveStatus}</p>}
                 {saveError && <p className="text-xs font-bold text-red-500 bg-red-50 rounded-2xl px-4 py-2.5">{saveError}</p>}
 
