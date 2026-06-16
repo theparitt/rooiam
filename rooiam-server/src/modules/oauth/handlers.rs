@@ -8,32 +8,43 @@
 // params are absent.
 // ─────────────────────────────────────────────────────────────────────────────
 
-use actix_web::{web, HttpRequest, HttpResponse};
-use url::Url;
-use rand::{rngs::OsRng, RngCore};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use sqlx::PgPool;
 use crate::bootstrap::config::AppConfig;
+use actix_web::{web, HttpRequest, HttpResponse};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use rand::{rngs::OsRng, RngCore};
+use sqlx::PgPool;
+use url::Url;
 
 use crate::bootstrap::state::AppState;
-use crate::shared::error::AppError;
-use crate::shared::auth_policy::{admin_console_requires_mfa, ensure_auth_method_allowed, ensure_email_domain_allowed, get_workspace_policy_for_redirect, AuthMethod};
-use crate::shared::operator_policy::{enforce_operator_login_policy, AuthMethod as OpAuthMethod};
-use crate::shared::ip_policy::{access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect};
-use crate::shared::redirect::validate_redirect_uri;
-use crate::shared::auth_context::{is_registered_oauth_redirect_uri, resolve_login_context};
-use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
-use crate::shared::runtime_config::{effective_admin_url, effective_enduser_url, effective_public_urls, get_setting, load_runtime_app_config};
-use crate::shared::widget_login_context::{consume_widget_login_context, resolve_widget_login_context, is_widget_login_context_invalid_error, WIDGET_LOGIN_CONTEXT_INVALID_MESSAGE};
-use crate::shared::demo_seed::{demo_seed_enabled, demo_default_email_for_context};
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::identity::repository::IdentityRepository;
 use crate::modules::mfa::{repository::MfaRepository, service::MfaService};
 use crate::modules::organization::repository::OrganizationRepository;
 use crate::modules::session::{
-    service::SessionService,
-    repository::SessionRepository,
     cookie::{build_session_cookie, ROOIAM_SESSION_COOKIE},
+    repository::SessionRepository,
+    service::SessionService,
+};
+use crate::shared::auth_context::{is_registered_oauth_redirect_uri, resolve_login_context};
+use crate::shared::auth_policy::{
+    admin_console_requires_mfa, ensure_auth_method_allowed, ensure_email_domain_allowed,
+    get_workspace_policy_for_redirect, AuthMethod,
+};
+use crate::shared::demo_seed::{demo_default_email_for_context, demo_seed_enabled};
+use crate::shared::error::AppError;
+use crate::shared::ip_policy::{
+    access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect,
+};
+use crate::shared::operator_policy::{enforce_operator_login_policy, AuthMethod as OpAuthMethod};
+use crate::shared::redirect::validate_redirect_uri;
+use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
+use crate::shared::runtime_config::{
+    effective_admin_url, effective_enduser_url, effective_public_urls, get_setting,
+    load_runtime_app_config,
+};
+use crate::shared::widget_login_context::{
+    consume_widget_login_context, is_widget_login_context_invalid_error,
+    resolve_widget_login_context, WIDGET_LOGIN_CONTEXT_INVALID_MESSAGE,
 };
 use uuid::Uuid;
 
@@ -139,7 +150,7 @@ async fn set_system_setting(db: &PgPool, key: &str, value: &str) -> Result<(), A
     sqlx::query(
         "INSERT INTO system_settings (key, value, updated_at)
          VALUES ($1, $2, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()"
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()",
     )
     .bind(key)
     .bind(value)
@@ -150,13 +161,17 @@ async fn set_system_setting(db: &PgPool, key: &str, value: &str) -> Result<(), A
 }
 
 async fn is_platform_staff(db: &PgPool, user_id: uuid::Uuid) -> Result<bool, AppError> {
-    let is_staff: Option<bool> = sqlx::query_scalar(
-        "SELECT (is_platform_owner OR is_superuser) FROM users WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to check platform admin access for OAuth settings: {}", e)))?;
+    let is_staff: Option<bool> =
+        sqlx::query_scalar("SELECT (is_platform_owner OR is_superuser) FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to check platform admin access for OAuth settings: {}",
+                    e
+                ))
+            })?;
 
     Ok(is_staff.unwrap_or(false))
 }
@@ -194,7 +209,12 @@ fn mark_oauth_test_result(final_redirect: &str, provider: &str, result: &str) ->
     url.to_string()
 }
 
-fn mark_oauth_link_result(final_redirect: &str, provider: &str, result: &str, message: &str) -> String {
+fn mark_oauth_link_result(
+    final_redirect: &str,
+    provider: &str,
+    result: &str,
+    message: &str,
+) -> String {
     let Ok(mut url) = Url::parse(final_redirect) else {
         return final_redirect.to_string();
     };
@@ -247,7 +267,6 @@ fn resolve_final_redirect_uri_from_validation(
     }
 }
 
-
 fn normalize_demo_email(email: Option<&str>) -> Option<String> {
     email
         .map(str::trim)
@@ -257,24 +276,30 @@ fn normalize_demo_email(email: Option<&str>) -> Option<String> {
 
 fn demo_provider_icon_svg(provider: &str) -> &'static str {
     match provider {
-        "google" => r##"
+        "google" => {
+            r##"
 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-</svg>"##,
-        "microsoft" => r##"
+</svg>"##
+        }
+        "microsoft" => {
+            r##"
 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <path fill="#F25022" d="M1 1h10v10H1z"/>
   <path fill="#7FBA00" d="M13 1h10v10H13z"/>
   <path fill="#00A4EF" d="M1 13h10v10H1z"/>
   <path fill="#FFB900" d="M13 13h10v10H13z"/>
-</svg>"##,
-        _ => r#"
+</svg>"##
+        }
+        _ => {
+            r#"
 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <rect x="4" y="4" width="16" height="16" rx="5" fill="currentColor"/>
-</svg>"#,
+</svg>"#
+        }
     }
 }
 
@@ -657,7 +682,9 @@ async fn create_demo_continue_state(
                 initiated_ip,
                 initiated_ua,
             })
-            .map_err(|e| AppError::Internal(format!("Failed to encode demo OAuth state payload: {}", e)))?,
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to encode demo OAuth state payload: {}", e))
+            })?,
         )
         .query_async(&mut redis_conn)
         .await
@@ -683,7 +710,8 @@ async fn complete_demo_oauth_login(
         "microsoft" => AuthMethod::Microsoft,
         _ => return Err(AppError::Validation("Unsupported provider".into())),
     };
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, Some(redirect_uri)).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, Some(redirect_uri)).await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -692,15 +720,20 @@ async fn complete_demo_oauth_login(
         return Err(AppError::Forbidden(access_denied_message(&decision).into()));
     }
 
-    let workspace_policy = ensure_auth_method_allowed(&state.db, Some(redirect_uri), auth_method).await?;
+    let workspace_policy =
+        ensure_auth_method_allowed(&state.db, Some(redirect_uri), auth_method).await?;
     let context = crate::shared::auth_context::inspect_login_context(Some(redirect_uri));
     if let Some(workspace_slug) = context.workspace_slug.as_deref() {
         if workspace_policy.is_none() {
-            return Err(AppError::Validation(format!("Workspace '{}' was not found.", workspace_slug)));
+            return Err(AppError::Validation(format!(
+                "Workspace '{}' was not found.",
+                workspace_slug
+            )));
         }
     }
-    let demo_email = normalize_demo_email(selected_email)
-        .unwrap_or_else(|| demo_default_email_for_context(surface, context.workspace_slug.as_deref()).to_string());
+    let demo_email = normalize_demo_email(selected_email).unwrap_or_else(|| {
+        demo_default_email_for_context(surface, context.workspace_slug.as_deref()).to_string()
+    });
 
     let identity_repo = IdentityRepository::new(state.db.clone());
     let user_id = identity_repo
@@ -723,19 +756,28 @@ async fn complete_demo_oauth_login(
         state.config.as_ref().clone(),
     );
     let ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let (totp_enabled, _) = mfa_service.totp_status(user_id).await?;
     let org_repo = OrganizationRepository::new(state.db.clone());
     let workspace_requires_mfa = match workspace_policy.as_ref() {
         Some(org) => {
             org.require_mfa
                 || (org.require_mfa_for_admins
-                    && org_repo.is_org_admin_or_owner(org.id, user_id).await.unwrap_or(false))
+                    && org_repo
+                        .is_org_admin_or_owner(org.id, user_id)
+                        .await
+                        .unwrap_or(false))
         }
         None => {
             if let Some(org_id) = login_context.current_org_id {
                 // Tenant portal login — check if the org requires MFA for portal access
-                org_repo.get_organization_by_id(org_id).await?
+                org_repo
+                    .get_organization_by_id(org_id)
+                    .await?
                     .map(|org| org.tenant_portal_require_mfa)
                     .unwrap_or(false)
             } else {
@@ -744,7 +786,9 @@ async fn complete_demo_oauth_login(
             }
         }
     };
-    let audit_org_id = login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id));
+    let audit_org_id = login_context
+        .current_org_id
+        .or_else(|| workspace_policy.as_ref().map(|org| org.id));
 
     if workspace_requires_mfa && !totp_enabled {
         let enrollment = mfa_service
@@ -756,28 +800,37 @@ async fn complete_demo_oauth_login(
             )
             .await?;
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(user_id),
-            organization_id: login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id)),
-            action: "auth.mfa.enrollment.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip: ip.clone(),
-            user_agent: ua.clone(),
-            metadata: serde_json::json!({
-                "reason": "workspace_requires_mfa_but_user_has_no_totp",
-                "provider": provider,
-                "method": demo_provider_method(provider),
-                "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
-                "demo_mode": true,
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(user_id),
+                organization_id: login_context
+                    .current_org_id
+                    .or_else(|| workspace_policy.as_ref().map(|org| org.id)),
+                action: "auth.mfa.enrollment.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip: ip.clone(),
+                user_agent: ua.clone(),
+                metadata: serde_json::json!({
+                    "reason": "workspace_requires_mfa_but_user_has_no_totp",
+                    "provider": provider,
+                    "method": demo_provider_method(provider),
+                    "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
+                    "demo_mode": true,
+                }),
+            })
+            .await;
 
-        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
+        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref())
+            .await?
+            .issuer_url;
         let mut url = Url::parse(&format!("{}/verify", hosted_auth.trim_end_matches('/')))
             .map_err(|e| AppError::Internal(format!("Invalid login UI URL: {}", e)))?;
         url.query_pairs_mut()
-            .append_pair("mfa_enrollment_challenge", &enrollment.challenge.id.to_string())
+            .append_pair(
+                "mfa_enrollment_challenge",
+                &enrollment.challenge.id.to_string(),
+            )
             .append_pair("redirect_uri", redirect_uri);
         return Ok(HttpResponse::Found()
             .insert_header(("Location", url.to_string()))
@@ -793,7 +846,9 @@ async fn complete_demo_oauth_login(
                 Some(provider),
             )
             .await?;
-        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
+        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref())
+            .await?
+            .issuer_url;
         let mut login_url = Url::parse(&format!("{}/verify", hosted_auth.trim_end_matches('/')))
             .map_err(|e| AppError::Internal(format!("Invalid hosted verify URL: {}", e)))?;
         login_url
@@ -801,23 +856,25 @@ async fn complete_demo_oauth_login(
             .append_pair("mfa_challenge", &challenge.challenge.id.to_string())
             .append_pair("redirect_uri", redirect_uri);
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(user_id),
-            organization_id: audit_org_id,
-            action: "auth.mfa.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip: ip.clone(),
-            user_agent: ua.clone(),
-            metadata: serde_json::json!({
-                "method": demo_provider_method(provider),
-                "provider": provider,
-                "redirect_to": redirect_uri,
-                "app_name": login_context.app_name,
-                "workspace_slug": login_context.workspace_slug,
-                "demo_mode": true,
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(user_id),
+                organization_id: audit_org_id,
+                action: "auth.mfa.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip: ip.clone(),
+                user_agent: ua.clone(),
+                metadata: serde_json::json!({
+                    "method": demo_provider_method(provider),
+                    "provider": provider,
+                    "redirect_to": redirect_uri,
+                    "app_name": login_context.app_name,
+                    "workspace_slug": login_context.workspace_slug,
+                    "demo_mode": true,
+                }),
+            })
+            .await;
 
         return Ok(HttpResponse::Found()
             .insert_header(("Location", login_url.to_string()))
@@ -826,38 +883,42 @@ async fn complete_demo_oauth_login(
 
     let session_repo = SessionRepository::new(state.db.clone());
     let session_service = SessionService::new(session_repo, state.db.clone());
-    let (_session, opaque_string) = session_service.create_opaque_session_with_context(
-        user_id,
-        crate::modules::session::models::SessionCreateContext {
-            user_agent: ua.clone(),
-            ip: client_ip_from_http_request(&req, state.config.as_ref()),
-            current_org_id: login_context.current_org_id,
-            login_surface: surface.map(str::to_string),
-            login_app_name: login_context.app_name.clone(),
-            login_workspace_slug: login_context.workspace_slug.clone(),
-        },
-    ).await?;
+    let (_session, opaque_string) = session_service
+        .create_opaque_session_with_context(
+            user_id,
+            crate::modules::session::models::SessionCreateContext {
+                user_agent: ua.clone(),
+                ip: client_ip_from_http_request(&req, state.config.as_ref()),
+                current_org_id: login_context.current_org_id,
+                login_surface: surface.map(str::to_string),
+                login_app_name: login_context.app_name.clone(),
+                login_workspace_slug: login_context.workspace_slug.clone(),
+            },
+        )
+        .await?;
 
     let cookie = build_session_cookie(opaque_string, &state.config, 7 * 24 * 3600);
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(user_id),
-        organization_id: audit_org_id,
-        action: "demo.oauth.login.success".into(),
-        target_type: "oauth_provider".into(),
-        target_id: Some(provider.to_string()),
-        ip,
-        user_agent: ua,
-        metadata: serde_json::json!({
-            "provider": provider,
-            "method": demo_provider_method(provider),
-            "redirect_to": redirect_uri,
-            "app_name": login_context.app_name,
-            "workspace_slug": login_context.workspace_slug,
-            "demo_user_email": demo_email,
-            "demo_mode": true,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(user_id),
+            organization_id: audit_org_id,
+            action: "demo.oauth.login.success".into(),
+            target_type: "oauth_provider".into(),
+            target_id: Some(provider.to_string()),
+            ip,
+            user_agent: ua,
+            metadata: serde_json::json!({
+                "provider": provider,
+                "method": demo_provider_method(provider),
+                "redirect_to": redirect_uri,
+                "app_name": login_context.app_name,
+                "workspace_slug": login_context.workspace_slug,
+                "demo_user_email": demo_email,
+                "demo_mode": true,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Found()
         .cookie(cookie)
@@ -882,7 +943,8 @@ async fn demo_provider_page_from_query(
             email: query.email,
             widget_login_context: query.widget_login_context,
         },
-    ).await
+    )
+    .await
 }
 
 async fn start_demo_provider_page(
@@ -910,7 +972,8 @@ async fn start_demo_provider_page(
         ));
     }
     let redirect_uri = if let Some(ref ctx_token) = query.widget_login_context {
-        let ctx = resolve_widget_login_context(&state, Some(ctx_token)).await?
+        let ctx = resolve_widget_login_context(&state, Some(ctx_token))
+            .await?
             .ok_or_else(|| AppError::Validation(WIDGET_LOGIN_CONTEXT_INVALID_MESSAGE.into()))?;
         ctx.redirect_uri
     } else if let Some(ref uri) = query.redirect_uri {
@@ -920,17 +983,25 @@ async fn start_demo_provider_page(
             return Err(AppError::Validation("redirect_uri is required".into()));
         }
         if url::Url::parse(uri).is_err() {
-            tracing::error!("demo_provider_page: redirect_uri is not a valid URL: {}", uri);
-            return Err(AppError::Validation("redirect_uri is not a valid URL".into()));
+            tracing::error!(
+                "demo_provider_page: redirect_uri is not a valid URL: {}",
+                uri
+            );
+            return Err(AppError::Validation(
+                "redirect_uri is not a valid URL".into(),
+            ));
         }
         uri.to_string()
     } else {
-        tracing::error!("demo_provider_page: neither widget_login_context nor redirect_uri provided");
+        tracing::error!(
+            "demo_provider_page: neither widget_login_context nor redirect_uri provided"
+        );
         return Err(AppError::Validation(
             "redirect_uri is required (direct app flow) or widget_login_context (widget embed flow)".into(),
         ));
     };
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, Some(&redirect_uri)).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, Some(&redirect_uri)).await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -943,17 +1014,26 @@ async fn start_demo_provider_page(
         "microsoft" => AuthMethod::Microsoft,
         _ => unreachable!(),
     };
-    let workspace_policy = ensure_auth_method_allowed(&state.db, Some(&redirect_uri), auth_method).await?;
+    let workspace_policy =
+        ensure_auth_method_allowed(&state.db, Some(&redirect_uri), auth_method).await?;
 
     let context = crate::shared::auth_context::inspect_login_context(Some(&redirect_uri));
     if let Some(workspace_slug) = context.workspace_slug.as_deref() {
         if workspace_policy.is_none() {
-            return Err(AppError::Validation(format!("Workspace '{}' was not found.", workspace_slug)));
+            return Err(AppError::Validation(format!(
+                "Workspace '{}' was not found.",
+                workspace_slug
+            )));
         }
     }
-    let app_name = context.app_name.clone().unwrap_or_else(|| "Rooiam".to_string());
-    let demo_email = normalize_demo_email(query.email.as_deref())
-        .unwrap_or_else(|| demo_default_email_for_context(query.surface.as_deref(), context.workspace_slug.as_deref()).to_string());
+    let app_name = context
+        .app_name
+        .clone()
+        .unwrap_or_else(|| "Rooiam".to_string());
+    let demo_email = normalize_demo_email(query.email.as_deref()).unwrap_or_else(|| {
+        demo_default_email_for_context(query.surface.as_deref(), context.workspace_slug.as_deref())
+            .to_string()
+    });
     let continue_state = create_demo_continue_state(
         &state,
         &provider,
@@ -961,8 +1041,12 @@ async fn start_demo_provider_page(
         query.surface.as_deref(),
         Some(&demo_email),
         client_ip_string_from_http_request(&req, state.config.as_ref()),
-        req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-    ).await?;
+        req.headers()
+            .get("user-agent")
+            .and_then(|h| h.to_str().ok())
+            .map(String::from),
+    )
+    .await?;
 
     let continue_url = format!("/v1/oauth/demo/{}/continue", provider);
     let frontend_url = effective_enduser_url(&state.db).await?;
@@ -1007,26 +1091,41 @@ pub async fn demo_provider_continue(
         .query_async(&mut redis_conn)
         .await
         .map_err(|_| AppError::Validation("Invalid or expired demo OAuth state".into()))?;
-    let _: () = redis::cmd("DEL").arg(&redis_key).query_async(&mut redis_conn).await.unwrap_or(());
+    let _: () = redis::cmd("DEL")
+        .arg(&redis_key)
+        .query_async(&mut redis_conn)
+        .await
+        .unwrap_or(());
     let payload = serde_json::from_str::<DemoOAuthContinueStatePayload>(&payload_raw)
         .map_err(|_| AppError::Validation("Invalid or expired demo OAuth state".into()))?;
     if payload.provider != provider {
-        return Err(AppError::Validation("Invalid demo OAuth provider state".into()));
+        return Err(AppError::Validation(
+            "Invalid demo OAuth provider state".into(),
+        ));
     }
     let callback_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
     if let (Some(stored_ip), Some(current_ip)) = (&payload.initiated_ip, &callback_ip) {
         if stored_ip != current_ip {
-            return Err(AppError::Validation("Demo OAuth state validation failed".into()));
+            return Err(AppError::Validation(
+                "Demo OAuth state validation failed".into(),
+            ));
         }
     }
-    let callback_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let callback_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     if let (Some(stored_ua), Some(current_ua)) = (&payload.initiated_ua, &callback_ua) {
         if stored_ua != current_ua {
-            return Err(AppError::Validation("Demo OAuth state validation failed".into()));
+            return Err(AppError::Validation(
+                "Demo OAuth state validation failed".into(),
+            ));
         }
     }
     let redirect_uri = validate_redirect_uri(&payload.redirect_uri)?;
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, Some(&redirect_uri)).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, Some(&redirect_uri)).await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -1041,7 +1140,8 @@ pub async fn demo_provider_continue(
         &redirect_uri,
         payload.surface.as_deref(),
         payload.email.as_deref(),
-    ).await
+    )
+    .await
 }
 
 pub(crate) async fn start_oauth_flow(
@@ -1055,7 +1155,8 @@ pub(crate) async fn start_oauth_flow(
     initiated_ua: Option<String>,
     pending_oauth_key: Option<String>,
 ) -> Result<String, AppError> {
-    let runtime_config = load_runtime_oauth_config_with_pending(state, pending_oauth_key.as_deref()).await?;
+    let runtime_config =
+        load_runtime_oauth_config_with_pending(state, pending_oauth_key.as_deref()).await?;
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     let state_token = URL_SAFE_NO_PAD.encode(bytes);
@@ -1075,10 +1176,12 @@ pub(crate) async fn start_oauth_flow(
                 );
                 return Err(AppError::Validation(
                     "redirect_uri is required to start an OAuth flow. \
-                     For embedded widget flows, provide widget_login_context instead.".into()
+                     For embedded widget flows, provide widget_login_context instead."
+                        .into(),
                 ));
             }
-            let is_registered_redirect = is_registered_oauth_redirect_uri(&state.db, trimmed).await?;
+            let is_registered_redirect =
+                is_registered_oauth_redirect_uri(&state.db, trimmed).await?;
             let resolved = resolve_final_redirect_uri_from_validation(
                 trimmed,
                 validate_redirect_uri(trimmed),
@@ -1103,7 +1206,8 @@ pub(crate) async fn start_oauth_flow(
             );
             return Err(AppError::Validation(
                 "redirect_uri is required to start an OAuth flow. \
-                 For embedded widget flows, provide widget_login_context instead.".into()
+                 For embedded widget flows, provide widget_login_context instead."
+                    .into(),
             ));
         }
     };
@@ -1112,7 +1216,12 @@ pub(crate) async fn start_oauth_flow(
     let auth_method = match normalized_provider.as_str() {
         "google" => AuthMethod::Google,
         "microsoft" => AuthMethod::Microsoft,
-        _ => return Err(AppError::Validation(format!("Unsupported provider: {}", normalized_provider))),
+        _ => {
+            return Err(AppError::Validation(format!(
+                "Unsupported provider: {}",
+                normalized_provider
+            )))
+        }
     };
 
     if intent == "login" {
@@ -1133,7 +1242,10 @@ pub(crate) async fn start_oauth_flow(
         // are needed. Never remove this bypass or admin demo login will break with
         // "This provider is not enabled for admin sign-in yet."
         let enabled = crate::shared::demo_seed::demo_seed_enabled()
-            || get_setting(&state.db, setting_key).await?.unwrap_or_default() == "true";
+            || get_setting(&state.db, setting_key)
+                .await?
+                .unwrap_or_default()
+                == "true";
         if !enabled {
             return Err(AppError::Validation(
                 "This provider is not enabled for admin sign-in yet. Verify it first in Settings > OAuth.".into()
@@ -1155,7 +1267,9 @@ pub(crate) async fn start_oauth_flow(
                 initiated_ip,
                 initiated_ua,
             })
-            .map_err(|e| AppError::Internal(format!("Failed to encode OAuth state payload: {}", e)))?,
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to encode OAuth state payload: {}", e))
+            })?,
         )
         .query_async(&mut redis_conn)
         .await
@@ -1174,12 +1288,10 @@ pub(crate) async fn start_oauth_flow(
             url.to_string()
         }
         "microsoft" => {
-            let mut url = Url::parse(
-                &format!(
-                    "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize",
-                    runtime_config.oauth.microsoft_tenant_id
-                )
-            )
+            let mut url = Url::parse(&format!(
+                "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize",
+                runtime_config.oauth.microsoft_tenant_id
+            ))
             .unwrap();
             url.query_pairs_mut()
                 .append_pair("client_id", &runtime_config.oauth.microsoft_client_id)
@@ -1196,7 +1308,10 @@ pub(crate) async fn start_oauth_flow(
     Ok(auth_url)
 }
 
-async fn admin_login_error_redirect(state: &web::Data<AppState>, message: &str) -> Result<HttpResponse, AppError> {
+async fn admin_login_error_redirect(
+    state: &web::Data<AppState>,
+    message: &str,
+) -> Result<HttpResponse, AppError> {
     let admin_url = effective_admin_url(&state.db).await?;
     let mut url = Url::parse(&format!("{}/login", admin_url.trim_end_matches('/')))
         .map_err(|e| AppError::Internal(format!("Invalid ROOIAM_ADMIN_URL: {}", e)))?;
@@ -1216,7 +1331,8 @@ async fn user_login_error_redirect(
         .map_err(|e| AppError::Internal(format!("Invalid ROOIAM_APP_URL: {}", e)))?;
     url.query_pairs_mut().append_pair("error", message);
     if let Some(redirect_uri) = redirect_uri.filter(|value| !value.trim().is_empty()) {
-        url.query_pairs_mut().append_pair("redirect_uri", redirect_uri);
+        url.query_pairs_mut()
+            .append_pair("redirect_uri", redirect_uri);
     }
     Ok(HttpResponse::Found()
         .insert_header(("Location", url.to_string()))
@@ -1227,8 +1343,16 @@ async fn widget_expired_error_redirect(
     state: &web::Data<AppState>,
     query: &AuthRequest,
 ) -> Result<Option<HttpResponse>, AppError> {
-    let client_id = query.client_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let embed_origin = query.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let client_id = query
+        .client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let embed_origin = query
+        .widget_embed_origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let Some(client_id) = client_id else {
         return Ok(None);
     };
@@ -1236,7 +1360,11 @@ async fn widget_expired_error_redirect(
         return Ok(None);
     };
 
-    let workspace_id = query.workspace_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let workspace_id = query
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let workspace = query
         .workspace
         .as_deref()
@@ -1271,16 +1399,26 @@ async fn widget_expired_error_redirect(
     .bind(workspace)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to validate hosted login widget app access: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to validate hosted login widget app access: {}",
+            e
+        ))
+    })?
     .is_some();
 
     if !allowed {
         return Ok(None);
     }
 
-    let issuer_url = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
-    let mut url = Url::parse(&format!("{}/login-widget", issuer_url.trim_end_matches('/')))
-        .map_err(|e| AppError::Internal(format!("Invalid issuer URL: {}", e)))?;
+    let issuer_url = effective_public_urls(&state.db, state.config.as_ref())
+        .await?
+        .issuer_url;
+    let mut url = Url::parse(&format!(
+        "{}/login-widget",
+        issuer_url.trim_end_matches('/')
+    ))
+    .map_err(|e| AppError::Internal(format!("Invalid issuer URL: {}", e)))?;
     {
         let mut pairs = url.query_pairs_mut();
         pairs.append_pair("widget_error", "expired");
@@ -1291,10 +1429,20 @@ async fn widget_expired_error_redirect(
         if let Some(value) = workspace {
             pairs.append_pair("workspace", value);
         }
-        if let Some(value) = query.app.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(value) = query
+            .app
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             pairs.append_pair("app", value);
         }
-        if let Some(value) = query.surface.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(value) = query
+            .surface
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             pairs.append_pair("surface", value);
         }
     }
@@ -1316,30 +1464,51 @@ async fn login(
     {
         let provider = query.provider.trim();
         if provider.is_empty() {
-            return Err(AppError::Validation("Missing required parameter: provider".into()));
+            return Err(AppError::Validation(
+                "Missing required parameter: provider".into(),
+            ));
         }
         match provider {
             "google" | "microsoft" => {}
-            other => return Err(AppError::Validation(format!(
-                "Invalid provider '{}'. Must be 'google' or 'microsoft'.", other
-            ))),
+            other => {
+                return Err(AppError::Validation(format!(
+                    "Invalid provider '{}'. Must be 'google' or 'microsoft'.",
+                    other
+                )))
+            }
         }
 
-        let has_widget_context = query.widget_login_context.as_deref().map(str::trim).filter(|v| !v.is_empty()).is_some();
-        let has_redirect_uri   = query.redirect_uri.as_deref().map(str::trim).filter(|v| !v.is_empty()).is_some();
-        let has_embed_origin   = query.widget_embed_origin.as_deref().map(str::trim).filter(|v| !v.is_empty()).is_some();
+        let has_widget_context = query
+            .widget_login_context
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_some();
+        let has_redirect_uri = query
+            .redirect_uri
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_some();
+        let has_embed_origin = query
+            .widget_embed_origin
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_some();
 
         // Widget flows must send widget_login_context + widget_embed_origin, never redirect_uri.
         // Non-widget flows must send redirect_uri, never widget_login_context.
         if has_embed_origin && !has_widget_context {
             return Err(AppError::Validation(
                 "widget_embed_origin requires widget_login_context. \
-                 Call GET /setup/login-bootstrap with client_id and widget_embed_origin first.".into()
+                 Call GET /setup/login-bootstrap with client_id and widget_embed_origin first."
+                    .into(),
             ));
         }
         if has_widget_context && has_redirect_uri {
             return Err(AppError::Validation(
-                "Provide either widget_login_context or redirect_uri, not both.".into()
+                "Provide either widget_login_context or redirect_uri, not both.".into(),
             ));
         }
         if !has_widget_context && !has_redirect_uri {
@@ -1350,58 +1519,89 @@ async fn login(
         }
 
         // Validate redirect_uri format when provided directly.
-        if let Some(uri) = query.redirect_uri.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(uri) = query
+            .redirect_uri
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             if Url::parse(uri).is_err() && !uri.starts_with('/') {
                 return Err(AppError::Validation(format!(
-                    "redirect_uri is not a valid URL: '{}'", uri
+                    "redirect_uri is not a valid URL: '{}'",
+                    uri
                 )));
             }
         }
     }
 
-    let widget_login_context = match consume_widget_login_context(&state, query.widget_login_context.as_deref()).await {
-        Ok(value) => value,
-        Err(AppError::Validation(message)) if is_widget_login_context_invalid_error(&message) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                action: "auth.widget.context_invalid".into(),
-                target_type: "widget_login_context".into(),
-                target_id: query.widget_login_context.clone(),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "reason": "expired_or_replayed",
-                    "embed_origin": query.widget_embed_origin,
-                    "surface": query.surface,
-                    "stage": "oauth_start",
-                    "provider": query.provider,
-                }),
-            }).await;
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                action: "auth.widget.expired".into(),
-                target_type: "widget_login_context".into(),
-                target_id: query.widget_login_context.clone(),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "embed_origin": query.widget_embed_origin,
-                    "surface": query.surface,
-                    "stage": "oauth_start",
-                    "provider": query.provider,
-                }),
-            }).await;
-            if let Some(response) = widget_expired_error_redirect(&state, &query).await? {
-                return Ok(response);
+    let widget_login_context =
+        match consume_widget_login_context(&state, query.widget_login_context.as_deref()).await {
+            Ok(value) => value,
+            Err(AppError::Validation(message))
+                if is_widget_login_context_invalid_error(&message) =>
+            {
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.widget.context_invalid".into(),
+                        target_type: "widget_login_context".into(),
+                        target_id: query.widget_login_context.clone(),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "reason": "expired_or_replayed",
+                            "embed_origin": query.widget_embed_origin,
+                            "surface": query.surface,
+                            "stage": "oauth_start",
+                            "provider": query.provider,
+                        }),
+                    })
+                    .await;
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.widget.expired".into(),
+                        target_type: "widget_login_context".into(),
+                        target_id: query.widget_login_context.clone(),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "embed_origin": query.widget_embed_origin,
+                            "surface": query.surface,
+                            "stage": "oauth_start",
+                            "provider": query.provider,
+                        }),
+                    })
+                    .await;
+                if let Some(response) = widget_expired_error_redirect(&state, &query).await? {
+                    return Ok(response);
+                }
+                return Err(AppError::Validation(message));
             }
-            return Err(AppError::Validation(message));
-        }
-        Err(err) => return Err(err),
-    };
+            Err(err) => return Err(err),
+        };
     if let Some(ctx) = widget_login_context.as_ref() {
-        let supplied_embed_origin = query.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let supplied_embed_origin = query
+            .widget_embed_origin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
             return Err(AppError::Forbidden(
                 "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
@@ -1413,7 +1613,11 @@ async fn login(
     // widget_login_context is mandatory in that case — it is the only source of the
     // registered redirect_uri. Falling back to query.redirect_uri is not allowed because
     // the widget never sends a redirect_uri (it has no access to the registered callback).
-    let widget_embed_origin = query.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let widget_embed_origin = query
+        .widget_embed_origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     if widget_embed_origin.is_some() && widget_login_context.is_none() {
         tracing::error!(
             provider = %query.provider,
@@ -1424,7 +1628,8 @@ async fn login(
         );
         return Err(AppError::Validation(
             "widget_login_context is required for embedded widget OAuth. \
-             The login session may have expired — refresh the login widget and try again.".into()
+             The login session may have expired — refresh the login widget and try again."
+                .into(),
         ));
     }
 
@@ -1465,13 +1670,26 @@ async fn login(
         )?;
         if decision != crate::shared::ip_policy::IpAccessDecision::Allowed {
             return match query.surface.as_deref() {
-                Some("admin") => admin_login_error_redirect(&state, access_denied_message(&decision)).await,
-                _ => user_login_error_redirect(&state, effective_redirect_uri, access_denied_message(&decision)).await,
+                Some("admin") => {
+                    admin_login_error_redirect(&state, access_denied_message(&decision)).await
+                }
+                _ => {
+                    user_login_error_redirect(
+                        &state,
+                        effective_redirect_uri,
+                        access_denied_message(&decision),
+                    )
+                    .await
+                }
             };
         }
     }
     let initiated_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let initiated_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let initiated_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let auth_url = match start_oauth_flow(
         &state,
         &query.provider,
@@ -1486,41 +1704,61 @@ async fn login(
     .await
     {
         Ok(url) => url,
-        Err(AppError::Validation(message)) if query.surface.as_deref() == Some("admin") && intent == "login" => {
+        Err(AppError::Validation(message))
+            if query.surface.as_deref() == Some("admin") && intent == "login" =>
+        {
             if message.contains("redirect_uri") {
-                AuditService::new(state.db.clone()).log(AuditEvent {
-                    actor_user_id: None,
-                    organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                    action: "auth.app_callback_rejected".into(),
-                    target_type: "redirect_uri".into(),
-                    target_id: effective_redirect_uri.map(str::to_string),
-                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                    user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                    metadata: serde_json::json!({
-                        "method": query.provider,
-                        "surface": query.surface,
-                        "intent": intent,
-                    }),
-                }).await;
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.app_callback_rejected".into(),
+                        target_type: "redirect_uri".into(),
+                        target_id: effective_redirect_uri.map(str::to_string),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "method": query.provider,
+                            "surface": query.surface,
+                            "intent": intent,
+                        }),
+                    })
+                    .await;
             }
             return admin_login_error_redirect(&state, &message).await;
         }
         Err(AppError::Validation(message)) if intent == "login" => {
             if message.contains("redirect_uri") {
-                AuditService::new(state.db.clone()).log(AuditEvent {
-                    actor_user_id: None,
-                    organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                    action: "auth.app_callback_rejected".into(),
-                    target_type: "redirect_uri".into(),
-                    target_id: effective_redirect_uri.map(str::to_string),
-                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                    user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                    metadata: serde_json::json!({
-                        "method": query.provider,
-                        "surface": query.surface,
-                        "intent": intent,
-                    }),
-                }).await;
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.app_callback_rejected".into(),
+                        target_type: "redirect_uri".into(),
+                        target_id: effective_redirect_uri.map(str::to_string),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "method": query.provider,
+                            "surface": query.surface,
+                            "intent": intent,
+                        }),
+                    })
+                    .await;
             }
             return user_login_error_redirect(&state, effective_redirect_uri, &message).await;
         }
@@ -1542,35 +1780,51 @@ async fn callback(
 ) -> Result<HttpResponse, AppError> {
     let provider = path.into_inner().to_lowercase();
     if let Some(error) = query.error.as_deref() {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: None,
-            action: "oauth.login.failed".into(),
-            target_type: "oauth_provider".into(),
-            target_id: Some(provider.clone()),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({
-                "error": "oauth_provider_error",
-                "provider_error": error,
-                "error_description": query.error_description,
-                "error_subtype": query.error_subtype,
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: None,
+                action: "oauth.login.failed".into(),
+                target_type: "oauth_provider".into(),
+                target_id: Some(provider.clone()),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::json!({
+                    "error": "oauth_provider_error",
+                    "provider_error": error,
+                    "error_description": query.error_description,
+                    "error_subtype": query.error_subtype,
+                }),
+            })
+            .await;
         return Err(AppError::Validation(
-            query.error_description.clone().unwrap_or_else(|| "OAuth sign-in was cancelled or denied.".to_string())
+            query
+                .error_description
+                .clone()
+                .unwrap_or_else(|| "OAuth sign-in was cancelled or denied.".to_string()),
         ));
     }
 
-    let code = query.code.clone().ok_or_else(|| AppError::Validation("Missing OAuth authorization code".into()))?;
+    let code = query
+        .code
+        .clone()
+        .ok_or_else(|| AppError::Validation("Missing OAuth authorization code".into()))?;
     let state_token = query.state.clone();
     let ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
 
     // Verify state token from Redis
     let redis_key = format!("oauth_state:{}", state_token);
     let mut redis_conn = state.redis.clone();
-    
+
     let state_payload_raw: String = match redis::cmd("GET")
         .arg(&redis_key)
         .query_async(&mut redis_conn)
@@ -1578,21 +1832,25 @@ async fn callback(
     {
         Ok(it) => it,
         Err(_) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "oauth.login.failed".into(),
-                target_type: "oauth_provider".into(),
-                target_id: Some(provider.clone()),
-                ip: ip.clone(),
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({ "error": "invalid_or_expired_oauth_state" }),
-            }).await;
-            return Err(AppError::Validation("Invalid or expired OAuth state".into()));
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "oauth.login.failed".into(),
+                    target_type: "oauth_provider".into(),
+                    target_id: Some(provider.clone()),
+                    ip: ip.clone(),
+                    user_agent: ua.clone(),
+                    metadata: serde_json::json!({ "error": "invalid_or_expired_oauth_state" }),
+                })
+                .await;
+            return Err(AppError::Validation(
+                "Invalid or expired OAuth state".into(),
+            ));
         }
     };
-    let state_payload = serde_json::from_str::<OAuthStatePayload>(&state_payload_raw)
-        .unwrap_or(OAuthStatePayload {
+    let state_payload = serde_json::from_str::<OAuthStatePayload>(&state_payload_raw).unwrap_or(
+        OAuthStatePayload {
             intent: "login".to_string(),
             final_redirect: state_payload_raw.clone(),
             provider: provider.clone(),
@@ -1601,26 +1859,33 @@ async fn callback(
             pending_oauth_key: None,
             initiated_ip: None,
             initiated_ua: None,
-        });
+        },
+    );
     let final_redirect = state_payload.final_redirect;
     let intent = state_payload.intent;
     let surface = state_payload.surface.unwrap_or_else(|| "user".to_string());
     if state_payload.provider != provider {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: None,
-            action: "oauth.login.failed".into(),
-            target_type: "oauth_provider".into(),
-            target_id: Some(provider.clone()),
-            ip: ip.clone(),
-            user_agent: ua.clone(),
-            metadata: serde_json::json!({
-                "error": "oauth_state_provider_mismatch",
-                "state_provider": state_payload.provider,
-                "callback_provider": provider,
-            }),
-        }).await;
-        let _: () = redis::cmd("DEL").arg(&redis_key).query_async(&mut redis_conn).await.unwrap_or(());
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: None,
+                action: "oauth.login.failed".into(),
+                target_type: "oauth_provider".into(),
+                target_id: Some(provider.clone()),
+                ip: ip.clone(),
+                user_agent: ua.clone(),
+                metadata: serde_json::json!({
+                    "error": "oauth_state_provider_mismatch",
+                    "state_provider": state_payload.provider,
+                    "callback_provider": provider,
+                }),
+            })
+            .await;
+        let _: () = redis::cmd("DEL")
+            .arg(&redis_key)
+            .query_async(&mut redis_conn)
+            .await
+            .unwrap_or(());
         return Err(AppError::Validation("OAuth state validation failed".into()));
     }
     let auth_method = match provider.as_str() {
@@ -1638,7 +1903,11 @@ async fn callback(
         .unwrap_or(false);
 
     // Delete state token to prevent reuse
-    let _: () = redis::cmd("DEL").arg(&redis_key).query_async(&mut redis_conn).await.unwrap_or(());
+    let _: () = redis::cmd("DEL")
+        .arg(&redis_key)
+        .query_async(&mut redis_conn)
+        .await
+        .unwrap_or(());
 
     // Browser binding: reject if IP differs from the one that initiated the flow.
     // This detects state token theft (e.g. via Referer header) and CSRF replay from a different client.
@@ -1672,32 +1941,36 @@ async fn callback(
         (None, _) => {
             // IP was not captured when the flow started — reject to prevent None-bypass attacks.
             tracing::warn!(provider = %provider, "OAuth callback rejected: IP not captured at flow initiation");
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "oauth.login.failed".into(),
-                target_type: "oauth_provider".into(),
-                target_id: Some(provider.clone()),
-                ip: ip.clone(),
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({ "error": "oauth_state_ip_missing" }),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "oauth.login.failed".into(),
+                    target_type: "oauth_provider".into(),
+                    target_id: Some(provider.clone()),
+                    ip: ip.clone(),
+                    user_agent: ua.clone(),
+                    metadata: serde_json::json!({ "error": "oauth_state_ip_missing" }),
+                })
+                .await;
             return Err(AppError::Validation("OAuth state validation failed".into()));
         }
         (Some(_), None) => {
             // IP was recorded at initiation but cannot be resolved at callback (proxy misconfiguration).
             // Reject — cannot verify binding.
             tracing::warn!(provider = %provider, "OAuth callback rejected: IP unresolvable at callback");
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "oauth.login.failed".into(),
-                target_type: "oauth_provider".into(),
-                target_id: Some(provider.clone()),
-                ip: None,
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({ "error": "oauth_callback_ip_unresolvable" }),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "oauth.login.failed".into(),
+                    target_type: "oauth_provider".into(),
+                    target_id: Some(provider.clone()),
+                    ip: None,
+                    user_agent: ua.clone(),
+                    metadata: serde_json::json!({ "error": "oauth_callback_ip_unresolvable" }),
+                })
+                .await;
             return Err(AppError::Validation("OAuth state validation failed".into()));
         }
     }
@@ -1711,29 +1984,43 @@ async fn callback(
     }
 
     if code.trim().is_empty() {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: None,
-            action: "oauth.login.failed".into(),
-            target_type: "oauth_provider".into(),
-            target_id: Some(provider.clone()),
-            ip: ip.clone(),
-            user_agent: ua.clone(),
-            metadata: serde_json::json!({ "error": "oauth_callback_missing_code" }),
-        }).await;
-        return Err(AppError::Validation("OAuth callback missing provider code".into()));
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: None,
+                action: "oauth.login.failed".into(),
+                target_type: "oauth_provider".into(),
+                target_id: Some(provider.clone()),
+                ip: ip.clone(),
+                user_agent: ua.clone(),
+                metadata: serde_json::json!({ "error": "oauth_callback_missing_code" }),
+            })
+            .await;
+        return Err(AppError::Validation(
+            "OAuth callback missing provider code".into(),
+        ));
     }
 
     if !is_provider_test && intent != "link" {
-        let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, Some(&final_redirect)).await?;
+        let (_, effective_ip_policy) =
+            resolve_effective_ip_policy_for_redirect(&state.db, Some(&final_redirect)).await?;
         let decision = evaluate_ip_access(
             &effective_ip_policy,
             client_ip_from_http_request(&req, state.config.as_ref()),
         )?;
         if decision != crate::shared::ip_policy::IpAccessDecision::Allowed {
             return match surface.as_str() {
-                "admin" => admin_login_error_redirect(&state, access_denied_message(&decision)).await,
-                _ => user_login_error_redirect(&state, Some(&final_redirect), access_denied_message(&decision)).await,
+                "admin" => {
+                    admin_login_error_redirect(&state, access_denied_message(&decision)).await
+                }
+                _ => {
+                    user_login_error_redirect(
+                        &state,
+                        Some(&final_redirect),
+                        access_denied_message(&decision),
+                    )
+                    .await
+                }
             };
         }
         if let Err(AppError::Validation(message)) =
@@ -1746,15 +2033,17 @@ async fn callback(
         }
     }
 
-    let runtime_config = load_runtime_oauth_config_with_pending(
-        &state,
-        state_payload.pending_oauth_key.as_deref(),
-    ).await?;
+    let runtime_config =
+        load_runtime_oauth_config_with_pending(&state, state_payload.pending_oauth_key.as_deref())
+            .await?;
 
     // Phase 4.2 Logic
     let identity_repo = IdentityRepository::new(state.db.clone());
     let oauth_service = super::service::OAuthService::new(identity_repo, runtime_config);
-    let identity = match oauth_service.fetch_provider_identity(&provider, &code).await {
+    let identity = match oauth_service
+        .fetch_provider_identity(&provider, &code)
+        .await
+    {
         Ok(identity) => identity,
         Err(e) => {
             tracing::error!("OAuth Callback Error: {}", e);
@@ -1771,20 +2060,25 @@ async fn callback(
                 }).await;
                 return Err(e);
             }
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "oauth.login.failed".into(),
-                target_type: "oauth_provider".into(),
-                target_id: Some(provider.clone()),
-                ip: ip.clone(),
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({ "error": e.to_string() }),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "oauth.login.failed".into(),
+                    target_type: "oauth_provider".into(),
+                    target_id: Some(provider.clone()),
+                    ip: ip.clone(),
+                    user_agent: ua.clone(),
+                    metadata: serde_json::json!({ "error": e.to_string() }),
+                })
+                .await;
             if intent == "login" {
                 return match surface.as_str() {
                     "admin" => admin_login_error_redirect(&state, &e.to_string()).await,
-                    _ => user_login_error_redirect(&state, Some(&final_redirect), &e.to_string()).await,
+                    _ => {
+                        user_login_error_redirect(&state, Some(&final_redirect), &e.to_string())
+                            .await
+                    }
                 };
             }
             return Err(e);
@@ -1792,7 +2086,11 @@ async fn callback(
     };
 
     if is_provider_test {
-        if let Some(pending_key) = state_payload.pending_oauth_key.as_deref().filter(|value| !value.trim().is_empty()) {
+        if let Some(pending_key) = state_payload
+            .pending_oauth_key
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
             let redis_key = format!("pending_oauth_verify:{}", pending_key);
             let mut redis_conn = state.redis.clone();
             let payload: Option<String> = redis::cmd("GET")
@@ -1812,16 +2110,21 @@ async fn callback(
                     user_agent: ua.clone(),
                     metadata: serde_json::json!({ "error": "verification draft expired", "provider": provider }),
                 }).await;
-                return Err(AppError::Validation("OAuth verification draft expired. Start the provider test again.".into()));
+                return Err(AppError::Validation(
+                    "OAuth verification draft expired. Start the provider test again.".into(),
+                ));
             };
 
             let pending: PendingOAuthVerificationPayload = serde_json::from_str(&raw_payload)
-                .map_err(|e| AppError::Internal(format!("Invalid pending OAuth verification payload: {}", e)))?;
+                .map_err(|e| {
+                    AppError::Internal(format!("Invalid pending OAuth verification payload: {}", e))
+                })?;
 
             match pending.save_scope.as_deref() {
                 Some("organization") => {
-                    let org_id = pending.organization_id
-                        .ok_or_else(|| AppError::Validation("Missing tenant target for OAuth verification.".into()))?;
+                    let org_id = pending.organization_id.ok_or_else(|| {
+                        AppError::Validation("Missing tenant target for OAuth verification.".into())
+                    })?;
                     sqlx::query(
                         "INSERT INTO tenant_auth_config (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING"
                     )
@@ -1865,40 +2168,61 @@ async fn callback(
                         _ => return Err(AppError::Validation("Unsupported provider".into())),
                     }
 
-                    AuditService::new(state.db.clone()).log(AuditEvent {
-                        actor_user_id: pending.actor_user_id,
-                        organization_id: Some(org_id),
-                        action: format!("tenant_auth_config.{}.verified", pending.provider),
-                        target_type: "organization".into(),
-                        target_id: Some(org_id.to_string()),
-                        ip: ip.clone(),
-                        user_agent: ua.clone(),
-                        metadata: serde_json::json!({
-                            "provider": pending.provider,
-                            "client_id": pending.client_id,
-                            "tenant_id": pending.tenant_id,
-                            "source": "tenant_oauth_verification",
-                        }),
-                    }).await;
+                    AuditService::new(state.db.clone())
+                        .log(AuditEvent {
+                            actor_user_id: pending.actor_user_id,
+                            organization_id: Some(org_id),
+                            action: format!("tenant_auth_config.{}.verified", pending.provider),
+                            target_type: "organization".into(),
+                            target_id: Some(org_id.to_string()),
+                            ip: ip.clone(),
+                            user_agent: ua.clone(),
+                            metadata: serde_json::json!({
+                                "provider": pending.provider,
+                                "client_id": pending.client_id,
+                                "tenant_id": pending.tenant_id,
+                                "source": "tenant_oauth_verification",
+                            }),
+                        })
+                        .await;
                 }
                 _ => match pending.provider.as_str() {
                     "google" => {
-                        set_system_setting(&state.db, "google_client_id", pending.client_id.trim()).await?;
-                        set_system_setting(&state.db, "google_client_secret", pending.client_secret.trim()).await?;
-                        set_system_setting(&state.db, "google_admin_login_enabled", "false").await?;
+                        set_system_setting(&state.db, "google_client_id", pending.client_id.trim())
+                            .await?;
+                        set_system_setting(
+                            &state.db,
+                            "google_client_secret",
+                            pending.client_secret.trim(),
+                        )
+                        .await?;
+                        set_system_setting(&state.db, "google_admin_login_enabled", "false")
+                            .await?;
                     }
                     "microsoft" => {
-                        set_system_setting(&state.db, "microsoft_client_id", pending.client_id.trim()).await?;
-                        set_system_setting(&state.db, "microsoft_client_secret", pending.client_secret.trim()).await?;
+                        set_system_setting(
+                            &state.db,
+                            "microsoft_client_id",
+                            pending.client_id.trim(),
+                        )
+                        .await?;
+                        set_system_setting(
+                            &state.db,
+                            "microsoft_client_secret",
+                            pending.client_secret.trim(),
+                        )
+                        .await?;
                         set_system_setting(
                             &state.db,
                             "microsoft_tenant_id",
                             pending.tenant_id.as_deref().unwrap_or("common").trim(),
-                        ).await?;
-                        set_system_setting(&state.db, "microsoft_admin_login_enabled", "false").await?;
+                        )
+                        .await?;
+                        set_system_setting(&state.db, "microsoft_admin_login_enabled", "false")
+                            .await?;
                     }
                     _ => return Err(AppError::Validation("Unsupported provider".into())),
-                }
+                },
             }
 
             let _: () = redis::cmd("DEL")
@@ -1918,16 +2242,22 @@ async fn callback(
             set_system_setting(&state.db, key, &timestamp).await?;
         }
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: None,
-            action: format!("setup.oauth.{}.verified", provider),
-            target_type: "system_setting".into(),
-            target_id: Some(format!("{}_oauth", provider)),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({ "verified_at": timestamp, "provider": provider }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: None,
+                action: format!("setup.oauth.{}.verified", provider),
+                target_type: "system_setting".into(),
+                target_id: Some(format!("{}_oauth", provider)),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::json!({ "verified_at": timestamp, "provider": provider }),
+            })
+            .await;
 
         let final_redirect = mark_oauth_test_result(&final_redirect, &provider, "success");
         return Ok(HttpResponse::Found()
@@ -1937,7 +2267,8 @@ async fn callback(
 
     if intent == "link" {
         let Some(target_user_id) = state_payload.link_user_id else {
-            let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "error", "Missing link target.");
+            let final_redirect =
+                mark_oauth_link_result(&final_redirect, &provider, "error", "Missing link target.");
             return Ok(HttpResponse::Found()
                 .insert_header(("Location", final_redirect))
                 .finish());
@@ -1945,7 +2276,12 @@ async fn callback(
 
         let session_cookie = req.cookie(ROOIAM_SESSION_COOKIE);
         let Some(session_cookie) = session_cookie else {
-            let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "error", "Sign in again before linking accounts.");
+            let final_redirect = mark_oauth_link_result(
+                &final_redirect,
+                &provider,
+                "error",
+                "Sign in again before linking accounts.",
+            );
             return Ok(HttpResponse::Found()
                 .insert_header(("Location", final_redirect))
                 .finish());
@@ -1953,10 +2289,18 @@ async fn callback(
 
         let session_repo = SessionRepository::new(state.db.clone());
         let session_service = SessionService::new(session_repo, state.db.clone());
-        let active_session = match session_service.verify_opaque_session(session_cookie.value()).await {
+        let active_session = match session_service
+            .verify_opaque_session(session_cookie.value())
+            .await
+        {
             Ok(session) => session,
             Err(_) => {
-                let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "error", "Sign in again before linking accounts.");
+                let final_redirect = mark_oauth_link_result(
+                    &final_redirect,
+                    &provider,
+                    "error",
+                    "Sign in again before linking accounts.",
+                );
                 return Ok(HttpResponse::Found()
                     .insert_header(("Location", final_redirect))
                     .finish());
@@ -1964,7 +2308,12 @@ async fn callback(
         };
 
         if active_session.user_id != target_user_id {
-            let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "error", "The active session does not match the account being linked.");
+            let final_redirect = mark_oauth_link_result(
+                &final_redirect,
+                &provider,
+                "error",
+                "The active session does not match the account being linked.",
+            );
             return Ok(HttpResponse::Found()
                 .insert_header(("Location", final_redirect))
                 .finish());
@@ -1975,7 +2324,12 @@ async fn callback(
             .await?
         {
             if owner_user_id == target_user_id {
-                let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "success", "This provider is already linked to your account.");
+                let final_redirect = mark_oauth_link_result(
+                    &final_redirect,
+                    &provider,
+                    "success",
+                    "This provider is already linked to your account.",
+                );
                 return Ok(HttpResponse::Found()
                     .insert_header(("Location", final_redirect))
                     .finish());
@@ -2001,52 +2355,78 @@ async fn callback(
             )
             .await?;
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(target_user_id),
-            organization_id: None,
-            action: format!("identity.link.{}", provider),
-            target_type: "external_identity".into(),
-            target_id: Some(identity.provider_user_id.clone()),
-            ip,
-            user_agent: ua,
-            metadata: serde_json::json!({
-                "provider": provider,
-                "linked_email": identity.email,
-                "intent": "link"
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(target_user_id),
+                organization_id: None,
+                action: format!("identity.link.{}", provider),
+                target_type: "external_identity".into(),
+                target_id: Some(identity.provider_user_id.clone()),
+                ip,
+                user_agent: ua,
+                metadata: serde_json::json!({
+                    "provider": provider,
+                    "linked_email": identity.email,
+                    "intent": "link"
+                }),
+            })
+            .await;
 
-        let final_redirect = mark_oauth_link_result(&final_redirect, &provider, "success", &format!("{} linked successfully.", if provider == "google" { "Google" } else { "Microsoft" }));
+        let final_redirect = mark_oauth_link_result(
+            &final_redirect,
+            &provider,
+            "success",
+            &format!(
+                "{} linked successfully.",
+                if provider == "google" {
+                    "Google"
+                } else {
+                    "Microsoft"
+                }
+            ),
+        );
         return Ok(HttpResponse::Found()
             .insert_header(("Location", final_redirect))
             .finish());
     }
 
     let oauth_email = identity.email.clone().unwrap_or_default();
-    let logged_in_user_id = oauth_service.get_or_create_user_from_identity(identity).await?;
+    let logged_in_user_id = oauth_service
+        .get_or_create_user_from_identity(identity)
+        .await?;
     tracing::info!("OAuth login successful for user: {}", logged_in_user_id);
-    let login_context = resolve_login_context(&state.db, logged_in_user_id, Some(&final_redirect)).await?;
-    let workspace_policy = get_workspace_policy_for_redirect(&state.db, Some(&final_redirect)).await?;
+    let login_context =
+        resolve_login_context(&state.db, logged_in_user_id, Some(&final_redirect)).await?;
+    let workspace_policy =
+        get_workspace_policy_for_redirect(&state.db, Some(&final_redirect)).await?;
 
     // Enforce domain restriction before creating a session
     if let Some(ref org) = workspace_policy {
         if let Err(e) = ensure_email_domain_allowed(org, &oauth_email) {
-            let msg: String = url::form_urlencoded::byte_serialize(e.to_string().as_bytes()).collect();
+            let msg: String =
+                url::form_urlencoded::byte_serialize(e.to_string().as_bytes()).collect();
             let base = effective_enduser_url(&state.db).await.unwrap_or_default();
             let redirect = format!("{}?error=domain_not_allowed&message={}", base, msg);
-            return Ok(HttpResponse::Found().insert_header(("Location", redirect)).finish());
+            return Ok(HttpResponse::Found()
+                .insert_header(("Location", redirect))
+                .finish());
         }
     }
 
     if surface == "admin" && !is_platform_staff(&state.db, logged_in_user_id).await? {
         return admin_login_error_redirect(
             &state,
-            "This account does not have platform admin access."
-        ).await;
+            "This account does not have platform admin access.",
+        )
+        .await;
     }
 
     // Operator policy gate: enforces auth method, IP, email domain for operator logins.
-    let op_method = if provider == "google" { OpAuthMethod::Google } else { OpAuthMethod::Microsoft };
+    let op_method = if provider == "google" {
+        OpAuthMethod::Google
+    } else {
+        OpAuthMethod::Microsoft
+    };
     let op_policy = enforce_operator_login_policy(
         &state.db,
         logged_in_user_id,
@@ -2054,7 +2434,8 @@ async fn callback(
         op_method,
         login_context.current_org_id,
         client_ip_from_http_request(&req, state.config.as_ref()),
-    ).await?;
+    )
+    .await?;
 
     let mfa_service = MfaService::new(
         MfaRepository::new(state.db.clone()),
@@ -2067,11 +2448,16 @@ async fn callback(
         Some(org) => {
             org.require_mfa
                 || (org.require_mfa_for_admins
-                    && org_repo_mfa.is_org_admin_or_owner(org.id, logged_in_user_id).await.unwrap_or(false))
+                    && org_repo_mfa
+                        .is_org_admin_or_owner(org.id, logged_in_user_id)
+                        .await
+                        .unwrap_or(false))
         }
         None => {
             if let Some(org_id) = login_context.current_org_id {
-                let portal_mfa = org_repo_mfa.get_organization_by_id(org_id).await?
+                let portal_mfa = org_repo_mfa
+                    .get_organization_by_id(org_id)
+                    .await?
                     .map(|org| org.tenant_portal_require_mfa)
                     .unwrap_or(false);
                 portal_mfa || op_policy.as_ref().map(|p| p.require_mfa).unwrap_or(false)
@@ -2081,7 +2467,9 @@ async fn callback(
             }
         }
     };
-    let audit_org_id = login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id));
+    let audit_org_id = login_context
+        .current_org_id
+        .or_else(|| workspace_policy.as_ref().map(|org| org.id));
     if workspace_requires_mfa && !totp_enabled {
         let enrollment = mfa_service
             .start_login_enrollment(
@@ -2091,26 +2479,35 @@ async fn callback(
                 Some(&provider),
             )
             .await?;
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(logged_in_user_id),
-            organization_id: login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id)),
-            action: "auth.mfa.enrollment.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip: ip.clone(),
-            user_agent: ua.clone(),
-            metadata: serde_json::json!({
-                "reason": "workspace_requires_mfa_but_user_has_no_totp",
-                "provider": provider,
-                "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(logged_in_user_id),
+                organization_id: login_context
+                    .current_org_id
+                    .or_else(|| workspace_policy.as_ref().map(|org| org.id)),
+                action: "auth.mfa.enrollment.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip: ip.clone(),
+                user_agent: ua.clone(),
+                metadata: serde_json::json!({
+                    "reason": "workspace_requires_mfa_but_user_has_no_totp",
+                    "provider": provider,
+                    "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
+                }),
+            })
+            .await;
 
-        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
+        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref())
+            .await?
+            .issuer_url;
         let mut url = Url::parse(&format!("{}/verify", hosted_auth.trim_end_matches('/')))
             .map_err(|e| AppError::Internal(format!("Invalid login UI URL: {}", e)))?;
         url.query_pairs_mut()
-            .append_pair("mfa_enrollment_challenge", &enrollment.challenge.id.to_string())
+            .append_pair(
+                "mfa_enrollment_challenge",
+                &enrollment.challenge.id.to_string(),
+            )
             .append_pair("redirect_uri", &final_redirect);
         return Ok(HttpResponse::Found()
             .insert_header(("Location", url.to_string()))
@@ -2121,7 +2518,10 @@ async fn callback(
         let mut metadata = serde_json::Map::new();
         metadata.insert("method".into(), serde_json::json!("oauth"));
         metadata.insert("provider".into(), serde_json::json!(provider.clone()));
-        metadata.insert("redirect_to".into(), serde_json::json!(final_redirect.clone()));
+        metadata.insert(
+            "redirect_to".into(),
+            serde_json::json!(final_redirect.clone()),
+        );
         if let Some(app_name) = login_context.app_name.clone() {
             metadata.insert("app_name".into(), serde_json::json!(app_name));
         }
@@ -2137,7 +2537,9 @@ async fn callback(
                 Some(&provider),
             )
             .await?;
-        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
+        let hosted_auth = effective_public_urls(&state.db, state.config.as_ref())
+            .await?
+            .issuer_url;
         let mut login_url = Url::parse(&format!("{}/verify", hosted_auth.trim_end_matches('/')))
             .map_err(|e| AppError::Internal(format!("Invalid hosted verify URL: {}", e)))?;
         login_url
@@ -2145,16 +2547,18 @@ async fn callback(
             .append_pair("mfa_challenge", &challenge.challenge.id.to_string())
             .append_pair("redirect_uri", &final_redirect);
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(logged_in_user_id),
-            organization_id: audit_org_id,
-            action: "auth.mfa.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip,
-            user_agent: ua,
-            metadata: serde_json::Value::Object(metadata),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(logged_in_user_id),
+                organization_id: audit_org_id,
+                action: "auth.mfa.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip,
+                user_agent: ua,
+                metadata: serde_json::Value::Object(metadata),
+            })
+            .await;
 
         return Ok(HttpResponse::Found()
             .insert_header(("Location", login_url.to_string()))
@@ -2163,17 +2567,23 @@ async fn callback(
 
     let session_repo = SessionRepository::new(state.db.clone());
     let session_service = SessionService::new(session_repo, state.db.clone());
-    let (_session, opaque_string) = session_service.create_opaque_session_with_context(
-        logged_in_user_id,
-        crate::modules::session::models::SessionCreateContext {
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            ip: client_ip_from_http_request(&req, state.config.as_ref()),
-            current_org_id: login_context.current_org_id,
-            login_surface: Some(surface.clone()),
-            login_app_name: login_context.app_name.clone(),
-            login_workspace_slug: login_context.workspace_slug.clone(),
-        },
-    ).await?;
+    let (_session, opaque_string) = session_service
+        .create_opaque_session_with_context(
+            logged_in_user_id,
+            crate::modules::session::models::SessionCreateContext {
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                ip: client_ip_from_http_request(&req, state.config.as_ref()),
+                current_org_id: login_context.current_org_id,
+                login_surface: Some(surface.clone()),
+                login_app_name: login_context.app_name.clone(),
+                login_workspace_slug: login_context.workspace_slug.clone(),
+            },
+        )
+        .await?;
 
     let cookie = build_session_cookie(opaque_string, &state.config, 7 * 24 * 3600);
 
@@ -2187,16 +2597,18 @@ async fn callback(
         metadata.insert("workspace_slug".into(), serde_json::json!(workspace_slug));
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(logged_in_user_id),
-        organization_id: audit_org_id,
-        action: "oauth.login.success".into(),
-        target_type: "oauth_provider".into(),
-        target_id: Some(provider.clone()),
-        ip,
-        user_agent: ua,
-        metadata: serde_json::Value::Object(metadata),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(logged_in_user_id),
+            organization_id: audit_org_id,
+            action: "oauth.login.success".into(),
+            target_type: "oauth_provider".into(),
+            target_id: Some(provider.clone()),
+            ip,
+            user_agent: ua,
+            metadata: serde_json::Value::Object(metadata),
+        })
+        .await;
 
     // Redirect user back to the frontend app, dropping the cookie along the way
     Ok(HttpResponse::Found()
@@ -2209,17 +2621,33 @@ pub fn routes(rl: crate::bootstrap::config::RateLimitConfig) -> impl Fn(&mut web
     move |cfg: &mut web::ServiceConfig| {
         cfg.service(
             web::scope("/oauth")
-                .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(rl.oauth_per_endpoint, 60))
-                .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip("oauth", rl.oauth_per_ip, 60))
+                .wrap(
+                    crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                        rl.oauth_per_endpoint,
+                        60,
+                    ),
+                )
+                .wrap(
+                    crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                        "oauth",
+                        rl.oauth_per_ip,
+                        60,
+                    ),
+                )
                 .route("/login", web::get().to(login))
                 .route("/demo", web::get().to(demo_provider_page_from_query))
-                .route("/demo/{provider}/continue", web::post().to(demo_provider_continue))
-                .route("/{provider}/callback", web::get().to(callback))
+                .route(
+                    "/demo/{provider}/continue",
+                    web::post().to(demo_provider_continue),
+                )
+                .route("/{provider}/callback", web::get().to(callback)),
         );
     }
 }
 
-pub fn routes_global(rl: crate::bootstrap::config::RateLimitConfig) -> impl Fn(&mut web::ServiceConfig) {
+pub fn routes_global(
+    rl: crate::bootstrap::config::RateLimitConfig,
+) -> impl Fn(&mut web::ServiceConfig) {
     routes(rl)
 }
 
@@ -2227,7 +2655,7 @@ pub fn legacy_callback_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/v1/auth")
             .wrap(crate::http::middleware::rate_limit::RateLimit::new(20, 60))
-            .route("/{provider}/callback", web::get().to(callback))
+            .route("/{provider}/callback", web::get().to(callback)),
     );
 }
 
@@ -2266,8 +2694,10 @@ pub async fn load_runtime_oauth_config_with_pending(
             .await
             .map_err(|e| AppError::Internal(format!("Redis auth state failure: {}", e)))?;
         if let Some(raw) = payload {
-            let pending: PendingOAuthVerificationPayload = serde_json::from_str(&raw)
-                .map_err(|e| AppError::Internal(format!("Invalid pending OAuth verification payload: {}", e)))?;
+            let pending: PendingOAuthVerificationPayload =
+                serde_json::from_str(&raw).map_err(|e| {
+                    AppError::Internal(format!("Invalid pending OAuth verification payload: {}", e))
+                })?;
             match pending.provider.as_str() {
                 "google" => {
                     config.oauth.google_client_id = pending.client_id;
@@ -2276,7 +2706,9 @@ pub async fn load_runtime_oauth_config_with_pending(
                 "microsoft" => {
                     config.oauth.microsoft_client_id = pending.client_id;
                     config.oauth.microsoft_client_secret = pending.client_secret;
-                    if let Some(tenant_id) = pending.tenant_id.filter(|value| !value.trim().is_empty()) {
+                    if let Some(tenant_id) =
+                        pending.tenant_id.filter(|value| !value.trim().is_empty())
+                    {
                         config.oauth.microsoft_tenant_id = tenant_id;
                     }
                 }
@@ -2314,7 +2746,9 @@ mod tests {
         );
 
         match result {
-            Err(AppError::Validation(message)) => assert_eq!(message, "redirect_uri is not allowed"),
+            Err(AppError::Validation(message)) => {
+                assert_eq!(message, "redirect_uri is not allowed")
+            }
             other => panic!("expected redirect rejection, got {:?}", other),
         }
     }

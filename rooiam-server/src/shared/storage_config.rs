@@ -203,7 +203,7 @@ fn build_public_asset_url(public_media_base: &str, relative_path: &str) -> Strin
 
 async fn load_effective_minio_secret(db: &PgPool) -> String {
     sqlx::query_scalar::<_, String>(
-        "SELECT value FROM system_settings WHERE key = 'storage_minio_secret_key'"
+        "SELECT value FROM system_settings WHERE key = 'storage_minio_secret_key'",
     )
     .fetch_optional(db)
     .await
@@ -228,8 +228,9 @@ pub async fn store_public_asset(
                 relative_path.trim_start_matches('/')
             );
             if let Some(parent) = Path::new(&absolute_path).parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| AppError::Internal(format!("Could not create upload directory: {}", e)))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AppError::Internal(format!("Could not create upload directory: {}", e))
+                })?;
             }
             std::fs::write(&absolute_path, bytes)
                 .map_err(|e| AppError::Internal(format!("Could not store uploaded file: {}", e)))?;
@@ -280,7 +281,11 @@ pub async fn delete_public_asset(
 
     match storage.backend {
         StorageBackend::Local => {
-            let old_path = format!("{}/{}", config.storage.root.trim_end_matches('/'), relative_path);
+            let old_path = format!(
+                "{}/{}",
+                config.storage.root.trim_end_matches('/'),
+                relative_path
+            );
             let _ = std::fs::remove_file(&old_path);
         }
         StorageBackend::Minio => {
@@ -512,12 +517,15 @@ pub async fn ensure_minio_bucket_exists(
         let canonical_headers = format!("host:{}\nx-amz-date:{}\n", host, amz_date);
         let payload_hash = hex_sha256(b"");
         let canonical_request = format!(
-            "HEAD\n/{}\n\n{}\nhost;x-amz-date\n{}", bucket, canonical_headers, payload_hash
+            "HEAD\n/{}\n\n{}\nhost;x-amz-date\n{}",
+            bucket, canonical_headers, payload_hash
         );
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, region_str);
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date, credential_scope, hex_sha256(canonical_request.as_bytes())
+            amz_date,
+            credential_scope,
+            hex_sha256(canonical_request.as_bytes())
         );
         let signing_key = derive_signing_key(secret_key, &date_stamp, region_str, "s3");
         let signature = hex_hmac_sha256(&signing_key, string_to_sign.as_bytes());
@@ -525,11 +533,13 @@ pub async fn ensure_minio_bucket_exists(
             "AWS4-HMAC-SHA256 Credential={}/{},SignedHeaders=host;x-amz-date,Signature={}",
             access_key, credential_scope, signature
         );
-        let resp = client.head(&url)
+        let resp = client
+            .head(&url)
             .header("host", &host)
             .header("x-amz-date", &amz_date)
             .header("authorization", auth)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Cannot reach MinIO: {}", e))?;
         if resp.status().is_success() {
             return Ok(()); // bucket already exists
@@ -567,7 +577,9 @@ pub async fn ensure_minio_bucket_exists(
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, region_str);
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date, credential_scope, hex_sha256(canonical_request.as_bytes())
+            amz_date,
+            credential_scope,
+            hex_sha256(canonical_request.as_bytes())
         );
         let signing_key = derive_signing_key(secret_key, &date_stamp, region_str, "s3");
         let signature = hex_hmac_sha256(&signing_key, string_to_sign.as_bytes());
@@ -575,14 +587,16 @@ pub async fn ensure_minio_bucket_exists(
             "AWS4-HMAC-SHA256 Credential={}/{},SignedHeaders=content-length;content-type;host;x-amz-date,Signature={}",
             access_key, credential_scope, signature
         );
-        let resp = client.put(&url)
+        let resp = client
+            .put(&url)
             .header("host", &host)
             .header("x-amz-date", &amz_date)
             .header("content-type", content_type)
             .header("content-length", content_length)
             .header("authorization", auth)
             .body(body_bytes)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Cannot reach MinIO: {}", e))?;
         let status = resp.status().as_u16();
         if status == 200 || status == 204 || status == 409 {
@@ -672,9 +686,15 @@ async fn put_minio_object(
     if status == 200 || status == 201 || status == 204 {
         Ok(())
     } else if status == 403 {
-        Err(format!("access denied (HTTP 403) — check the access key / secret key for bucket '{}'", bucket))
+        Err(format!(
+            "access denied (HTTP 403) — check the access key / secret key for bucket '{}'",
+            bucket
+        ))
     } else if status == 404 {
-        Err(format!("bucket '{}' not found (HTTP 404) — create it first", bucket))
+        Err(format!(
+            "bucket '{}' not found (HTTP 404) — create it first",
+            bucket
+        ))
     } else {
         let body = resp.text().await.unwrap_or_default();
         Err(format!("PUT returned HTTP {}: {}", status, body))
@@ -767,7 +787,10 @@ pub async fn set_minio_bucket_public_read(
         Ok(())
     } else {
         let body = resp.text().await.unwrap_or_default();
-        Err(format!("MinIO set bucket policy returned {}: {}", status, body))
+        Err(format!(
+            "MinIO set bucket policy returned {}: {}",
+            status, body
+        ))
     }
 }
 
@@ -829,10 +852,11 @@ pub async fn test_minio_roundtrip(
 
     // 3. DELETE the probe (cleanup). Best-effort, but report if it fails so the
     //    operator knows a stray test object was left behind.
-    let delete_err =
-        delete_minio_object(endpoint, bucket, &probe_key, access_key, secret_key, use_ssl)
-            .await
-            .err();
+    let delete_err = delete_minio_object(
+        endpoint, bucket, &probe_key, access_key, secret_key, use_ssl,
+    )
+    .await
+    .err();
 
     // Evaluate the anonymous read.
     let read_outcome: Result<(), String> = match read_result {
@@ -871,7 +895,10 @@ pub async fn test_minio_roundtrip(
     // Read failure is the important one — surface it (mention cleanup if that also failed).
     if let Err(read_msg) = read_outcome {
         return match delete_err {
-            Some(de) => Err(format!("{} (Also: [DELETE FAILED] could not remove the test object: {})", read_msg, de)),
+            Some(de) => Err(format!(
+                "{} (Also: [DELETE FAILED] could not remove the test object: {})",
+                read_msg, de
+            )),
             None => Err(read_msg),
         };
     }

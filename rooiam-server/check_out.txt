@@ -1,6 +1,0 @@
-    Checking rooiam-server v0.1.0 (/home/theparitt/work/rooiam/rooiam-server)
-src/http/middleware/rate_limit.rs:3:12: warning: unused imports: `HttpMessage` and `HttpResponse`
-src/http/middleware/rate_limit.rs:7:5: warning: unused import: `std::sync::Arc`
-src/modules/oauth/service.rs:18:5: warning: field `id_token` is never read
-warning: `rooiam-server` (bin "rooiam-server") generated 3 warnings (run `cargo fix --bin "rooiam-server" -p rooiam-server` to apply 2 suggestions)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.10s

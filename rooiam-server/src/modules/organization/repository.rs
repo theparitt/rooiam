@@ -1,9 +1,12 @@
+use super::models::{
+    Organization, OrganizationActivityItem, OrganizationInvite, OrganizationMember,
+    OrganizationMemberView,
+};
+use crate::shared::error::AppError;
 use sqlx::{PgPool, Row};
 use std::sync::OnceLock;
 use std::time::Instant;
 use uuid::Uuid;
-use crate::shared::error::AppError;
-use super::models::{Organization, OrganizationActivityItem, OrganizationInvite, OrganizationMember, OrganizationMemberView};
 
 const USER_ORGANIZATION_LIST_LIMIT: i64 = 100;
 const ORGANIZATION_MEMBER_VIEW_LIMIT: i64 = 200;
@@ -32,7 +35,12 @@ impl OrganizationRepository {
         Self { pool }
     }
 
-    pub async fn create_organization(&self, owner_user_id: Uuid, name: &str, slug: &str) -> Result<Organization, AppError> {
+    pub async fn create_organization(
+        &self,
+        owner_user_id: Uuid,
+        name: &str,
+        slug: &str,
+    ) -> Result<Organization, AppError> {
         let mut tx = self.pool.begin().await?;
 
         // 1. Create Organization
@@ -80,7 +88,10 @@ impl OrganizationRepository {
         Ok(org)
     }
 
-    pub async fn get_user_organizations(&self, user_id: Uuid) -> Result<Vec<Organization>, AppError> {
+    pub async fn get_user_organizations(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Organization>, AppError> {
         let orgs = sqlx::query_as::<_, Organization>(
             r#"
             SELECT o.id, o.name, o.slug, o.login_display_name, o.login_title, o.login_subtitle, o.icon_url, o.login_logo_url, o.brand_color, o.show_login_logo, o.show_login_title, o.show_login_subtitle, o.show_powered_by, o.widget_radius, o.widget_shadow, o.icon_container, o.login_logo_container, o.login_logo_size, o.card_radius, o.button_style, o.card_bg_style, o.card_bg_color2, o.card_border_width, o.card_border_color, o.login_method_order, o.allow_magic_link, o.allow_google, o.allow_microsoft, o.allow_passkey, o.require_mfa, o.allow_client_management, o.allow_web_clients, o.allow_spa_clients, o.allow_native_clients, o.allowed_email_domains, o.max_session_age_hours, o.magic_link_expiry_minutes, o.oidc_access_token_ttl_minutes, o.refresh_token_ttl_days, o.idle_timeout_minutes, o.require_mfa_for_admins, o.tenant_portal_require_mfa, o.max_concurrent_sessions, o.magic_link_rate_limit_admin_override, o.magic_link_rate_window_admin_override, o.magic_link_rate_limit_staff_override, o.magic_link_rate_window_staff_override, o.status, o.platform_locked, o.created_at, o.updated_at
@@ -106,7 +117,7 @@ impl OrganizationRepository {
             FROM organization_members om
             JOIN organizations o ON o.id = om.organization_id
             WHERE om.user_id = $1 AND om.status = 'active' AND o.status = 'active'
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -128,7 +139,7 @@ impl OrganizationRepository {
               AND o.status = 'active'
               AND r.code = 'owner'
             LIMIT 1
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_optional(&self.pool)
@@ -137,7 +148,10 @@ impl OrganizationRepository {
         Ok(rec.is_some())
     }
 
-    pub async fn get_organization_by_id(&self, organization_id: Uuid) -> Result<Option<Organization>, AppError> {
+    pub async fn get_organization_by_id(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Option<Organization>, AppError> {
         let org = sqlx::query_as::<_, Organization>(
             r#"
             SELECT id, name, slug, login_display_name, login_title, login_subtitle, icon_url, login_logo_url, brand_color, show_login_logo, show_login_title, show_login_subtitle, show_powered_by, widget_radius, widget_shadow, icon_container, login_logo_container, login_logo_size, card_radius, button_style, card_bg_style, card_bg_color2, card_border_width, card_border_color, login_method_order, allow_magic_link, allow_google, allow_microsoft, allow_passkey, require_mfa, allow_client_management, allow_web_clients, allow_spa_clients, allow_native_clients, allowed_email_domains, max_session_age_hours, magic_link_expiry_minutes, oidc_access_token_ttl_minutes, refresh_token_ttl_days, idle_timeout_minutes, require_mfa_for_admins, tenant_portal_require_mfa, max_concurrent_sessions, magic_link_rate_limit_admin_override, magic_link_rate_window_admin_override, magic_link_rate_limit_staff_override, magic_link_rate_window_staff_override, status, platform_locked, created_at, updated_at
@@ -152,7 +166,10 @@ impl OrganizationRepository {
         Ok(org)
     }
 
-    pub async fn get_organization_by_slug(&self, slug: &str) -> Result<Option<Organization>, AppError> {
+    pub async fn get_organization_by_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<Organization>, AppError> {
         let start = Instant::now();
         let org = sqlx::query_as::<_, Organization>(
             r#"
@@ -199,14 +216,16 @@ impl OrganizationRepository {
         Ok(rec.is_some())
     }
 
-    pub async fn update_session_org_context(&self, session_id: Uuid, org_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE sessions SET current_org_id = $1 WHERE id = $2"
-        )
-        .bind(org_id)
-        .bind(session_id)
-        .execute(&self.pool)
-        .await?;
+    pub async fn update_session_org_context(
+        &self,
+        session_id: Uuid,
+        org_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE sessions SET current_org_id = $1 WHERE id = $2")
+            .bind(org_id)
+            .bind(session_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -394,7 +413,7 @@ impl OrganizationRepository {
                 ip_blocklist = NULLIF($4, ''),
                 updated_at = NOW()
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(organization_id)
         .bind(use_custom_ip_policy)
@@ -406,23 +425,29 @@ impl OrganizationRepository {
         Ok(())
     }
 
-    pub async fn get_organization_members(&self, organization_id: Uuid) -> Result<Vec<OrganizationMember>, AppError> {
+    pub async fn get_organization_members(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Vec<OrganizationMember>, AppError> {
         let members = sqlx::query_as::<_, OrganizationMember>(
             r#"
             SELECT id, organization_id, user_id, status, created_at
             FROM organization_members
             WHERE organization_id = $1
             ORDER BY created_at ASC
-            "#
+            "#,
         )
         .bind(organization_id)
         .fetch_all(&self.pool)
         .await?;
 
         Ok(members)
-}
+    }
 
-    pub async fn get_organization_member_views(&self, organization_id: Uuid) -> Result<Vec<OrganizationMemberView>, AppError> {
+    pub async fn get_organization_member_views(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Vec<OrganizationMemberView>, AppError> {
         let members = sqlx::query_as::<_, OrganizationMemberView>(
             r#"
             SELECT
@@ -499,7 +524,7 @@ impl OrganizationRepository {
               )
               AND ($4::date IS NULL OR al.created_at >= $4::date)
               AND ($5::date IS NULL OR al.created_at < ($5::date + interval '1 day'))
-            "#
+            "#,
         )
         .bind(organization_id)
         .bind(search)
@@ -546,7 +571,7 @@ impl OrganizationRepository {
               AND ($5::date IS NULL OR al.created_at < ($5::date + interval '1 day'))
             ORDER BY al.created_at DESC
             LIMIT $6 OFFSET $7
-            "#
+            "#,
         )
         .bind(organization_id)
         .bind(search)
@@ -574,7 +599,7 @@ impl OrganizationRepository {
             SELECT om.id
             FROM organization_members om
             WHERE om.id = $1 AND om.organization_id = $2 AND om.status = 'active'
-            "#
+            "#,
         )
         .bind(member_id)
         .bind(organization_id)
@@ -590,13 +615,15 @@ impl OrganizationRepository {
             FROM member_roles mr
             JOIN roles r ON r.id = mr.role_id
             WHERE mr.member_id = $1
-            "#
+            "#,
         )
         .bind(member_id)
         .fetch_all(&mut *tx)
         .await?;
 
-        let has_owner_role = existing_roles.iter().any(|row| row.get::<String, _>("code") == "owner");
+        let has_owner_role = existing_roles
+            .iter()
+            .any(|row| row.get::<String, _>("code") == "owner");
 
         // Last-owner guard: if this member currently holds the owner role and they are the only
         // owner, reject any role change — this workspace would become permanently orphaned.
@@ -611,7 +638,7 @@ impl OrganizationRepository {
                 WHERE om.organization_id = $1
                   AND om.status = 'active'
                   AND r.code = 'owner'
-                "#
+                "#,
             )
             .bind(organization_id)
             .fetch_one(&mut *tx)
@@ -619,7 +646,7 @@ impl OrganizationRepository {
 
             if owner_count <= 1 {
                 return Err(AppError::Validation(
-                    "Cannot change the role of the last owner. Assign another owner first.".into()
+                    "Cannot change the role of the last owner. Assign another owner first.".into(),
                 ));
             }
 
@@ -635,7 +662,7 @@ impl OrganizationRepository {
               AND mr.member_id = $1
               AND r.is_system = true
               AND r.code <> 'owner'
-            "#
+            "#,
         )
         .bind(member_id)
         .execute(&mut *tx)
@@ -649,7 +676,7 @@ impl OrganizationRepository {
             WHERE is_system = true
               AND code = $2
             LIMIT 1
-            "#
+            "#,
         )
         .bind(member_id)
         .bind(role_code)
@@ -684,7 +711,7 @@ impl OrganizationRepository {
             r#"SELECT EXISTS(
                 SELECT 1 FROM member_roles mr JOIN roles r ON r.id = mr.role_id
                 WHERE mr.member_id = $1 AND r.code = 'owner'
-            )"#
+            )"#,
         )
         .bind(member_id)
         .fetch_one(&mut *tx)
@@ -695,7 +722,7 @@ impl OrganizationRepository {
                 r#"SELECT COUNT(*) FROM organization_members om
                    JOIN member_roles mr ON mr.member_id = om.id
                    JOIN roles r ON r.id = mr.role_id
-                   WHERE om.organization_id = $1 AND om.status = 'active' AND r.code = 'owner'"#
+                   WHERE om.organization_id = $1 AND om.status = 'active' AND r.code = 'owner'"#,
             )
             .bind(organization_id)
             .fetch_one(&mut *tx)
@@ -703,7 +730,7 @@ impl OrganizationRepository {
 
             if owner_count <= 1 {
                 return Err(AppError::Validation(
-                    "Cannot remove the last owner. Assign another owner first.".into()
+                    "Cannot remove the last owner. Assign another owner first.".into(),
                 ));
             }
         }
@@ -723,7 +750,14 @@ impl OrganizationRepository {
         Ok(user_id)
     }
 
-    pub async fn create_invite(&self, organization_id: Uuid, email: &str, token_hash: &str, inviter_user_id: Uuid, expires_at: chrono::DateTime<chrono::Utc>) -> Result<OrganizationInvite, AppError> {
+    pub async fn create_invite(
+        &self,
+        organization_id: Uuid,
+        email: &str,
+        token_hash: &str,
+        inviter_user_id: Uuid,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<OrganizationInvite, AppError> {
         let invite = sqlx::query_as::<_, OrganizationInvite>(
             r#"
             INSERT INTO organization_invites (organization_id, email, token_hash, inviter_user_id, expires_at)
@@ -763,7 +797,10 @@ impl OrganizationRepository {
         Ok(invite)
     }
 
-    pub async fn list_pending_invites(&self, organization_id: Uuid) -> Result<Vec<super::models::OrganizationInviteSummary>, AppError> {
+    pub async fn list_pending_invites(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Vec<super::models::OrganizationInviteSummary>, AppError> {
         let invites = sqlx::query_as::<_, super::models::OrganizationInviteSummary>(
             r#"
             SELECT
@@ -782,7 +819,7 @@ impl OrganizationRepository {
               AND oi.used_at IS NULL
               AND oi.expires_at > NOW()
             ORDER BY oi.created_at DESC
-            "#
+            "#,
         )
         .bind(organization_id)
         .fetch_all(&self.pool)
@@ -791,7 +828,11 @@ impl OrganizationRepository {
         Ok(invites)
     }
 
-    pub async fn revoke_invite(&self, invite_id: Uuid, organization_id: Uuid) -> Result<OrganizationInvite, AppError> {
+    pub async fn revoke_invite(
+        &self,
+        invite_id: Uuid,
+        organization_id: Uuid,
+    ) -> Result<OrganizationInvite, AppError> {
         let invite = sqlx::query_as::<_, OrganizationInvite>(
             r#"
             DELETE FROM organization_invites
@@ -810,16 +851,19 @@ impl OrganizationRepository {
         Ok(invite)
     }
 
-    pub async fn mark_invite_used(&self, invite_id: Uuid, user_id: Uuid, organization_id: Uuid) -> Result<(), AppError> {
+    pub async fn mark_invite_used(
+        &self,
+        invite_id: Uuid,
+        user_id: Uuid,
+        organization_id: Uuid,
+    ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
 
         // 1. Mark invite used
-        sqlx::query(
-            "UPDATE organization_invites SET used_at = NOW() WHERE id = $1"
-        )
-        .bind(invite_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE organization_invites SET used_at = NOW() WHERE id = $1")
+            .bind(invite_id)
+            .execute(&mut *tx)
+            .await?;
 
         // 2. Insert member (ignore conflict if already a member, but set status active)
         let member_rec = sqlx::query(
@@ -829,7 +873,7 @@ impl OrganizationRepository {
             ON CONFLICT (organization_id, user_id) 
             DO UPDATE SET status = 'active'
             RETURNING id
-            "#
+            "#,
         )
         .bind(organization_id)
         .bind(user_id)
@@ -853,7 +897,11 @@ impl OrganizationRepository {
     }
 
     /// Returns true if the user has the 'owner' or 'admin' role in the given organization.
-    pub async fn is_org_admin_or_owner(&self, organization_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+    pub async fn is_org_admin_or_owner(
+        &self,
+        organization_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<bool, AppError> {
         let count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*)
@@ -875,7 +923,11 @@ impl OrganizationRepository {
     }
 
     /// Returns true if the user has the 'owner' role in the given organization.
-    pub async fn is_org_owner(&self, organization_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+    pub async fn is_org_owner(
+        &self,
+        organization_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<bool, AppError> {
         let count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*)
@@ -897,7 +949,11 @@ impl OrganizationRepository {
     }
 
     /// Returns the active role codes for the given user in the given organization.
-    pub async fn get_user_role_codes(&self, organization_id: Uuid, user_id: Uuid) -> Result<Vec<String>, AppError> {
+    pub async fn get_user_role_codes(
+        &self,
+        organization_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<String>, AppError> {
         let role_codes = sqlx::query_scalar(
             r#"
             SELECT DISTINCT r.code

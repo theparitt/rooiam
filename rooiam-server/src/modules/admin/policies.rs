@@ -7,46 +7,24 @@ use crate::http::middleware::auth::extract_session;
 use crate::modules::admin::access::ensure_platform_staff;
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::shared::client_policy::{
-    load_platform_client_governance,
-    save_platform_client_governance,
-    PlatformClientGovernance,
+    load_platform_client_governance, save_platform_client_governance, PlatformClientGovernance,
 };
 use crate::shared::error::AppError;
 use crate::shared::ip_policy::{
-    load_platform_admin_ip_policy,
-    load_platform_ip_policy,
-    save_platform_admin_ip_policy,
-    save_platform_ip_policy,
-    PlatformAdminIpPolicy,
-    PlatformIpPolicy,
+    load_platform_admin_ip_policy, load_platform_ip_policy, save_platform_admin_ip_policy,
+    save_platform_ip_policy, PlatformAdminIpPolicy, PlatformIpPolicy,
 };
 use crate::shared::request_ip::client_ip_string_from_http_request;
 use crate::shared::tenant_access::{
-    load_tenant_access_policy,
-    save_tenant_access_policy,
-    TenantAccessPolicy,
+    load_tenant_access_policy, save_tenant_access_policy, TenantAccessPolicy,
 };
 use crate::shared::workspace_governance::{
-    load_effective_workspace_app_registration_governance,
-    load_platform_workspace_governance,
-    load_tenant_workspace_app_registration_governance,
-    save_platform_workspace_governance,
-    save_tenant_workspace_app_registration_governance,
-    PlatformWorkspaceGovernance,
-    TenantWorkspaceAppRegistrationGovernance,
-    HARD_CAP_ALLOWED_EMBED_ORIGINS_PER_APP,
-    HARD_CAP_APPS_PER_WORKSPACE,
-    HARD_CAP_REDIRECT_URIS_PER_APP,
-    HARD_CAP_WORKSPACES_PER_USER,
+    load_effective_workspace_app_registration_governance, load_platform_workspace_governance,
+    load_tenant_workspace_app_registration_governance, save_platform_workspace_governance,
+    save_tenant_workspace_app_registration_governance, PlatformWorkspaceGovernance,
+    TenantWorkspaceAppRegistrationGovernance, HARD_CAP_ALLOWED_EMBED_ORIGINS_PER_APP,
+    HARD_CAP_APPS_PER_WORKSPACE, HARD_CAP_REDIRECT_URIS_PER_APP, HARD_CAP_WORKSPACES_PER_USER,
 };
-
-
-
-
-
-
-
-
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -137,21 +115,27 @@ pub(super) async fn update_platform_client_governance(
     save_platform_client_governance(&state.db, &policy).await?;
 
     let actor = extract_session(&req)?;
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(actor.user_id),
-        organization_id: None,
-        action: "admin.platform.client_governance.updated".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("client_governance".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "tenant_client_management_enabled": policy.tenant_client_management_enabled,
-            "tenant_web_clients_enabled": policy.tenant_web_clients_enabled,
-            "tenant_spa_clients_enabled": policy.tenant_spa_clients_enabled,
-            "tenant_native_clients_enabled": policy.tenant_native_clients_enabled,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: None,
+            action: "admin.platform.client_governance.updated".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("client_governance".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "tenant_client_management_enabled": policy.tenant_client_management_enabled,
+                "tenant_web_clients_enabled": policy.tenant_web_clients_enabled,
+                "tenant_spa_clients_enabled": policy.tenant_spa_clients_enabled,
+                "tenant_native_clients_enabled": policy.tenant_native_clients_enabled,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(policy))
 }
@@ -189,21 +173,27 @@ pub(super) async fn update_tenant_access_policy(
     save_tenant_access_policy(&state.db, &policy).await?;
 
     let actor = extract_session(&req)?;
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(actor.user_id),
-        organization_id: None,
-        action: "admin.platform.tenant_access_policy.updated".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("tenant_access_policy".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "allow_magic_link": policy.allow_magic_link,
-            "allow_google": policy.allow_google,
-            "allow_microsoft": policy.allow_microsoft,
-            "allow_passkey": policy.allow_passkey,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: None,
+            action: "admin.platform.tenant_access_policy.updated".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("tenant_access_policy".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "allow_magic_link": policy.allow_magic_link,
+                "allow_google": policy.allow_google,
+                "allow_microsoft": policy.allow_microsoft,
+                "allow_passkey": policy.allow_passkey,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(load_tenant_access_policy(&state.db).await?))
 }
@@ -224,20 +214,26 @@ pub(super) async fn update_platform_ip_policy(
     save_platform_ip_policy(&state.db, &policy).await?;
 
     let actor = extract_session(&req)?;
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(actor.user_id),
-        organization_id: None,
-        action: "admin.platform.ip_policy.updated".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("platform_ip_policy".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "tenant_ip_policy_editable": policy.tenant_ip_policy_editable,
-            "allowlist_count": policy.default_allowlist.len(),
-            "blocklist_count": policy.default_blocklist.len(),
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: None,
+            action: "admin.platform.ip_policy.updated".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("platform_ip_policy".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "tenant_ip_policy_editable": policy.tenant_ip_policy_editable,
+                "allowlist_count": policy.default_allowlist.len(),
+                "blocklist_count": policy.default_blocklist.len(),
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(load_platform_ip_policy(&state.db).await?))
 }
@@ -266,19 +262,25 @@ pub(super) async fn update_platform_admin_ip_policy(
     save_platform_admin_ip_policy(&state.db, &policy).await?;
 
     let actor = extract_session(&req)?;
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(actor.user_id),
-        organization_id: None,
-        action: "admin.platform.admin_ip_policy.updated".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("admin_ip_policy".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "allowlist_count": policy.allowlist.len(),
-            "blocklist_count": policy.blocklist.len(),
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: None,
+            action: "admin.platform.admin_ip_policy.updated".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("admin_ip_policy".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "allowlist_count": policy.allowlist.len(),
+                "blocklist_count": policy.blocklist.len(),
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(load_platform_admin_ip_policy(&state.db).await?))
 }
@@ -342,10 +344,11 @@ pub(super) async fn get_tenant_workspace_app_governance(
     ensure_platform_staff(&req, &state).await?;
     let org_id = path.into_inner();
 
-    let exists: Option<bool> = sqlx::query_scalar::<_, bool>("SELECT TRUE FROM organizations WHERE id = $1")
-        .bind(org_id)
-        .fetch_optional(&state.db)
-        .await?;
+    let exists: Option<bool> =
+        sqlx::query_scalar::<_, bool>("SELECT TRUE FROM organizations WHERE id = $1")
+            .bind(org_id)
+            .fetch_optional(&state.db)
+            .await?;
     if exists.is_none() {
         return Err(AppError::NotFound("Workspace not found.".into()));
     }
@@ -354,16 +357,23 @@ pub(super) async fn get_tenant_workspace_app_governance(
     let tenant = load_tenant_workspace_app_registration_governance(&state.db, org_id).await?;
     let effective = load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
 
-    Ok(HttpResponse::Ok().json(TenantWorkspaceAppGovernanceResponse {
-        platform_default_max_redirect_uris_per_app: platform.effective_default_max_redirect_uris_per_app(),
-        platform_max_redirect_uris_per_app: platform.effective_max_redirect_uris_per_app_limit(),
-        platform_default_max_allowed_embed_origins_per_app: platform.effective_default_max_allowed_embed_origins_per_app(),
-        platform_max_allowed_embed_origins_per_app: platform.effective_max_allowed_embed_origins_per_app_limit(),
-        tenant_max_redirect_uris_per_app: tenant.max_redirect_uris_per_app,
-        tenant_max_allowed_embed_origins_per_app: tenant.max_allowed_embed_origins_per_app,
-        effective_max_redirect_uris_per_app: effective.max_redirect_uris_per_app,
-        effective_max_allowed_embed_origins_per_app: effective.max_allowed_embed_origins_per_app,
-    }))
+    Ok(
+        HttpResponse::Ok().json(TenantWorkspaceAppGovernanceResponse {
+            platform_default_max_redirect_uris_per_app: platform
+                .effective_default_max_redirect_uris_per_app(),
+            platform_max_redirect_uris_per_app: platform
+                .effective_max_redirect_uris_per_app_limit(),
+            platform_default_max_allowed_embed_origins_per_app: platform
+                .effective_default_max_allowed_embed_origins_per_app(),
+            platform_max_allowed_embed_origins_per_app: platform
+                .effective_max_allowed_embed_origins_per_app_limit(),
+            tenant_max_redirect_uris_per_app: tenant.max_redirect_uris_per_app,
+            tenant_max_allowed_embed_origins_per_app: tenant.max_allowed_embed_origins_per_app,
+            effective_max_redirect_uris_per_app: effective.max_redirect_uris_per_app,
+            effective_max_allowed_embed_origins_per_app: effective
+                .max_allowed_embed_origins_per_app,
+        }),
+    )
 }
 
 pub(super) async fn update_tenant_workspace_app_governance(
@@ -375,10 +385,11 @@ pub(super) async fn update_tenant_workspace_app_governance(
     ensure_platform_staff(&req, &state).await?;
     let org_id = path.into_inner();
 
-    let exists: Option<bool> = sqlx::query_scalar::<_, bool>("SELECT TRUE FROM organizations WHERE id = $1")
-        .bind(org_id)
-        .fetch_optional(&state.db)
-        .await?;
+    let exists: Option<bool> =
+        sqlx::query_scalar::<_, bool>("SELECT TRUE FROM organizations WHERE id = $1")
+            .bind(org_id)
+            .fetch_optional(&state.db)
+            .await?;
     if exists.is_none() {
         return Err(AppError::NotFound("Workspace not found.".into()));
     }
@@ -396,28 +407,41 @@ pub(super) async fn update_tenant_workspace_app_governance(
     let effective = load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
 
     let actor = extract_session(&req)?;
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(actor.user_id),
-        organization_id: Some(org_id),
-        action: "admin.tenant.app_governance.updated".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "max_redirect_uris_per_app": tenant.max_redirect_uris_per_app,
-            "max_allowed_embed_origins_per_app": tenant.max_allowed_embed_origins_per_app,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: Some(org_id),
+            action: "admin.tenant.app_governance.updated".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "max_redirect_uris_per_app": tenant.max_redirect_uris_per_app,
+                "max_allowed_embed_origins_per_app": tenant.max_allowed_embed_origins_per_app,
+            }),
+        })
+        .await;
 
-    Ok(HttpResponse::Ok().json(TenantWorkspaceAppGovernanceResponse {
-        platform_default_max_redirect_uris_per_app: platform.effective_default_max_redirect_uris_per_app(),
-        platform_max_redirect_uris_per_app: platform.effective_max_redirect_uris_per_app_limit(),
-        platform_default_max_allowed_embed_origins_per_app: platform.effective_default_max_allowed_embed_origins_per_app(),
-        platform_max_allowed_embed_origins_per_app: platform.effective_max_allowed_embed_origins_per_app_limit(),
-        tenant_max_redirect_uris_per_app: tenant.max_redirect_uris_per_app,
-        tenant_max_allowed_embed_origins_per_app: tenant.max_allowed_embed_origins_per_app,
-        effective_max_redirect_uris_per_app: effective.max_redirect_uris_per_app,
-        effective_max_allowed_embed_origins_per_app: effective.max_allowed_embed_origins_per_app,
-    }))
+    Ok(
+        HttpResponse::Ok().json(TenantWorkspaceAppGovernanceResponse {
+            platform_default_max_redirect_uris_per_app: platform
+                .effective_default_max_redirect_uris_per_app(),
+            platform_max_redirect_uris_per_app: platform
+                .effective_max_redirect_uris_per_app_limit(),
+            platform_default_max_allowed_embed_origins_per_app: platform
+                .effective_default_max_allowed_embed_origins_per_app(),
+            platform_max_allowed_embed_origins_per_app: platform
+                .effective_max_allowed_embed_origins_per_app_limit(),
+            tenant_max_redirect_uris_per_app: tenant.max_redirect_uris_per_app,
+            tenant_max_allowed_embed_origins_per_app: tenant.max_allowed_embed_origins_per_app,
+            effective_max_redirect_uris_per_app: effective.max_redirect_uris_per_app,
+            effective_max_allowed_embed_origins_per_app: effective
+                .max_allowed_embed_origins_per_app,
+        }),
+    )
 }

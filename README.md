@@ -18,6 +18,7 @@ Rooiam is a self-hosted identity stack you run yourself. It is **passwordless by
 - 🍪 **Opaque session cookies** — HttpOnly, not stateless-JWT over-reliance
 - 🔐 **TOTP MFA** + machine-to-machine **workspace API keys**
 - 📟 **Audit logs** and suspicious-auth visibility
+- 🐾 **MKS-1 / Meerkateer compatible** health, readiness, metrics, metadata, and optional push telemetry
 
 If you don't see a password field, that's the feature.
 
@@ -72,6 +73,27 @@ rooiam-examples/ Integration examples (widget / account / backend)
 - [OAuth provider setup](docs/oauth_provider_setup.md)
 - [Identity data boundary](docs/identity_data_boundary.md)
 - [Environment variable reference](docs/reference/08_env_var_catalog.md)
+
+## Meerkateer
+
+`rooiam-server` supports the Meerkateer MKS-1 interface:
+
+- pull endpoints: `/health`, `/ready`, `/metrics`, `/.well-known/meerkateer.json`, `/server-info`
+- optional push endpoints via `ROOIAM_MEERKATEER_*`
+
+Set the ingest base URL to:
+
+```env
+ROOIAM_MEERKATEER_INGEST_URL=https://www.meerkateer.com
+```
+
+Rooiam then posts to:
+
+- `https://www.meerkateer.com/v1/ingest/heartbeat`
+- `https://www.meerkateer.com/v1/ingest/event`
+- `https://www.meerkateer.com/v1/ingest/deploy`
+
+See the [environment variable reference](docs/reference/08_env_var_catalog.md) for the full env block.
 
 ## Status
 

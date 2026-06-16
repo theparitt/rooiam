@@ -16,6 +16,11 @@ pub fn timing_logs_enabled() -> bool {
 
 pub fn log_timing(scope: &str, elapsed_ms: u128, detail: impl AsRef<str>) {
     if timing_logs_enabled() {
-        tracing::info!("[timing] {} took {}ms | {}", scope, elapsed_ms, detail.as_ref());
+        tracing::info!(
+            "[timing] {} took {}ms | {}",
+            scope,
+            elapsed_ms,
+            detail.as_ref()
+        );
     }
 }

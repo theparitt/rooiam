@@ -16,12 +16,27 @@ pub fn spawn_token_cleanup_task(db: PgPool) {
 
 async fn run_cleanup_pass(db: &PgPool) {
     let tables: &[(&str, &str)] = &[
-        ("magic_links",               "expires_at < NOW() OR used_at IS NOT NULL"),
-        ("email_change_tokens",       "expires_at < NOW() OR used_at IS NOT NULL"),
-        ("account_deletion_tokens",   "expires_at < NOW() OR used_at IS NOT NULL"),
-        ("webauthn_challenges",       "expires_at < NOW() OR used_at IS NOT NULL"),
-        ("mfa_challenges",            "expires_at < NOW() OR used_at IS NOT NULL"),
-        ("oauth_authorization_codes", "expires_at < NOW() OR used_at IS NOT NULL"),
+        ("magic_links", "expires_at < NOW() OR used_at IS NOT NULL"),
+        (
+            "email_change_tokens",
+            "expires_at < NOW() OR used_at IS NOT NULL",
+        ),
+        (
+            "account_deletion_tokens",
+            "expires_at < NOW() OR used_at IS NOT NULL",
+        ),
+        (
+            "webauthn_challenges",
+            "expires_at < NOW() OR used_at IS NOT NULL",
+        ),
+        (
+            "mfa_challenges",
+            "expires_at < NOW() OR used_at IS NOT NULL",
+        ),
+        (
+            "oauth_authorization_codes",
+            "expires_at < NOW() OR used_at IS NOT NULL",
+        ),
     ];
 
     let mut total: u64 = 0;

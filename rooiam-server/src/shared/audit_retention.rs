@@ -26,19 +26,24 @@ async fn run_pruning_pass(db: &PgPool) {
         }
     };
 
-    match sqlx::query(
-        "DELETE FROM audit_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL",
-    )
-    .bind(retention_days)
-    .execute(db)
-    .await
+    match sqlx::query("DELETE FROM audit_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL")
+        .bind(retention_days)
+        .execute(db)
+        .await
     {
         Ok(result) => {
             let deleted = result.rows_affected();
             if deleted > 0 {
-                tracing::info!("audit_retention: pruned {} rows older than {} days", deleted, retention_days);
+                tracing::info!(
+                    "audit_retention: pruned {} rows older than {} days",
+                    deleted,
+                    retention_days
+                );
             } else {
-                tracing::debug!("audit_retention: no rows to prune (retention={} days)", retention_days);
+                tracing::debug!(
+                    "audit_retention: no rows to prune (retention={} days)",
+                    retention_days
+                );
             }
         }
         Err(e) => tracing::warn!("audit_retention: prune query failed: {}", e),
@@ -65,7 +70,10 @@ async fn read_retention_days(db: &PgPool) -> Result<Option<i32>, sqlx::Error> {
     match raw.trim().parse::<i32>() {
         Ok(days) if days > 0 => Ok(Some(days)),
         _ => {
-            tracing::warn!("audit_retention: invalid value {:?}, treating as no retention", raw);
+            tracing::warn!(
+                "audit_retention: invalid value {:?}, treating as no retention",
+                raw
+            );
             Ok(None)
         }
     }

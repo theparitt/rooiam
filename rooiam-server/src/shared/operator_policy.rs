@@ -35,7 +35,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::shared::error::AppError;
-use crate::shared::ip_policy::{IpAccessDecision, EffectiveIpPolicy, access_denied_message, evaluate_ip_access};
+use crate::shared::ip_policy::{
+    access_denied_message, evaluate_ip_access, EffectiveIpPolicy, IpAccessDecision,
+};
 
 /// Which operator login surface is being evaluated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,7 +123,9 @@ pub async fn load_operator_policy(
     )
     .fetch_optional(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load operator policy '{}': {}", level, e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to load operator policy '{}': {}", level, e))
+    })?;
 
     Ok(row)
 }
@@ -250,7 +254,12 @@ pub async fn resolve_operator_login_level(
         )
         .fetch_one(db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to check workspace operator membership: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to check workspace operator membership: {}",
+                e
+            ))
+        })?;
 
         if is_org_operator {
             return Ok(Some(OperatorLoginLevel::TenantPortalAdmin));
@@ -302,7 +311,12 @@ pub async fn compute_effective_operator_policy(
     )
     .fetch_one(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load personal MFA enrollment state: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load personal MFA enrollment state: {}",
+            e
+        ))
+    })?;
 
     effective.require_mfa = effective.require_mfa || totp_enrolled;
 
@@ -386,7 +400,8 @@ fn ensure_operator_email_domain_allowed(
 
     // Blocked domains (union — any match blocks)
     if !effective.blocked_email_domains.is_empty() {
-        let blocked = effective.blocked_email_domains
+        let blocked = effective
+            .blocked_email_domains
             .split(',')
             .map(str::trim)
             .filter(|d| !d.is_empty());
@@ -401,7 +416,8 @@ fn ensure_operator_email_domain_allowed(
 
     // Allowed domains (non-empty = restrictive allowlist)
     if !effective.allowed_email_domains.is_empty() {
-        let allowed = effective.allowed_email_domains
+        let allowed = effective
+            .allowed_email_domains
             .split(',')
             .map(str::trim)
             .filter(|d| !d.is_empty());
@@ -506,8 +522,14 @@ impl OperatorPolicyUpdate {
             require_mfa: self.require_mfa.unwrap_or(base.require_mfa),
             ip_allowlist: self.ip_allowlist.clone().unwrap_or(base.ip_allowlist),
             ip_blocklist: self.ip_blocklist.clone().unwrap_or(base.ip_blocklist),
-            allowed_email_domains: self.allowed_email_domains.clone().unwrap_or(base.allowed_email_domains),
-            blocked_email_domains: self.blocked_email_domains.clone().unwrap_or(base.blocked_email_domains),
+            allowed_email_domains: self
+                .allowed_email_domains
+                .clone()
+                .unwrap_or(base.allowed_email_domains),
+            blocked_email_domains: self
+                .blocked_email_domains
+                .clone()
+                .unwrap_or(base.blocked_email_domains),
             ..base
         }
     }
@@ -567,7 +589,10 @@ mod tests {
         let parent = base_policy(|p| p.allow_google = false);
         let proposed = update(|u| u.allow_google = Some(true));
         let err = validate_policy_not_looser_than_parent(&parent, &proposed);
-        assert!(err.is_err(), "Should reject loosening Google when parent disabled it");
+        assert!(
+            err.is_err(),
+            "Should reject loosening Google when parent disabled it"
+        );
     }
 
     #[test]

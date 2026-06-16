@@ -21,8 +21,8 @@ pub enum ServerMode {
 impl ServerMode {
     /// Load from `ROOIAM_MODE`. Must be explicitly set.
     pub fn from_env() -> Self {
-        let _ = dotenvy::dotenv();
-        
+        maybe_load_default_dotenv();
+
         let mode_var = env::var("ROOIAM_MODE")
             .map(|v| v.trim().to_ascii_lowercase())
             .map_err(|_| {
@@ -32,7 +32,7 @@ impl ServerMode {
                 std::process::exit(1);
             })
             .unwrap();
-        
+
         match mode_var.as_str() {
             "production" | "prod" => ServerMode::Production,
             "demo" => ServerMode::Demo,
@@ -78,7 +78,7 @@ pub enum DeployTarget {
 
 impl DeployTarget {
     pub fn from_env() -> Self {
-        let _ = dotenvy::dotenv();
+        maybe_load_default_dotenv();
 
         let target_var = env::var("ROOIAM_DEPLOY_TARGET")
             .map(|v| v.trim().to_ascii_lowercase())
@@ -233,29 +233,64 @@ impl AppConfig {
 
         // ── Server ─────────────────────────────────────────────────────────────
         section("Server");
-        check_required_val("ROOIAM_MODE",       "production | demo | test",                              &mut bad);
+        check_required_val("ROOIAM_MODE", "production | demo | test", &mut bad);
         check_required_val("ROOIAM_DEPLOY_TARGET", "local | public", &mut bad);
-        check_required_val("ROOIAM_SERVER_URL", "public HTTPS URL of this API, e.g. https://api.example.com", &mut bad);
-        check_required_val("ROOIAM_APP_URL",    "public URL of the tenant portal, e.g. https://app.example.com", &mut bad);
-        check_required_val("ROOIAM_ADMIN_URL",  "public URL of the admin console, e.g. https://admin.example.com", &mut bad);
-        check_required_val("ROOIAM_HOST", "bind address, e.g. 0.0.0.0 or 127.0.0.1", &mut bad);
-        check_required_val("ROOIAM_PORT", "port number, e.g. 5170 or 5180",           &mut bad);
-        check_optional_val("ROOIAM_ENDUSER_URL", "demo-only downstream end-user app URL, e.g. candycloud-web");
-        check_optional_val("ROOIAM_LANDING_URL", "landing page URL (informational only)");
-        check_optional_val("ROOIAM_DOCS_URL",    "docs site URL (informational only)");
-        check_optional_val("ROOIAM_ALLOWED_ORIGINS", "extra CORS origins beyond app+admin URLs");
-        check_optional_val("ROOIAM_TRUSTED_PROXY_CIDRS",
-            "CIDR list for trusted reverse proxies — X-Forwarded-For is ignored without this");
-        check_optional_val("ROOIAM_MAX_LOGO_BYTES", "max logo upload size (default 8388608 = 8MB)");
+        check_required_val(
+            "ROOIAM_SERVER_URL",
+            "public HTTPS URL of this API, e.g. https://api.example.com",
+            &mut bad,
+        );
+        check_required_val(
+            "ROOIAM_APP_URL",
+            "public URL of the tenant portal, e.g. https://app.example.com",
+            &mut bad,
+        );
+        check_required_val(
+            "ROOIAM_ADMIN_URL",
+            "public URL of the admin console, e.g. https://admin.example.com",
+            &mut bad,
+        );
+        check_required_val(
+            "ROOIAM_HOST",
+            "bind address, e.g. 0.0.0.0 or 127.0.0.1",
+            &mut bad,
+        );
+        check_required_val("ROOIAM_PORT", "port number, e.g. 5170 or 5180", &mut bad);
+        check_optional_val(
+            "ROOIAM_ENDUSER_URL",
+            "demo-only downstream end-user app URL, e.g. candycloud-web",
+        );
+        check_optional_val(
+            "ROOIAM_LANDING_URL",
+            "landing page URL (informational only)",
+        );
+        check_optional_val("ROOIAM_DOCS_URL", "docs site URL (informational only)");
+        check_optional_val(
+            "ROOIAM_ALLOWED_ORIGINS",
+            "extra CORS origins beyond app+admin URLs",
+        );
+        check_optional_val(
+            "ROOIAM_TRUSTED_PROXY_CIDRS",
+            "CIDR list for trusted reverse proxies — X-Forwarded-For is ignored without this",
+        );
+        check_optional_val(
+            "ROOIAM_MAX_LOGO_BYTES",
+            "max logo upload size (default 8388608 = 8MB)",
+        );
 
         // ── Cookie ─────────────────────────────────────────────────────────────
         section("Cookie");
-        check_required_val("ROOIAM_COOKIE_SECURE",
-            "true (HTTPS / production) or false (local HTTP dev)", &mut bad);
-        check_warn_val("ROOIAM_COOKIE_DOMAIN",
+        check_required_val(
+            "ROOIAM_COOKIE_SECURE",
+            "true (HTTPS / production) or false (local HTTP dev)",
+            &mut bad,
+        );
+        check_warn_val(
+            "ROOIAM_COOKIE_DOMAIN",
             "not set — cookie is host-only on the API origin; \
              Safari/Firefox ITP blocks cross-subdomain requests. \
-             Set to parent domain, e.g. rooiam.com");
+             Set to parent domain, e.g. rooiam.com",
+        );
 
         section("Deploy target");
         match deploy_target {
@@ -263,7 +298,11 @@ impl AppConfig {
                 check_local_target_url("ROOIAM_SERVER_URL");
                 check_local_target_url("ROOIAM_APP_URL");
                 check_local_target_url("ROOIAM_ADMIN_URL");
-                check_expected_bool("ROOIAM_COOKIE_SECURE", false, "local runs should usually use plain HTTP");
+                check_expected_bool(
+                    "ROOIAM_COOKIE_SECURE",
+                    false,
+                    "local runs should usually use plain HTTP",
+                );
                 check_expected_empty_or_loopback_domain("ROOIAM_COOKIE_DOMAIN");
             }
             DeployTarget::Public => {
@@ -276,77 +315,156 @@ impl AppConfig {
 
         // ── Database ───────────────────────────────────────────────────────────
         section("Database");
-        check_required_secret("ROOIAM_DATABASE_URL",
-            "postgres://user:pass@host:5432/rooiam", &mut bad);
+        check_required_secret(
+            "ROOIAM_DATABASE_URL",
+            "postgres://user:pass@host:5432/rooiam",
+            &mut bad,
+        );
 
         // ── Redis ──────────────────────────────────────────────────────────────
         section("Redis");
-        check_required_val("ROOIAM_REDIS_URL", "full Redis URL, e.g. redis://host:6379", &mut bad);
+        check_required_val(
+            "ROOIAM_REDIS_URL",
+            "full Redis URL, e.g. redis://host:6379",
+            &mut bad,
+        );
 
         // ── Storage ────────────────────────────────────────────────────────────
         section("Storage");
-        check_optional_val("ROOIAM_STORAGE_ROOT",
-            "local file storage root (default <cwd>/.localdata/rooiam)");
-        check_optional_val("ROOIAM_PUBLIC_MEDIA_BASE",
-            "public base URL or path for uploaded media (default /media)");
-        check_optional_val("ROOIAM_MINIO_ENDPOINT",  "MinIO endpoint, e.g. http://minio:9000");
-        check_optional_val("ROOIAM_MINIO_BUCKET",     "MinIO bucket name");
-        check_optional_secret("ROOIAM_MINIO_USER", "MinIO access key (falls back to MINIO_ROOT_USER)");
-        check_optional_secret("ROOIAM_MINIO_PASSWORD", "MinIO secret key (falls back to MINIO_ROOT_PASSWORD)");
+        check_optional_val(
+            "ROOIAM_STORAGE_ROOT",
+            "local file storage root (default <cwd>/.localdata/rooiam)",
+        );
+        check_optional_val(
+            "ROOIAM_PUBLIC_MEDIA_BASE",
+            "public base URL or path for uploaded media (default /media)",
+        );
+        check_optional_val(
+            "ROOIAM_MINIO_ENDPOINT",
+            "MinIO endpoint, e.g. http://minio:9000",
+        );
+        check_optional_val("ROOIAM_MINIO_BUCKET", "MinIO bucket name");
+        check_optional_secret(
+            "ROOIAM_MINIO_USER",
+            "MinIO access key (falls back to MINIO_ROOT_USER)",
+        );
+        check_optional_secret(
+            "ROOIAM_MINIO_PASSWORD",
+            "MinIO secret key (falls back to MINIO_ROOT_PASSWORD)",
+        );
 
         // ── OIDC Signing ───────────────────────────────────────────────────────
         section("OIDC Signing");
-        let has_rsa = std::env::var("ROOIAM_OIDC_PRIVATE_KEY_PEM").map(|v| !v.trim().is_empty()).unwrap_or(false)
-            || std::env::var("ROOIAM_OIDC_PRIVATE_KEY_PATH").map(|v| !v.trim().is_empty()).unwrap_or(false);
+        let has_rsa = std::env::var("ROOIAM_OIDC_PRIVATE_KEY_PEM")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+            || std::env::var("ROOIAM_OIDC_PRIVATE_KEY_PATH")
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
         if has_rsa {
-            check_optional_val("ROOIAM_OIDC_PRIVATE_KEY_PATH", "path to RSA private key PEM (RS256 signing)");
-            check_optional_val("ROOIAM_OIDC_PUBLIC_KEY_PATH",  "path to RSA public key PEM (RS256 verification)");
-            check_optional_val("ROOIAM_OIDC_PRIVATE_KEY_PEM",  "RSA private key PEM inline");
-            check_optional_val("ROOIAM_OIDC_PUBLIC_KEY_PEM",   "RSA public key PEM inline");
-            check_optional_val("ROOIAM_OIDC_KEY_ID", "key ID for JWKS (default rooiam-rs256-1)");
+            check_optional_val(
+                "ROOIAM_OIDC_PRIVATE_KEY_PATH",
+                "path to RSA private key PEM (RS256 signing)",
+            );
+            check_optional_val(
+                "ROOIAM_OIDC_PUBLIC_KEY_PATH",
+                "path to RSA public key PEM (RS256 verification)",
+            );
+            check_optional_val("ROOIAM_OIDC_PRIVATE_KEY_PEM", "RSA private key PEM inline");
+            check_optional_val("ROOIAM_OIDC_PUBLIC_KEY_PEM", "RSA public key PEM inline");
+            check_optional_val(
+                "ROOIAM_OIDC_KEY_ID",
+                "key ID for JWKS (default rooiam-rs256-1)",
+            );
         } else {
             println!("  [ WARN    ]  ROOIAM_OIDC_PRIVATE_KEY_PEM / _PATH not set");
             println!("               → using HS256 with ROOIAM_OIDC_SIGNING_SECRET (dev only)");
-            check_warn_val("ROOIAM_OIDC_SIGNING_SECRET",
-                "not set — using a generated dev secret (not safe for production)");
-            check_warn_val("ROOIAM_JWT_SECRET",
-                "legacy alias for ROOIAM_OIDC_SIGNING_SECRET (ignored if signing secret is set)");
+            check_warn_val(
+                "ROOIAM_OIDC_SIGNING_SECRET",
+                "not set — using a generated dev secret (not safe for production)",
+            );
+            check_warn_val(
+                "ROOIAM_JWT_SECRET",
+                "legacy alias for ROOIAM_OIDC_SIGNING_SECRET (ignored if signing secret is set)",
+            );
         }
 
         // ── WebAuthn ───────────────────────────────────────────────────────────
         section("WebAuthn");
-        check_optional_val("ROOIAM_WEBAUTHN_RP_ID",      "relying-party ID (default: host from ROOIAM_SERVER_URL)");
-        check_optional_val("ROOIAM_WEBAUTHN_RP_NAME",    "relying-party display name (default: Rooiam)");
-        check_optional_val("ROOIAM_WEBAUTHN_ORIGIN",     "primary WebAuthn origin (default: ROOIAM_SERVER_URL)");
-        check_optional_val("ROOIAM_WEBAUTHN_EXTRA_ORIGINS", "comma-separated extra origins allowed for passkeys");
-        check_optional_val("ROOIAM_WEBAUTHN_ALLOW_ANY_PORT",
-            "true to allow any port on the RP ID (default: true when RP ID is localhost)");
+        check_optional_val(
+            "ROOIAM_WEBAUTHN_RP_ID",
+            "relying-party ID (default: host from ROOIAM_SERVER_URL)",
+        );
+        check_optional_val(
+            "ROOIAM_WEBAUTHN_RP_NAME",
+            "relying-party display name (default: Rooiam)",
+        );
+        check_optional_val(
+            "ROOIAM_WEBAUTHN_ORIGIN",
+            "primary WebAuthn origin (default: ROOIAM_SERVER_URL)",
+        );
+        check_optional_val(
+            "ROOIAM_WEBAUTHN_EXTRA_ORIGINS",
+            "comma-separated extra origins allowed for passkeys",
+        );
+        check_optional_val(
+            "ROOIAM_WEBAUTHN_ALLOW_ANY_PORT",
+            "true to allow any port on the RP ID (default: true when RP ID is localhost)",
+        );
 
         // ── OAuth Providers ────────────────────────────────────────────────────
         section("OAuth Providers");
-        check_optional_secret("ROOIAM_GOOGLE_CLIENT_ID",      "Google OAuth client ID (required for Google login)");
-        check_optional_secret("ROOIAM_GOOGLE_CLIENT_SECRET",  "Google OAuth client secret");
-        check_optional_val(   "ROOIAM_GOOGLE_REDIRECT_URI",   "override default Google callback URL");
-        check_optional_secret("ROOIAM_MICROSOFT_CLIENT_ID",   "Microsoft OAuth client ID (required for MS login)");
-        check_optional_secret("ROOIAM_MICROSOFT_CLIENT_SECRET","Microsoft OAuth client secret");
-        check_optional_val(   "ROOIAM_MICROSOFT_TENANT_ID",   "Microsoft tenant (default: common)");
-        check_optional_val(   "ROOIAM_MICROSOFT_REDIRECT_URI","override default Microsoft callback URL");
+        check_optional_secret(
+            "ROOIAM_GOOGLE_CLIENT_ID",
+            "Google OAuth client ID (required for Google login)",
+        );
+        check_optional_secret("ROOIAM_GOOGLE_CLIENT_SECRET", "Google OAuth client secret");
+        check_optional_val(
+            "ROOIAM_GOOGLE_REDIRECT_URI",
+            "override default Google callback URL",
+        );
+        check_optional_secret(
+            "ROOIAM_MICROSOFT_CLIENT_ID",
+            "Microsoft OAuth client ID (required for MS login)",
+        );
+        check_optional_secret(
+            "ROOIAM_MICROSOFT_CLIENT_SECRET",
+            "Microsoft OAuth client secret",
+        );
+        check_optional_val(
+            "ROOIAM_MICROSOFT_TENANT_ID",
+            "Microsoft tenant (default: common)",
+        );
+        check_optional_val(
+            "ROOIAM_MICROSOFT_REDIRECT_URI",
+            "override default Microsoft callback URL",
+        );
 
         // ── Mode-specific ──────────────────────────────────────────────────────
         match mode {
             ServerMode::Production => {
                 section("Production");
-                check_required_secret("ROOIAM_SETUP_TOKEN",
-                    "random secret for the setup wizard (openssl rand -hex 32)", &mut bad);
-                check_warn_val("ROOIAM_SMTP_HOST",
-                    "not set — email (magic links, invites, alerts) will not work");
-                check_optional_val("ROOIAM_SMTP_PORT",     "SMTP port (default 587)");
-                check_optional_val("ROOIAM_SMTP_SECURITY", "none | starttls | tls (default starttls)");
-                check_optional_val("ROOIAM_SMTP_FROM",     "sender address for outgoing email");
-                check_optional_secret("ROOIAM_SMTP_USER",  "SMTP username");
-                check_optional_secret("ROOIAM_SMTP_PASS",  "SMTP password");
-                check_optional_val("ROOIAM_MAILBOX_URL",
-                    "mailbox UI URL used as a setup-wizard default, e.g. http://localhost:8025");
+                check_required_secret(
+                    "ROOIAM_SETUP_TOKEN",
+                    "random secret for the setup wizard (openssl rand -hex 32)",
+                    &mut bad,
+                );
+                check_warn_val(
+                    "ROOIAM_SMTP_HOST",
+                    "not set — email (magic links, invites, alerts) will not work",
+                );
+                check_optional_val("ROOIAM_SMTP_PORT", "SMTP port (default 587)");
+                check_optional_val(
+                    "ROOIAM_SMTP_SECURITY",
+                    "none | starttls | tls (default starttls)",
+                );
+                check_optional_val("ROOIAM_SMTP_FROM", "sender address for outgoing email");
+                check_optional_secret("ROOIAM_SMTP_USER", "SMTP username");
+                check_optional_secret("ROOIAM_SMTP_PASS", "SMTP password");
+                check_optional_val(
+                    "ROOIAM_MAILBOX_URL",
+                    "mailbox UI URL used as a setup-wizard default, e.g. http://localhost:8025",
+                );
                 println!("  ── not used in production mode ─────────────────────────────────");
                 check_not_used("ROOIAM_DEMO_SMTP_HOST", &mut bad);
                 check_not_used("ROOIAM_DEMO_SMTP_PORT", &mut bad);
@@ -356,40 +474,71 @@ impl AppConfig {
             }
             ServerMode::Demo => {
                 section("Demo");
-                check_required_val("ROOIAM_DEMO_SMTP_HOST",
-                    "Mailhog host, e.g. localhost or mailhog", &mut bad);
-                check_required_val("ROOIAM_DEMO_SMTP_PORT",
-                    "Mailhog SMTP port, e.g. 1025", &mut bad);
-                check_required_val("ROOIAM_DEMO_SMTP_FROM",
-                    "from address for demo emails, e.g. demo@rooiam.local", &mut bad);
-                check_warn_val("ROOIAM_DEMO_MAILBOX_URL",
-                    "not set — mailbox link won't appear in the demo UI");
-                check_optional_val("ROOIAM_DEMO_APP_URL",   "link to demo app shown in admin UI");
-                check_optional_val("ROOIAM_DEMO_PORTAL_URL","link to demo portal shown in admin UI");
-                check_optional_val("ROOIAM_DEMO_ADMIN_URL", "link to demo admin shown in admin UI");
+                check_required_val(
+                    "ROOIAM_DEMO_SMTP_HOST",
+                    "Mailhog host, e.g. localhost or mailhog",
+                    &mut bad,
+                );
+                check_required_val(
+                    "ROOIAM_DEMO_SMTP_PORT",
+                    "Mailhog SMTP port, e.g. 1025",
+                    &mut bad,
+                );
+                check_required_val(
+                    "ROOIAM_DEMO_SMTP_FROM",
+                    "from address for demo emails, e.g. demo@rooiam.local",
+                    &mut bad,
+                );
+                check_warn_val(
+                    "ROOIAM_DEMO_MAILBOX_URL",
+                    "not set — mailbox link won't appear in the demo UI",
+                );
+                check_optional_val("ROOIAM_DEMO_APP_URL", "link to demo app shown in admin UI");
+                check_optional_val(
+                    "ROOIAM_DEMO_PORTAL_URL",
+                    "link to demo portal shown in admin UI",
+                );
+                check_optional_val(
+                    "ROOIAM_DEMO_ADMIN_URL",
+                    "link to demo admin shown in admin UI",
+                );
                 println!("  ── not used in demo mode ───────────────────────────────────────");
                 check_not_used("ROOIAM_SETUP_TOKEN", &mut bad);
                 check_not_used("ROOIAM_SMTP_HOST", &mut bad);
             }
             ServerMode::Test => {
                 section("Test");
-                check_warn_val("ROOIAM_DEMO_SMTP_HOST", "not set — Mailhog check will be skipped");
+                check_warn_val(
+                    "ROOIAM_DEMO_SMTP_HOST",
+                    "not set — Mailhog check will be skipped",
+                );
             }
         }
 
         // ── Rate limits (informational only) ───────────────────────────────────
         section("Rate limits (overrides — all optional)");
-        for suffix in &["AUTH_PER_ENDPOINT","AUTH_PER_IP","IDENTITY_PER_ENDPOINT","IDENTITY_PER_IP",
-                        "ORGS_PER_ENDPOINT","ORGS_PER_IP","OAUTH_PER_ENDPOINT","OAUTH_PER_IP",
-                        "WEBAUTHN_PER_ENDPOINT","WEBAUTHN_PER_IP"] {
+        for suffix in &[
+            "AUTH_PER_ENDPOINT",
+            "AUTH_PER_IP",
+            "IDENTITY_PER_ENDPOINT",
+            "IDENTITY_PER_IP",
+            "ORGS_PER_ENDPOINT",
+            "ORGS_PER_IP",
+            "OAUTH_PER_ENDPOINT",
+            "OAUTH_PER_IP",
+            "WEBAUTHN_PER_ENDPOINT",
+            "WEBAUTHN_PER_IP",
+        ] {
             let key = format!("ROOIAM_RATE_{}", suffix);
             match std::env::var(&key) {
-                Ok(v) if !v.trim().is_empty() =>
-                    println!("  [ OK      ]  {} = {}", key, v.trim()),
+                Ok(v) if !v.trim().is_empty() => println!("  [ OK      ]  {} = {}", key, v.trim()),
                 _ => {}
             }
         }
-        println!("  (unset rate-limit vars use compiled-in defaults for mode={})", mode.label());
+        println!(
+            "  (unset rate-limit vars use compiled-in defaults for mode={})",
+            mode.label()
+        );
 
         println!("  ═══════════════════════════════════════════════════════════════");
 
@@ -417,7 +566,9 @@ impl AppConfig {
         let database_url = resolve_database_url(&mode);
         std::env::set_var("ROOIAM_DATABASE_URL", &database_url);
         let port = env::var("ROOIAM_PORT")
-            .unwrap_or_else(|_| panic!("ROOIAM_PORT is not set. Set it to the port number, e.g. 5170"))
+            .unwrap_or_else(|_| {
+                panic!("ROOIAM_PORT is not set. Set it to the port number, e.g. 5170")
+            })
             .trim()
             .parse::<u16>()
             .unwrap_or_else(|_| panic!("ROOIAM_PORT is not a valid port number"));
@@ -425,17 +576,22 @@ impl AppConfig {
         let frontend_url = load_public_url("ROOIAM_APP_URL");
         let admin_url = load_public_url("ROOIAM_ADMIN_URL");
         let default_google_redirect = format!("{}/api/v1/auth/google/callback", normalized_issuer);
-        let default_microsoft_redirect = format!("{}/api/v1/auth/microsoft/callback", normalized_issuer);
+        let default_microsoft_redirect =
+            format!("{}/api/v1/auth/microsoft/callback", normalized_issuer);
 
         let max_logo_bytes = env::var("ROOIAM_MAX_LOGO_BYTES")
             .ok()
             .and_then(|v| v.trim().parse::<usize>().ok())
             .unwrap_or(8 * 1024 * 1024); // default 8MB
-        let storage_root = env_str("ROOIAM_STORAGE_ROOT",
-            &format!("{}/.localdata/rooiam", env::current_dir().unwrap_or_else(|_| ".".into()).display()));
-        let public_media_base = normalize_public_media_base(
-            env_str("ROOIAM_PUBLIC_MEDIA_BASE", "/media")
+        let storage_root = env_str(
+            "ROOIAM_STORAGE_ROOT",
+            &format!(
+                "{}/.localdata/rooiam",
+                env::current_dir().unwrap_or_else(|_| ".".into()).display()
+            ),
         );
+        let public_media_base =
+            normalize_public_media_base(env_str("ROOIAM_PUBLIC_MEDIA_BASE", "/media"));
 
         let mut trusted_proxy_cidrs = load_trusted_proxy_cidrs();
         if mode.trust_localhost_proxy() {
@@ -668,7 +824,10 @@ fn normalize_public_media_base(raw: String) -> String {
 fn load_public_url(var: &str) -> String {
     let raw = match env::var(var) {
         Ok(value) if !value.trim().is_empty() => value,
-        Ok(_) => panic!("{} is set but empty. Use a full URL like https://auth.example.com", var),
+        Ok(_) => panic!(
+            "{} is set but empty. Use a full URL like https://auth.example.com",
+            var
+        ),
         Err(_) => {
             panic!(
                 "{} is not set. Set ROOIAM_SERVER_URL, ROOIAM_APP_URL, and ROOIAM_ADMIN_URL.",
@@ -677,8 +836,12 @@ fn load_public_url(var: &str) -> String {
         }
     };
     let trimmed = raw.trim();
-    let parsed = Url::parse(trimmed)
-        .unwrap_or_else(|_| panic!("Invalid {}. Use a full URL like https://auth.example.com", var));
+    let parsed = Url::parse(trimmed).unwrap_or_else(|_| {
+        panic!(
+            "Invalid {}. Use a full URL like https://auth.example.com",
+            var
+        )
+    });
 
     let mut normalized = parsed.to_string();
     while normalized.ends_with('/') {
@@ -687,8 +850,6 @@ fn load_public_url(var: &str) -> String {
     normalized
 }
 
-
-
 /// Look up a rate-limit value with a mode-specific prefix fallback.
 ///
 /// Resolution order:
@@ -696,7 +857,7 @@ fn load_public_url(var: &str) -> String {
 ///   2. `ROOIAM_RATE_{SUFFIX}`               — generic override       (e.g. `ROOIAM_RATE_AUTH_PER_ENDPOINT`)
 ///   3. `hardcoded_default`                  — compiled-in fallback
 fn env_rate(mode_prefix: &str, suffix: &str, hardcoded_default: u64) -> u64 {
-    let mode_key    = format!("ROOIAM_RATE_{}_{}", mode_prefix, suffix);
+    let mode_key = format!("ROOIAM_RATE_{}_{}", mode_prefix, suffix);
     let generic_key = format!("ROOIAM_RATE_{}", suffix);
     std::env::var(&mode_key)
         .ok()
@@ -709,11 +870,7 @@ fn check_local_target_url(key: &str) {
     match env::var(key) {
         Ok(value) if !value.trim().is_empty() => {
             if !is_local_url(value.trim()) {
-                println!(
-                    "  [ WARN    ]  {} = {}",
-                    key,
-                    value.trim()
-                );
+                println!("  [ WARN    ]  {} = {}", key, value.trim());
                 println!(
                     "               → ROOIAM_DEPLOY_TARGET=local usually expects localhost/loopback URLs"
                 );
@@ -794,10 +951,7 @@ fn is_local_url(value: &str) -> bool {
     let Ok(parsed) = Url::parse(value) else {
         return false;
     };
-    parsed
-        .host_str()
-        .map(is_loopback_host)
-        .unwrap_or(false)
+    parsed.host_str().map(is_loopback_host).unwrap_or(false)
 }
 
 fn is_loopback_host(host: &str) -> bool {
@@ -868,7 +1022,6 @@ fn check_required_secret(key: &str, hint: &str, missing: &mut bool) {
     }
 }
 
-
 /// Optional var — shows value if set, skips otherwise (no noise for truly optional vars).
 fn check_optional_val(key: &str, hint: &str) {
     match std::env::var(key) {
@@ -907,7 +1060,10 @@ fn check_warn_val(key: &str, reason: &str) {
 
 /// Prints [ IGNORE ] if a var from another mode is present, so the user knows it's harmless.
 fn check_not_used(key: &str, bad: &mut bool) {
-    if std::env::var(key).map(|v| !v.trim().is_empty()).unwrap_or(false) {
+    if std::env::var(key)
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+    {
         eprintln!("  [ UNEXPECTED ]  {} is set but not used in this mode", key);
         *bad = true;
     }
@@ -915,13 +1071,21 @@ fn check_not_used(key: &str, bad: &mut bool) {
 
 fn validate_unexpected_rooiam_vars(mode: &ServerMode, bad: &mut bool) {
     let allowed = allowed_rooiam_env_vars(mode);
-    let allowed_prefixes = ["ROOIAM_RATE_", "ROOIAM_OIDC_PRIVATE_KEY_", "ROOIAM_OIDC_PUBLIC_KEY_"];
+    let allowed_prefixes = [
+        "ROOIAM_RATE_",
+        "ROOIAM_OIDC_PRIVATE_KEY_",
+        "ROOIAM_OIDC_PUBLIC_KEY_",
+    ];
 
     let mut unexpected: Vec<String> = std::env::vars()
         .map(|(key, _)| key)
         .filter(|key| key.starts_with("ROOIAM_"))
         .filter(|key| !allowed.contains(key.as_str()))
-        .filter(|key| !allowed_prefixes.iter().any(|prefix| key.starts_with(prefix)))
+        .filter(|key| {
+            !allowed_prefixes
+                .iter()
+                .any(|prefix| key.starts_with(prefix))
+        })
         .collect();
 
     unexpected.sort();
@@ -933,9 +1097,22 @@ fn validate_unexpected_rooiam_vars(mode: &ServerMode, bad: &mut bool) {
 
     section("Strict env contract");
     for key in unexpected {
-        eprintln!("  [ UNEXPECTED ]  {} is not a recognized server env variable", key);
+        eprintln!(
+            "  [ UNEXPECTED ]  {} is not a recognized server env variable",
+            key
+        );
         *bad = true;
     }
+}
+
+fn maybe_load_default_dotenv() {
+    let has_explicit_mode = std::env::var_os("ROOIAM_MODE").is_some();
+    let has_explicit_target = std::env::var_os("ROOIAM_DEPLOY_TARGET").is_some();
+    if has_explicit_mode || has_explicit_target {
+        return;
+    }
+
+    let _ = dotenvy::dotenv();
 }
 
 fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
@@ -987,6 +1164,15 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_BUILD_TIME_UTC",
         "ROOIAM_GIT_SHA",
         "ROOIAM_GIT_BRANCH",
+        "ROOIAM_SERVICE_ENVIRONMENT",
+        "ROOIAM_MEERKATEER_ENABLED",
+        "ROOIAM_MEERKATEER_INGEST_URL",
+        "ROOIAM_MEERKATEER_SERVICE_KEY",
+        "ROOIAM_MEERKATEER_TIMEOUT_MS",
+        "ROOIAM_MEERKATEER_HEARTBEAT_INTERVAL_SECONDS",
+        "ROOIAM_METRICS_ENABLED",
+        "ROOIAM_METRICS_TOKEN",
+        "ROOIAM_MKS1_FORCE_CHECK_FAILURES",
         "ROOIAM_REQUIRE_EXPLICIT_EMBED_ORIGINS",
         "ROOIAM_TIMING_LOGS",
         "ROOIAM_RESET_DEMO_DATA",

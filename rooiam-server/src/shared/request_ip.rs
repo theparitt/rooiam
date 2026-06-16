@@ -23,11 +23,18 @@ pub fn client_ip_from_service_request(req: &ServiceRequest, config: &AppConfig) 
     resolve_client_ip(req.connection_info().peer_addr(), req.headers(), config)
 }
 
-pub fn client_ip_string_from_service_request(req: &ServiceRequest, config: &AppConfig) -> Option<String> {
+pub fn client_ip_string_from_service_request(
+    req: &ServiceRequest,
+    config: &AppConfig,
+) -> Option<String> {
     client_ip_from_service_request(req, config).map(|ip| ip.to_string())
 }
 
-fn resolve_client_ip(peer_addr: Option<&str>, headers: &HeaderMap, config: &AppConfig) -> Option<IpAddr> {
+fn resolve_client_ip(
+    peer_addr: Option<&str>,
+    headers: &HeaderMap,
+    config: &AppConfig,
+) -> Option<IpAddr> {
     let peer_ip = parse_client_ip(peer_addr)?;
     if !is_trusted_proxy(peer_ip, &config.server.trusted_proxy_cidrs) {
         return Some(peer_ip);
@@ -98,7 +105,10 @@ fn parse_forwarded_for_value(raw: &str) -> Option<IpAddr> {
     }
 
     if let Some(stripped) = value.strip_prefix('[') {
-        let ip_part = stripped.split_once(']').map(|(ip, _)| ip).unwrap_or(stripped);
+        let ip_part = stripped
+            .split_once(']')
+            .map(|(ip, _)| ip)
+            .unwrap_or(stripped);
         return ip_part.parse::<IpAddr>().ok();
     }
 
@@ -108,7 +118,10 @@ fn parse_forwarded_for_value(raw: &str) -> Option<IpAddr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bootstrap::config::{AppConfig, DatabaseConfig, DeployTarget, OAuthConfig, OidcConfig, RateLimitConfig, RedisConfig, ServerConfig, ServerMode, StorageConfig, WebauthnConfig};
+    use crate::bootstrap::config::{
+        AppConfig, DatabaseConfig, DeployTarget, OAuthConfig, OidcConfig, RateLimitConfig,
+        RedisConfig, ServerConfig, ServerMode, StorageConfig, WebauthnConfig,
+    };
     use actix_web::http::header::HeaderName;
 
     fn test_config(trusted_proxy_cidrs: &[&str]) -> AppConfig {
@@ -121,19 +134,30 @@ mod tests {
                 issuer_url: "https://auth.example.com".into(),
                 frontend_url: "https://app.example.com".into(),
                 admin_url: "https://admin.example.com".into(),
-                trusted_proxy_cidrs: trusted_proxy_cidrs.iter().map(|value| value.parse().unwrap()).collect(),
+                trusted_proxy_cidrs: trusted_proxy_cidrs
+                    .iter()
+                    .map(|value| value.parse().unwrap())
+                    .collect(),
                 max_logo_bytes: 8 * 1024 * 1024,
             },
-            database: DatabaseConfig { url: "postgres://postgres:postgres@127.0.0.1:5432/rooiam".into() },
-            redis: RedisConfig { url: "redis://127.0.0.1:6379".into() },
-            storage: StorageConfig { root: "/tmp/rooiam".into(), public_media_base: "/media".into() },
+            database: DatabaseConfig {
+                url: "postgres://postgres:postgres@127.0.0.1:5432/rooiam".into(),
+            },
+            redis: RedisConfig {
+                url: "redis://127.0.0.1:6379".into(),
+            },
+            storage: StorageConfig {
+                root: "/tmp/rooiam".into(),
+                public_media_base: "/media".into(),
+            },
             oauth: OAuthConfig {
                 google_client_id: String::new(),
                 google_client_secret: String::new(),
                 microsoft_client_id: String::new(),
                 microsoft_client_secret: String::new(),
                 google_redirect_uri: "https://auth.example.com/api/v1/auth/google/callback".into(),
-                microsoft_redirect_uri: "https://auth.example.com/api/v1/auth/microsoft/callback".into(),
+                microsoft_redirect_uri: "https://auth.example.com/api/v1/auth/microsoft/callback"
+                    .into(),
                 microsoft_tenant_id: "common".into(),
                 google_redirect_uri_explicit: false,
                 microsoft_redirect_uri_explicit: false,
@@ -170,7 +194,10 @@ mod tests {
     fn ignores_forwarded_headers_from_untrusted_peers() {
         let config = test_config(&[]);
         let mut headers = HeaderMap::new();
-        headers.insert(HeaderName::from_static("x-forwarded-for"), "198.51.100.77".parse().unwrap());
+        headers.insert(
+            HeaderName::from_static("x-forwarded-for"),
+            "198.51.100.77".parse().unwrap(),
+        );
 
         let resolved = resolve_client_ip(Some("203.0.113.10:443"), &headers, &config);
 
@@ -197,7 +224,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             HeaderName::from_static("forwarded"),
-            r#"for=198.51.100.77;proto=https, for="[2001:db8::10]:1234""#.parse().unwrap(),
+            r#"for=198.51.100.77;proto=https, for="[2001:db8::10]:1234""#
+                .parse()
+                .unwrap(),
         );
 
         let resolved = resolve_client_ip(Some("10.2.3.4:443"), &headers, &config);

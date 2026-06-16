@@ -3,13 +3,11 @@ use sqlx::PgPool;
 use crate::shared::error::AppError;
 
 pub async fn get_setting(db: &PgPool, key: &str) -> Option<String> {
-    sqlx::query_scalar::<_, String>(
-        "SELECT value FROM system_settings WHERE key = $1"
-    )
-    .bind(key)
-    .fetch_optional(db)
-    .await
-    .unwrap_or(None)
+    sqlx::query_scalar::<_, String>("SELECT value FROM system_settings WHERE key = $1")
+        .bind(key)
+        .fetch_optional(db)
+        .await
+        .unwrap_or(None)
 }
 
 pub async fn has_setting_or_env(db: &PgPool, key: &str, env_keys: &[&str]) -> bool {
@@ -32,7 +30,7 @@ pub async fn set_setting(db: &PgPool, key: &str, value: &str) -> Result<(), AppE
     sqlx::query(
         "INSERT INTO system_settings (key, value, updated_at)
          VALUES ($1, $2, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()"
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()",
     )
     .bind(key)
     .bind(value)
@@ -46,7 +44,12 @@ pub async fn platform_owner_exists(db: &PgPool) -> Result<bool, AppError> {
     let user_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
         .fetch_one(db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to count existing users during setup: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to count existing users during setup: {}",
+                e
+            ))
+        })?;
     Ok(user_count > 0)
 }
 

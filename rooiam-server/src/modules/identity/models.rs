@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 pub struct User {
@@ -22,7 +22,7 @@ pub struct User {
 pub struct UserEmail {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub email: String, 
+    pub email: String,
     pub is_primary: bool,
     pub is_verified: bool,
     pub verified_at: Option<DateTime<Utc>>,

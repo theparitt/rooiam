@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::modules::organization::repository::OrganizationRepository;
 use crate::shared::auth_context::parse_workspace_slug_from_redirect;
 use crate::shared::error::AppError;
-use crate::modules::organization::repository::OrganizationRepository;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformIpPolicy {
@@ -63,7 +63,10 @@ pub async fn load_platform_admin_ip_policy(db: &PgPool) -> Result<PlatformAdminI
     })
 }
 
-pub async fn save_platform_admin_ip_policy(db: &PgPool, policy: &PlatformAdminIpPolicy) -> Result<(), AppError> {
+pub async fn save_platform_admin_ip_policy(
+    db: &PgPool,
+    policy: &PlatformAdminIpPolicy,
+) -> Result<(), AppError> {
     let allowlist = normalize_policy_text(&policy.allowlist)?;
     let blocklist = normalize_policy_text(&policy.blocklist)?;
 
@@ -96,11 +99,19 @@ pub async fn resolve_effective_ip_policy_for_user(
     resolve_effective_ip_policy(db, org_id).await
 }
 
-pub async fn save_platform_ip_policy(db: &PgPool, policy: &PlatformIpPolicy) -> Result<(), AppError> {
+pub async fn save_platform_ip_policy(
+    db: &PgPool,
+    policy: &PlatformIpPolicy,
+) -> Result<(), AppError> {
     let allowlist = normalize_policy_text(&policy.default_allowlist)?;
     let blocklist = normalize_policy_text(&policy.default_blocklist)?;
 
-    set_system_bool(db, "tenant_ip_policy_editable", policy.tenant_ip_policy_editable).await?;
+    set_system_bool(
+        db,
+        "tenant_ip_policy_editable",
+        policy.tenant_ip_policy_editable,
+    )
+    .await?;
     set_system_string(db, "default_ip_allowlist", &allowlist).await?;
     set_system_string(db, "default_ip_blocklist", &blocklist).await?;
     Ok(())
@@ -127,7 +138,11 @@ pub async fn load_tenant_ip_policy(db: &PgPool, org_id: Uuid) -> Result<TenantIp
     })
 }
 
-pub async fn save_tenant_ip_policy(db: &PgPool, org_id: Uuid, policy: &TenantIpPolicy) -> Result<(), AppError> {
+pub async fn save_tenant_ip_policy(
+    db: &PgPool,
+    org_id: Uuid,
+    policy: &TenantIpPolicy,
+) -> Result<(), AppError> {
     let allowlist = normalize_policy_text(&policy.allowlist)?;
     let blocklist = normalize_policy_text(&policy.blocklist)?;
 
@@ -147,7 +162,7 @@ pub async fn save_tenant_ip_policy(db: &PgPool, org_id: Uuid, policy: &TenantIpP
             ip_blocklist = NULLIF($4, ''),
             updated_at = NOW()
         WHERE id = $1
-        "#
+        "#,
     )
     .bind(org_id)
     .bind(policy.use_custom_ip_policy)
@@ -160,7 +175,10 @@ pub async fn save_tenant_ip_policy(db: &PgPool, org_id: Uuid, policy: &TenantIpP
     Ok(())
 }
 
-pub async fn resolve_effective_ip_policy(db: &PgPool, org_id: Option<Uuid>) -> Result<EffectiveIpPolicy, AppError> {
+pub async fn resolve_effective_ip_policy(
+    db: &PgPool,
+    org_id: Option<Uuid>,
+) -> Result<EffectiveIpPolicy, AppError> {
     let platform = load_platform_ip_policy(db).await?;
     let tenant = match org_id {
         Some(org_id) => Some(load_tenant_ip_policy(db, org_id).await?),
@@ -186,8 +204,15 @@ pub async fn resolve_effective_ip_policy_for_redirect(
     Ok((org_id, effective))
 }
 
-pub fn effective_ip_policy(platform: &PlatformIpPolicy, tenant: Option<&TenantIpPolicy>) -> EffectiveIpPolicy {
-    if platform.tenant_ip_policy_editable && tenant.map(|value| value.use_custom_ip_policy).unwrap_or(false) {
+pub fn effective_ip_policy(
+    platform: &PlatformIpPolicy,
+    tenant: Option<&TenantIpPolicy>,
+) -> EffectiveIpPolicy {
+    if platform.tenant_ip_policy_editable
+        && tenant
+            .map(|value| value.use_custom_ip_policy)
+            .unwrap_or(false)
+    {
         let tenant = tenant.expect("checked above");
         EffectiveIpPolicy {
             source: "tenant".into(),
@@ -203,7 +228,10 @@ pub fn effective_ip_policy(platform: &PlatformIpPolicy, tenant: Option<&TenantIp
     }
 }
 
-pub fn evaluate_ip_access(policy: &EffectiveIpPolicy, ip: Option<IpAddr>) -> Result<IpAccessDecision, AppError> {
+pub fn evaluate_ip_access(
+    policy: &EffectiveIpPolicy,
+    ip: Option<IpAddr>,
+) -> Result<IpAccessDecision, AppError> {
     let allowlist = parse_policy_entries(&policy.allowlist)?;
     let blocklist = parse_policy_entries(&policy.blocklist)?;
 
@@ -253,9 +281,7 @@ fn normalize_policy_text(raw: &str) -> Result<String, AppError> {
 }
 
 fn parse_policy_entries(raw: &str) -> Result<Vec<IpNet>, AppError> {
-    split_policy_entries(raw)
-        .map(parse_policy_entry)
-        .collect()
+    split_policy_entries(raw).map(parse_policy_entry).collect()
 }
 
 fn parse_policy_entry(value: &str) -> Result<IpNet, AppError> {
@@ -267,7 +293,10 @@ fn parse_policy_entry(value: &str) -> Result<IpNet, AppError> {
         return Ok(IpNet::from(addr));
     }
 
-    Err(AppError::Validation(format!("Invalid IP or CIDR entry: {}", value)))
+    Err(AppError::Validation(format!(
+        "Invalid IP or CIDR entry: {}",
+        value
+    )))
 }
 
 fn split_policy_entries(raw: &str) -> impl Iterator<Item = &str> {
@@ -277,14 +306,22 @@ fn split_policy_entries(raw: &str) -> impl Iterator<Item = &str> {
 }
 
 async fn get_system_bool(db: &PgPool, key: &str, default: bool) -> Result<bool, AppError> {
-    let value: Option<String> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load IP policy setting '{}': {}", key, e)))?;
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to load IP policy setting '{}': {}", key, e))
+            })?;
 
     Ok(value
-        .map(|raw| matches!(raw.trim(), "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"))
+        .map(|raw| {
+            matches!(
+                raw.trim(),
+                "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"
+            )
+        })
         .unwrap_or(default))
 }
 
@@ -293,11 +330,14 @@ async fn set_system_bool(db: &PgPool, key: &str, value: bool) -> Result<(), AppE
 }
 
 async fn get_system_string(db: &PgPool, key: &str) -> Result<String, AppError> {
-    let value: Option<String> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load IP policy setting '{}': {}", key, e)))?;
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to load IP policy setting '{}': {}", key, e))
+            })?;
 
     Ok(value.unwrap_or_default())
 }
@@ -308,13 +348,15 @@ async fn set_system_string(db: &PgPool, key: &str, value: &str) -> Result<(), Ap
         INSERT INTO system_settings (key, value, updated_at)
         VALUES ($1, $2, NOW())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        "#
+        "#,
     )
     .bind(key)
     .bind(value)
     .execute(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to save IP policy setting '{}': {}", key, e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to save IP policy setting '{}': {}", key, e))
+    })?;
 
     Ok(())
 }
@@ -333,7 +375,8 @@ mod tests {
 
     #[test]
     fn allows_when_no_entries_match() {
-        let decision = evaluate_ip_access(&policy("", ""), Some("198.51.100.12".parse().unwrap())).unwrap();
+        let decision =
+            evaluate_ip_access(&policy("", ""), Some("198.51.100.12".parse().unwrap())).unwrap();
         assert_eq!(decision, IpAccessDecision::Allowed);
     }
 
@@ -386,7 +429,11 @@ mod tests {
 
     #[test]
     fn normalizes_policy_text() {
-        let normalized = normalize_policy_text("198.51.100.1, 203.0.113.0/24\n\n198.51.100.1").unwrap();
-        assert_eq!(normalized, "198.51.100.1/32\n203.0.113.0/24\n198.51.100.1/32");
+        let normalized =
+            normalize_policy_text("198.51.100.1, 203.0.113.0/24\n\n198.51.100.1").unwrap();
+        assert_eq!(
+            normalized,
+            "198.51.100.1/32\n203.0.113.0/24\n198.51.100.1/32"
+        );
     }
 }

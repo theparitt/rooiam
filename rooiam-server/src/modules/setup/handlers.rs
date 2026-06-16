@@ -1,50 +1,43 @@
+use crate::bootstrap::state::AppState;
+use crate::modules::audit::service::{AuditEvent, AuditService};
+use crate::modules::identity::repository::IdentityRepository;
+use crate::modules::organization::repository::OrganizationRepository;
+use crate::modules::session::{
+    cookie::build_session_cookie, repository::SessionRepository, service::SessionService,
+};
+use crate::modules::setup::access::{
+    ensure_platform_owner, ensure_platform_staff_or_setup_access, ensure_setup_access,
+    load_authenticated_session,
+};
+use crate::modules::setup::auth_bootstrap::{get_login_bootstrap, get_public_auth_methods};
+use crate::modules::setup::demo::{get_demo_app_catalog, get_demo_app_config};
+use crate::modules::setup::diagnostics::{
+    callback_url, enrich_database_diagnostics, load_database_diagnostics, mask_connection_url,
+    normalized_url_or_error,
+};
+use crate::modules::setup::policy::load_admin_access_policy;
+use crate::modules::setup::settings::{
+    get_setting, platform_owner_exists, set_setting, setup_access_mode,
+};
+use crate::modules::setup::support::demo_mailbox_url;
+use crate::modules::setup::types::*;
+use crate::shared::demo_seed::{
+    demo_customer_email_for_org, demo_end_user_email_for_org, demo_routes_enabled,
+    demo_seed_enabled, demo_tenant_admin_email_for_org,
+};
+use crate::shared::error::AppError;
+use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
+use crate::shared::runtime_config::{effective_public_urls, PublicUrls};
+use crate::shared::storage_config::{
+    load_platform_storage_config, save_platform_storage_config, test_local_storage,
+    test_minio_storage, PlatformStorageConfigUpdate,
+};
+use crate::shared::test_seed::{test_mode_enabled, TEST_IDENTITIES};
 use actix_web::{web, HttpRequest, HttpResponse};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use rand::{rngs::OsRng, RngCore};
 use serde::Deserialize;
-use crate::bootstrap::state::AppState;
-use crate::modules::organization::repository::OrganizationRepository;
-use crate::modules::setup::access::{
-    ensure_platform_owner,
-    ensure_platform_staff_or_setup_access,
-    ensure_setup_access,
-    load_authenticated_session,
-};
-use crate::modules::setup::auth_bootstrap::{
-    get_login_bootstrap,
-    get_public_auth_methods,
-};
-use crate::modules::setup::demo::{get_demo_app_catalog, get_demo_app_config};
-use crate::modules::setup::diagnostics::{
-    callback_url,
-    enrich_database_diagnostics,
-    load_database_diagnostics,
-    mask_connection_url,
-    normalized_url_or_error,
-};
-use crate::modules::setup::policy::load_admin_access_policy;
-use crate::modules::setup::settings::{
-    get_setting,
-    platform_owner_exists,
-    set_setting,
-    setup_access_mode,
-};
-use crate::modules::setup::support::demo_mailbox_url;
-use crate::modules::setup::types::*;
-use crate::shared::demo_seed::{demo_customer_email_for_org, demo_end_user_email_for_org, demo_routes_enabled, demo_seed_enabled, demo_tenant_admin_email_for_org};
-use crate::shared::test_seed::{test_mode_enabled, TEST_IDENTITIES};
-use crate::shared::error::AppError;
-use crate::shared::storage_config::{load_platform_storage_config, save_platform_storage_config, test_local_storage, test_minio_storage, PlatformStorageConfigUpdate};
-use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
-use crate::shared::runtime_config::{effective_public_urls, PublicUrls};
-use crate::modules::identity::repository::IdentityRepository;
-use crate::modules::session::{
-    cookie::build_session_cookie,
-    repository::SessionRepository,
-    service::SessionService,
-};
-use crate::modules::audit::service::{AuditEvent, AuditService};
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -52,14 +45,16 @@ use crate::modules::audit::service::{AuditEvent, AuditService};
 async fn get_status(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let db = &state.db;
 
-    let initialized = get_setting(db, "setup_completed").await
+    let initialized = get_setting(db, "setup_completed")
+        .await
         .map(|v| v == "true")
         .unwrap_or(false);
 
     let has_admin = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
         .fetch_one(db)
         .await
-        .unwrap_or(0) > 0;
+        .unwrap_or(0)
+        > 0;
 
     let has_smtp = get_setting(db, "smtp_host").await.is_some();
     let has_google = get_setting(db, "google_client_id").await.is_some();
@@ -93,18 +88,15 @@ async fn test_database_connection(
 ) -> Result<HttpResponse, AppError> {
     ensure_setup_access(&req, &state).await?;
 
-    let diagnostics = enrich_database_diagnostics(
-        &state.db,
-        load_database_diagnostics(state.config.as_ref()),
-    )
-    .await?;
+    let diagnostics =
+        enrich_database_diagnostics(&state.db, load_database_diagnostics(state.config.as_ref()))
+            .await?;
 
     Ok(HttpResponse::Ok().json(DatabaseStatusResponse {
         ok: diagnostics.ready,
         message: format!(
             "Database connection passed. {} is ready with {} applied migrations.",
-            diagnostics.name,
-            diagnostics.migration_count
+            diagnostics.name, diagnostics.migration_count
         ),
         database_url_masked: diagnostics.url_masked,
         database_name: diagnostics.name,
@@ -123,16 +115,24 @@ async fn get_setup_config(
 ) -> Result<HttpResponse, AppError> {
     ensure_setup_access(&req, &state).await?;
     let urls = effective_public_urls(&state.db, state.config.as_ref()).await?;
-    let database = enrich_database_diagnostics(&state.db, load_database_diagnostics(state.config.as_ref())).await?;
+    let database =
+        enrich_database_diagnostics(&state.db, load_database_diagnostics(state.config.as_ref()))
+            .await?;
     let platform_owner_exists = platform_owner_exists(&state.db).await?;
 
     let admin_email = if platform_owner_exists {
-        get_setting(&state.db, "superuser_email").await.unwrap_or_default()
+        get_setting(&state.db, "superuser_email")
+            .await
+            .unwrap_or_default()
     } else {
-        get_setting(&state.db, "setup_owner_email").await.unwrap_or_default()
+        get_setting(&state.db, "setup_owner_email")
+            .await
+            .unwrap_or_default()
     };
     let admin_display_name = if !platform_owner_exists {
-        get_setting(&state.db, "setup_owner_display_name").await.unwrap_or_default()
+        get_setting(&state.db, "setup_owner_display_name")
+            .await
+            .unwrap_or_default()
     } else if admin_email.is_empty() {
         String::new()
     } else {
@@ -148,11 +148,18 @@ async fn get_setup_config(
         .bind(&admin_email)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to load admin display name during setup status read: {}", e)))?
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to load admin display name during setup status read: {}",
+                e
+            ))
+        })?
         .unwrap_or_default()
     };
 
-    let smtp_password = get_setting(&state.db, "smtp_password").await.unwrap_or_default();
+    let smtp_password = get_setting(&state.db, "smtp_password")
+        .await
+        .unwrap_or_default();
     let smtp_verified_email = get_setting(&state.db, "setup_smtp_verified_email")
         .await
         .unwrap_or_default();
@@ -212,7 +219,12 @@ async fn get_setup_config(
         get_setting(&state.db, "smtp_insecure_tls")
             .await
             .or_else(|| std::env::var("ROOIAM_SMTP_INSECURE_TLS").ok())
-            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
             .unwrap_or(false)
     };
     let smtp_username = if demo_seed_enabled() {
@@ -271,13 +283,17 @@ async fn get_setup_config(
         google_client_id,
         google_client_secret,
         google_client_secret_configured,
-        google_oauth_verified_at: get_setting(&state.db, "google_oauth_verified_at").await.unwrap_or_default(),
+        google_oauth_verified_at: get_setting(&state.db, "google_oauth_verified_at")
+            .await
+            .unwrap_or_default(),
         google_admin_login_enabled: admin_access_policy.google_admin_login_enabled,
         microsoft_client_id,
         microsoft_client_secret,
         microsoft_client_secret_configured,
         microsoft_tenant_id,
-        microsoft_oauth_verified_at: get_setting(&state.db, "microsoft_oauth_verified_at").await.unwrap_or_default(),
+        microsoft_oauth_verified_at: get_setting(&state.db, "microsoft_oauth_verified_at")
+            .await
+            .unwrap_or_default(),
         microsoft_admin_login_enabled: admin_access_policy.microsoft_admin_login_enabled,
         admin_passkey_allowed: admin_access_policy.admin_passkey_allowed,
         admin_require_mfa: admin_access_policy.admin_require_mfa,
@@ -323,7 +339,8 @@ async fn create_admin(
     let db = &state.db;
 
     // Guard: block if setup is already completed
-    let already_done = get_setting(db, "setup_completed").await
+    let already_done = get_setting(db, "setup_completed")
+        .await
         .map(|v| v == "true")
         .unwrap_or(false);
     if already_done {
@@ -335,19 +352,25 @@ async fn create_admin(
     // Guard: only allow if no platform owner exists yet
     if platform_owner_exists(db).await? {
         return Err(AppError::Validation(
-            "Platform owner already exists. The setup wizard cannot create another.".into()
+            "Platform owner already exists. The setup wizard cannot create another.".into(),
         ));
     }
     let email = body.email.trim().to_ascii_lowercase();
     let display_name = body.display_name.trim().to_string();
     if email.is_empty() {
-        return Err(AppError::Validation("Platform owner email is required.".into()));
+        return Err(AppError::Validation(
+            "Platform owner email is required.".into(),
+        ));
     }
     if display_name.is_empty() {
-        return Err(AppError::Validation("Platform owner display name is required.".into()));
+        return Err(AppError::Validation(
+            "Platform owner display name is required.".into(),
+        ));
     }
 
-    let previous_email = get_setting(db, "setup_owner_email").await.unwrap_or_default();
+    let previous_email = get_setting(db, "setup_owner_email")
+        .await
+        .unwrap_or_default();
     if !previous_email.is_empty() && previous_email != email {
         set_setting(db, "setup_smtp_verified_email", "").await?;
         set_setting(db, "setup_smtp_verified_at", "").await?;
@@ -364,7 +387,6 @@ async fn create_admin(
     })))
 }
 
-
 /// POST /v1/setup/configure-smtp
 async fn configure_smtp(
     req: HttpRequest,
@@ -377,30 +399,44 @@ async fn configure_smtp(
     set_setting(db, "smtp_host", body.host.trim()).await?;
     set_setting(db, "smtp_port", &body.port.to_string()).await?;
     set_setting(db, "smtp_security", body.security.trim()).await?;
-    set_setting(db, "smtp_insecure_tls", if body.insecure_tls { "true" } else { "false" }).await?;
+    set_setting(
+        db,
+        "smtp_insecure_tls",
+        if body.insecure_tls { "true" } else { "false" },
+    )
+    .await?;
     set_setting(db, "smtp_username", body.username.trim()).await?;
     if !body.password.trim().is_empty() {
         set_setting(db, "smtp_password", &body.password).await?;
     }
     set_setting(db, "smtp_from_email", body.from_email.trim()).await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: load_authenticated_session(&req, &state).await.ok().map(|s| s.user_id),
-        organization_id: None,
-        action: "setup.smtp.configured".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("smtp".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "host": body.host.trim(),
-            "port": body.port,
-            "security": body.security.trim(),
-            "username": body.username.trim(),
-            "from_email": body.from_email.trim(),
-            "password_changed": !body.password.trim().is_empty(),
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: load_authenticated_session(&req, &state)
+                .await
+                .ok()
+                .map(|s| s.user_id),
+            organization_id: None,
+            action: "setup.smtp.configured".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("smtp".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "host": body.host.trim(),
+                "port": body.port,
+                "security": body.security.trim(),
+                "username": body.username.trim(),
+                "from_email": body.from_email.trim(),
+                "password_changed": !body.password.trim().is_empty(),
+            }),
+        })
+        .await;
 
     tracing::info!("Setup: SMTP configured → {}:{}", body.host, body.port);
 
@@ -424,11 +460,15 @@ async fn test_smtp(
         return Err(AppError::Validation("From email is required".into()));
     }
     if body.test_email.trim().is_empty() {
-        return Err(AppError::Validation("Test recipient email is required".into()));
+        return Err(AppError::Validation(
+            "Test recipient email is required".into(),
+        ));
     }
 
     let stored_password = if body.password.trim().is_empty() {
-        get_setting(&state.db, "smtp_password").await.unwrap_or_default()
+        get_setting(&state.db, "smtp_password")
+            .await
+            .unwrap_or_default()
     } else {
         String::new()
     };
@@ -451,7 +491,8 @@ async fn test_smtp(
             } else if !body.security.trim().is_empty() {
                 body.security.trim().to_string()
             } else {
-                get_setting(&state.db, "smtp_security").await
+                get_setting(&state.db, "smtp_security")
+                    .await
                     .or_else(|| std::env::var("ROOIAM_SMTP_SECURITY").ok())
                     .unwrap_or_else(|| "none".to_string())
             },
@@ -514,7 +555,9 @@ async fn send_smtp_verification(
 
     // Send the code via the provided SMTP config
     let password = if body.password.trim().is_empty() {
-        get_setting(&state.db, "smtp_password").await.unwrap_or_default()
+        get_setting(&state.db, "smtp_password")
+            .await
+            .unwrap_or_default()
     } else {
         body.password.clone()
     };
@@ -535,7 +578,10 @@ async fn send_smtp_verification(
         },
         body.test_email.trim(),
         "Your Rooiam verification code",
-        &format!("Your Rooiam SMTP verification code is: {}\n\nThis code expires in 10 minutes.", code_str),
+        &format!(
+            "Your Rooiam SMTP verification code is: {}\n\nThis code expires in 10 minutes.",
+            code_str
+        ),
     )
     .await
     .map_err(|e| {
@@ -543,7 +589,11 @@ async fn send_smtp_verification(
         let mut redis2 = state.redis.clone();
         let key2 = redis_key.clone();
         actix_web::rt::spawn(async move {
-            let _: () = redis::cmd("DEL").arg(&key2).query_async(&mut redis2).await.unwrap_or(());
+            let _: () = redis::cmd("DEL")
+                .arg(&key2)
+                .query_async(&mut redis2)
+                .await
+                .unwrap_or(());
         });
         AppError::Validation(e)
     })?;
@@ -609,8 +659,9 @@ async fn verify_smtp_code(
         Some(raw) => raw,
     };
 
-    let pending: PendingSmtpVerification = serde_json::from_str(&stored)
-        .map_err(|_| AppError::Validation("Code expired or invalid. Click Send verification code again.".into()))?;
+    let pending: PendingSmtpVerification = serde_json::from_str(&stored).map_err(|_| {
+        AppError::Validation("Code expired or invalid. Click Send verification code again.".into())
+    })?;
     if pending.code != submitted {
         return Err(AppError::Validation("Incorrect code. Try again.".into()));
     }
@@ -619,15 +670,24 @@ async fn verify_smtp_code(
     }
 
     // Code is correct — delete it and save SMTP config to DB
-    let _: () = redis::cmd("DEL").arg(&redis_key).query_async(&mut redis).await.unwrap_or(());
+    let _: () = redis::cmd("DEL")
+        .arg(&redis_key)
+        .query_async(&mut redis)
+        .await
+        .unwrap_or(());
 
     let db = &state.db;
-    set_setting(db, "smtp_host",         body.host.trim()).await?;
-    set_setting(db, "smtp_port",         &body.port.to_string()).await?;
-    set_setting(db, "smtp_security",     body.security.trim()).await?;
-    set_setting(db, "smtp_insecure_tls", if body.insecure_tls { "true" } else { "false" }).await?;
-    set_setting(db, "smtp_username",     body.username.trim()).await?;
-    set_setting(db, "smtp_from_email",   body.from_email.trim()).await?;
+    set_setting(db, "smtp_host", body.host.trim()).await?;
+    set_setting(db, "smtp_port", &body.port.to_string()).await?;
+    set_setting(db, "smtp_security", body.security.trim()).await?;
+    set_setting(
+        db,
+        "smtp_insecure_tls",
+        if body.insecure_tls { "true" } else { "false" },
+    )
+    .await?;
+    set_setting(db, "smtp_username", body.username.trim()).await?;
+    set_setting(db, "smtp_from_email", body.from_email.trim()).await?;
     if !body.password.trim().is_empty() {
         set_setting(db, "smtp_password", body.password.trim()).await?;
     }
@@ -635,19 +695,28 @@ async fn verify_smtp_code(
     set_setting(db, "setup_smtp_verified_email", body.test_email.trim()).await?;
     set_setting(db, "setup_smtp_verified_at", &verified_at).await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: load_authenticated_session(&req, &state).await.ok().map(|s| s.user_id),
-        organization_id: None,
-        action: "setup.smtp.verified".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("smtp".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "verified_email": body.test_email.trim(),
-            "verified_at": verified_at,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: load_authenticated_session(&req, &state)
+                .await
+                .ok()
+                .map(|s| s.user_id),
+            organization_id: None,
+            action: "setup.smtp.verified".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("smtp".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "verified_email": body.test_email.trim(),
+                "verified_at": verified_at,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "verified": true })))
 }
@@ -690,15 +759,27 @@ async fn configure_oauth(
 ) -> Result<HttpResponse, AppError> {
     ensure_setup_access(&req, &state).await?;
     let db = &state.db;
-    let existing_google_client_id = get_setting(db, "google_client_id").await.unwrap_or_default();
-    let existing_google_client_secret = get_setting(db, "google_client_secret").await.unwrap_or_default();
-    let existing_microsoft_client_id = get_setting(db, "microsoft_client_id").await.unwrap_or_default();
-    let existing_microsoft_client_secret = get_setting(db, "microsoft_client_secret").await.unwrap_or_default();
+    let existing_google_client_id = get_setting(db, "google_client_id")
+        .await
+        .unwrap_or_default();
+    let existing_google_client_secret = get_setting(db, "google_client_secret")
+        .await
+        .unwrap_or_default();
+    let existing_microsoft_client_id = get_setting(db, "microsoft_client_id")
+        .await
+        .unwrap_or_default();
+    let existing_microsoft_client_secret = get_setting(db, "microsoft_client_secret")
+        .await
+        .unwrap_or_default();
     let existing_microsoft_tenant_id = get_setting(db, "microsoft_tenant_id")
         .await
         .unwrap_or_else(|| "common".to_string());
-    let google_verified = get_setting(db, "google_oauth_verified_at").await.unwrap_or_default();
-    let microsoft_verified = get_setting(db, "microsoft_oauth_verified_at").await.unwrap_or_default();
+    let google_verified = get_setting(db, "google_oauth_verified_at")
+        .await
+        .unwrap_or_default();
+    let microsoft_verified = get_setting(db, "microsoft_oauth_verified_at")
+        .await
+        .unwrap_or_default();
     let mut google_changed = false;
     let mut microsoft_changed = false;
 
@@ -706,8 +787,8 @@ async fn configure_oauth(
         if id.trim().is_empty() {
             // Keep the existing value unless the caller explicitly clears through a dedicated flow.
         } else {
-        google_changed |= id != &existing_google_client_id;
-        set_setting(db, "google_client_id", id.trim()).await?;
+            google_changed |= id != &existing_google_client_id;
+            set_setting(db, "google_client_id", id.trim()).await?;
         }
     }
     if let Some(ref secret) = body.google_client_secret {
@@ -746,22 +827,43 @@ async fn configure_oauth(
 
     if let Some(enabled) = body.google_admin_login_enabled {
         if enabled && google_verified.is_empty() {
-            return Err(AppError::Validation("Verify Google login successfully before enabling it for admin sign-in.".into()));
+            return Err(AppError::Validation(
+                "Verify Google login successfully before enabling it for admin sign-in.".into(),
+            ));
         }
-        set_setting(db, "google_admin_login_enabled", if enabled { "true" } else { "false" }).await?;
+        set_setting(
+            db,
+            "google_admin_login_enabled",
+            if enabled { "true" } else { "false" },
+        )
+        .await?;
     }
 
     if let Some(enabled) = body.microsoft_admin_login_enabled {
         if enabled && microsoft_verified.is_empty() {
-            return Err(AppError::Validation("Verify Microsoft login successfully before enabling it for admin sign-in.".into()));
+            return Err(AppError::Validation(
+                "Verify Microsoft login successfully before enabling it for admin sign-in.".into(),
+            ));
         }
-        set_setting(db, "microsoft_admin_login_enabled", if enabled { "true" } else { "false" }).await?;
+        set_setting(
+            db,
+            "microsoft_admin_login_enabled",
+            if enabled { "true" } else { "false" },
+        )
+        .await?;
     }
 
     // ── Audit events ────────────────────────────────────────────────────────
-    let actor_user_id = load_authenticated_session(&req, &state).await.ok().map(|s| s.user_id);
+    let actor_user_id = load_authenticated_session(&req, &state)
+        .await
+        .ok()
+        .map(|s| s.user_id);
     let req_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let req_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let req_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let audit = AuditService::new(state.db.clone());
 
     if google_changed {
@@ -797,16 +899,22 @@ async fn configure_oauth(
     }
 
     if let Some(enabled) = body.google_admin_login_enabled {
-        audit.log(AuditEvent {
-            actor_user_id,
-            organization_id: None,
-            action: if enabled { "setup.oauth.google.admin_login_enabled".into() } else { "setup.oauth.google.admin_login_disabled".into() },
-            target_type: "system_setting".into(),
-            target_id: Some("google_admin_login_enabled".into()),
-            ip: req_ip.clone(),
-            user_agent: req_ua.clone(),
-            metadata: serde_json::json!({ "enabled": enabled }),
-        }).await;
+        audit
+            .log(AuditEvent {
+                actor_user_id,
+                organization_id: None,
+                action: if enabled {
+                    "setup.oauth.google.admin_login_enabled".into()
+                } else {
+                    "setup.oauth.google.admin_login_disabled".into()
+                },
+                target_type: "system_setting".into(),
+                target_id: Some("google_admin_login_enabled".into()),
+                ip: req_ip.clone(),
+                user_agent: req_ua.clone(),
+                metadata: serde_json::json!({ "enabled": enabled }),
+            })
+            .await;
     }
 
     if microsoft_changed {
@@ -825,7 +933,10 @@ async fn configure_oauth(
                 "verification_reset": true,
             }),
         }).await;
-    } else if body.microsoft_client_id.is_some() || body.microsoft_client_secret.is_some() || body.microsoft_tenant_id.is_some() {
+    } else if body.microsoft_client_id.is_some()
+        || body.microsoft_client_secret.is_some()
+        || body.microsoft_tenant_id.is_some()
+    {
         audit.log(AuditEvent {
             actor_user_id,
             organization_id: None,
@@ -844,16 +955,22 @@ async fn configure_oauth(
     }
 
     if let Some(enabled) = body.microsoft_admin_login_enabled {
-        audit.log(AuditEvent {
-            actor_user_id,
-            organization_id: None,
-            action: if enabled { "setup.oauth.microsoft.admin_login_enabled".into() } else { "setup.oauth.microsoft.admin_login_disabled".into() },
-            target_type: "system_setting".into(),
-            target_id: Some("microsoft_admin_login_enabled".into()),
-            ip: req_ip.clone(),
-            user_agent: req_ua.clone(),
-            metadata: serde_json::json!({ "enabled": enabled }),
-        }).await;
+        audit
+            .log(AuditEvent {
+                actor_user_id,
+                organization_id: None,
+                action: if enabled {
+                    "setup.oauth.microsoft.admin_login_enabled".into()
+                } else {
+                    "setup.oauth.microsoft.admin_login_disabled".into()
+                },
+                target_type: "system_setting".into(),
+                target_id: Some("microsoft_admin_login_enabled".into()),
+                ip: req_ip.clone(),
+                user_agent: req_ua.clone(),
+                metadata: serde_json::json!({ "enabled": enabled }),
+            })
+            .await;
     }
     // ────────────────────────────────────────────────────────────────────────
 
@@ -874,15 +991,21 @@ async fn prepare_oauth_verification(
 
     let provider = body.provider.trim().to_lowercase();
     if provider != "google" && provider != "microsoft" {
-        return Err(AppError::Validation("Provider must be google or microsoft.".into()));
+        return Err(AppError::Validation(
+            "Provider must be google or microsoft.".into(),
+        ));
     }
     if body.client_id.trim().is_empty() {
         return Err(AppError::Validation("Client ID is required.".into()));
     }
 
     let stored_secret = match provider.as_str() {
-        "google" => get_setting(&state.db, "google_client_secret").await.unwrap_or_default(),
-        "microsoft" => get_setting(&state.db, "microsoft_client_secret").await.unwrap_or_default(),
+        "google" => get_setting(&state.db, "google_client_secret")
+            .await
+            .unwrap_or_default(),
+        "microsoft" => get_setting(&state.db, "microsoft_client_secret")
+            .await
+            .unwrap_or_default(),
         _ => String::new(),
     };
     let effective_secret = if body.client_secret.trim().is_empty() {
@@ -891,11 +1014,17 @@ async fn prepare_oauth_verification(
         body.client_secret.trim().to_string()
     };
     if effective_secret.trim().is_empty() {
-        return Err(AppError::Validation("Client secret is required before verification.".into()));
+        return Err(AppError::Validation(
+            "Client secret is required before verification.".into(),
+        ));
     }
 
     let tenant_id = if provider == "microsoft" {
-        Some(body.tenant_id.clone().unwrap_or_else(|| "common".to_string()))
+        Some(
+            body.tenant_id
+                .clone()
+                .unwrap_or_else(|| "common".to_string()),
+        )
     } else {
         None
     };
@@ -920,7 +1049,11 @@ async fn prepare_oauth_verification(
         .map_err(|e| AppError::Internal(format!("Redis auth state failure: {}", e)))?;
 
     let initiated_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let initiated_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let initiated_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let auth_url = crate::modules::oauth::handlers::start_oauth_flow(
         &state,
         &provider,
@@ -931,7 +1064,8 @@ async fn prepare_oauth_verification(
         initiated_ip,
         initiated_ua,
         Some(draft_key),
-    ).await?;
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -949,26 +1083,45 @@ async fn configure_admin_access(
     let db = &state.db;
 
     if let Some(allowed) = body.admin_passkey_allowed {
-        set_setting(db, "admin_passkey_allowed", if allowed { "true" } else { "false" }).await?;
+        set_setting(
+            db,
+            "admin_passkey_allowed",
+            if allowed { "true" } else { "false" },
+        )
+        .await?;
     }
     if let Some(require) = body.admin_require_mfa {
-        set_setting(db, "admin_require_mfa", if require { "true" } else { "false" }).await?;
+        set_setting(
+            db,
+            "admin_require_mfa",
+            if require { "true" } else { "false" },
+        )
+        .await?;
     }
 
-    let actor_user_id = load_authenticated_session(&req, &state).await.ok().map(|s| s.user_id);
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id,
-        organization_id: None,
-        action: "setup.admin_access.configured".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("admin_access".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "passkey_allowed": body.admin_passkey_allowed,
-            "mfa_required": body.admin_require_mfa,
-        }),
-    }).await;
+    let actor_user_id = load_authenticated_session(&req, &state)
+        .await
+        .ok()
+        .map(|s| s.user_id);
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id,
+            organization_id: None,
+            action: "setup.admin_access.configured".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("admin_access".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "passkey_allowed": body.admin_passkey_allowed,
+                "mfa_required": body.admin_require_mfa,
+            }),
+        })
+        .await;
 
     tracing::info!("Setup: admin access policy configured");
 
@@ -984,7 +1137,9 @@ async fn configure_public_urls(
     body: web::Json<PublicUrlsRequest>,
 ) -> Result<HttpResponse, AppError> {
     ensure_setup_access(&req, &state).await?;
-    let previous_issuer_url = get_setting(&state.db, "issuer_url").await.unwrap_or_default();
+    let previous_issuer_url = get_setting(&state.db, "issuer_url")
+        .await
+        .unwrap_or_default();
     let urls = PublicUrls {
         issuer_url: normalized_url_or_error(&body.issuer_url, "issuer_url")?,
         frontend_url: normalized_url_or_error(&body.frontend_url, "frontend_url")?,
@@ -1002,21 +1157,30 @@ async fn configure_public_urls(
         set_setting(&state.db, "microsoft_admin_login_enabled", "false").await?;
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: load_authenticated_session(&req, &state).await.ok().map(|s| s.user_id),
-        organization_id: None,
-        action: "setup.public_urls.configured".into(),
-        target_type: "system_setting".into(),
-        target_id: Some("public_urls".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "issuer_url": urls.issuer_url,
-            "frontend_url": urls.frontend_url,
-            "admin_url": urls.admin_url,
-            "oauth_verification_reset": issuer_changed,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: load_authenticated_session(&req, &state)
+                .await
+                .ok()
+                .map(|s| s.user_id),
+            organization_id: None,
+            action: "setup.public_urls.configured".into(),
+            target_type: "system_setting".into(),
+            target_id: Some("public_urls".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "issuer_url": urls.issuer_url,
+                "frontend_url": urls.frontend_url,
+                "admin_url": urls.admin_url,
+                "oauth_verification_reset": issuer_changed,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(PublicUrlsResponse {
         google_callback_url: callback_url(&urls.issuer_url, "google"),
@@ -1092,14 +1256,31 @@ async fn test_setup_storage(
         "local" => {
             let path = body.local_path.as_deref().unwrap_or("").trim();
             match test_local_storage(path) {
-                Ok(msg) => Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg }))),
+                Ok(msg) => {
+                    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg })))
+                }
                 Err(e) => Err(AppError::Validation(e)),
             }
         }
         "minio" => {
-            let endpoint = body.minio_endpoint.as_deref().unwrap_or("").trim().to_string();
-            let bucket = body.minio_bucket.as_deref().unwrap_or("").trim().to_string();
-            let access_key = body.minio_access_key.as_deref().unwrap_or("").trim().to_string();
+            let endpoint = body
+                .minio_endpoint
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let bucket = body
+                .minio_bucket
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let access_key = body
+                .minio_access_key
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             let use_ssl = body.minio_use_ssl.unwrap_or(true);
 
             let secret_key = if let Some(ref sk) = body.minio_secret_key {
@@ -1107,7 +1288,9 @@ async fn test_setup_storage(
                     get_setting(&state.db, "storage_minio_secret_key")
                         .await
                         .filter(|value| !value.trim().is_empty())
-                        .unwrap_or_else(|| std::env::var("ROOIAM_MINIO_PASSWORD").unwrap_or_default())
+                        .unwrap_or_else(|| {
+                            std::env::var("ROOIAM_MINIO_PASSWORD").unwrap_or_default()
+                        })
                 } else {
                     sk.trim().to_string()
                 }
@@ -1119,11 +1302,16 @@ async fn test_setup_storage(
             };
 
             match test_minio_storage(&endpoint, &bucket, &access_key, &secret_key, use_ssl).await {
-                Ok(msg) => Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg }))),
+                Ok(msg) => {
+                    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg })))
+                }
                 Err(e) => Err(AppError::Validation(e)),
             }
         }
-        other => Err(AppError::Validation(format!("Unknown storage backend '{}'. Use 'local' or 'minio'.", other))),
+        other => Err(AppError::Validation(format!(
+            "Unknown storage backend '{}'. Use 'local' or 'minio'.",
+            other
+        ))),
     }
 }
 
@@ -1136,25 +1324,34 @@ async fn complete_setup(
     let db = &state.db;
 
     if !platform_owner_exists(db).await? {
-        let email = get_setting(db, "setup_owner_email").await.unwrap_or_default();
-        let display_name = get_setting(db, "setup_owner_display_name").await.unwrap_or_default();
-        let smtp_verified_email = get_setting(db, "setup_smtp_verified_email").await.unwrap_or_default();
+        let email = get_setting(db, "setup_owner_email")
+            .await
+            .unwrap_or_default();
+        let display_name = get_setting(db, "setup_owner_display_name")
+            .await
+            .unwrap_or_default();
+        let smtp_verified_email = get_setting(db, "setup_smtp_verified_email")
+            .await
+            .unwrap_or_default();
 
         if email.trim().is_empty() || display_name.trim().is_empty() {
-            return Err(AppError::Validation("Platform owner draft is incomplete. Finish the Platform Owner step first.".into()));
+            return Err(AppError::Validation(
+                "Platform owner draft is incomplete. Finish the Platform Owner step first.".into(),
+            ));
         }
         if smtp_verified_email.trim().to_ascii_lowercase() != email.trim().to_ascii_lowercase() {
             return Err(AppError::Validation("SMTP must be verified for the current platform owner email before setup can finish.".into()));
         }
 
-        let mut tx = db.begin()
+        let mut tx = db
+            .begin()
             .await
             .map_err(|e| AppError::Internal(format!("Failed to start tx: {}", e)))?;
 
         let user_id: uuid::Uuid = sqlx::query_scalar::<_, uuid::Uuid>(
             "INSERT INTO users (id, display_name, created_at, updated_at)
              VALUES (gen_random_uuid(), $1, NOW(), NOW())
-             RETURNING id"
+             RETURNING id",
         )
         .bind(&display_name)
         .fetch_one(&mut *tx)
@@ -1171,13 +1368,11 @@ async fn complete_setup(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to create platform owner email: {}", e)))?;
 
-        sqlx::query(
-            "UPDATE users SET is_platform_owner = true, is_superuser = true WHERE id = $1"
-        )
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to promote platform owner: {}", e)))?;
+        sqlx::query("UPDATE users SET is_platform_owner = true, is_superuser = true WHERE id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to promote platform owner: {}", e)))?;
 
         tx.commit()
             .await
@@ -1191,7 +1386,7 @@ async fn complete_setup(
             VALUES ('Rooiam', 'rooiam', true)
             ON CONFLICT (slug) DO UPDATE SET is_platform_org = true
             RETURNING id
-            "#
+            "#,
         )
         .fetch_optional(db)
         .await
@@ -1200,7 +1395,7 @@ async fn complete_setup(
 
         if let Some(org_id) = platform_org_id {
             let member_id: Option<uuid::Uuid> = sqlx::query_scalar(
-                "SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2"
+                "SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2",
             )
             .bind(org_id)
             .bind(user_id)
@@ -1227,7 +1422,7 @@ async fn complete_setup(
                 INSERT INTO member_roles (member_id, role_id)
                 SELECT $1, id FROM roles WHERE code = 'owner' AND is_system = true
                 ON CONFLICT DO NOTHING
-                "#
+                "#,
             )
             .bind(member_id)
             .execute(db)
@@ -1236,7 +1431,11 @@ async fn complete_setup(
 
         set_setting(db, "setup_owner_email", "").await?;
         set_setting(db, "setup_owner_display_name", "").await?;
-        tracing::info!("Setup: platform owner created at final commit → {} ({})", email, user_id);
+        tracing::info!(
+            "Setup: platform owner created at final commit → {} ({})",
+            email,
+            user_id
+        );
     }
 
     set_setting(db, "setup_completed", "true").await?;
@@ -1258,7 +1457,9 @@ async fn demo_login(
 
     let org_slug = body.org_slug.trim().to_ascii_lowercase();
     if org_slug.is_empty() {
-        return Err(AppError::Validation("Organization slug is required.".into()));
+        return Err(AppError::Validation(
+            "Organization slug is required.".into(),
+        ));
     }
 
     let identity_repo = IdentityRepository::new(state.db.clone());
@@ -1285,7 +1486,9 @@ async fn demo_login(
         .ok_or_else(|| AppError::NotFound("Demo workspace not found.".into()))?;
 
     if !org_repo.is_member(org.id, user_id).await? {
-        return Err(AppError::Validation("Demo user is not a member of that workspace.".into()));
+        return Err(AppError::Validation(
+            "Demo user is not a member of that workspace.".into(),
+        ));
     }
 
     let app_name = body
@@ -1296,7 +1499,8 @@ async fn demo_login(
         .unwrap_or("Rooiam Demo")
         .to_string();
 
-    let session_service = SessionService::new(SessionRepository::new(state.db.clone()), state.db.clone());
+    let session_service =
+        SessionService::new(SessionRepository::new(state.db.clone()), state.db.clone());
     let (_session, opaque_string) = session_service
         .create_opaque_session_with_context(
             user_id,
@@ -1340,13 +1544,11 @@ async fn demo_login(
         })
         .await;
 
-    Ok(HttpResponse::Ok()
-        .cookie(cookie)
-        .json(serde_json::json!({
-            "ok": true,
-            "workspace_slug": body.org_slug.trim(),
-            "app_name": app_name,
-        })))
+    Ok(HttpResponse::Ok().cookie(cookie).json(serde_json::json!({
+        "ok": true,
+        "workspace_slug": body.org_slug.trim(),
+        "app_name": app_name,
+    })))
 }
 
 // ── Test mode endpoints ───────────────────────────────────────────────────────
@@ -1377,7 +1579,12 @@ async fn test_login(
     }
 
     // Email is required — reject missing, blank, or empty values.
-    let email = match body.email.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    let email = match body
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         Some(v) => v.to_ascii_lowercase(),
         None => return Err(AppError::Validation("email is required".into())),
     };
@@ -1424,7 +1631,8 @@ async fn test_login(
     };
 
     // Use explicit org_slug from request if provided, otherwise derive from email domain
-    let org_slug = body.org_slug
+    let org_slug = body
+        .org_slug
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
@@ -1434,7 +1642,11 @@ async fn test_login(
     // Ensure org exists — create with this user as owner if not
     let org = match org_repo.get_organization_by_slug(&org_slug).await? {
         Some(o) => o,
-        None => org_repo.create_organization(user_id, &org_slug, &org_slug).await?,
+        None => {
+            org_repo
+                .create_organization(user_id, &org_slug, &org_slug)
+                .await?
+        }
     };
 
     // Ensure user is a member of the org
@@ -1448,7 +1660,8 @@ async fn test_login(
         .await?;
     }
 
-    let session_service = SessionService::new(SessionRepository::new(state.db.clone()), state.db.clone());
+    let session_service =
+        SessionService::new(SessionRepository::new(state.db.clone()), state.db.clone());
     let (_session, opaque_string) = session_service
         .create_opaque_session_with_context(
             user_id,
@@ -1490,24 +1703,20 @@ async fn test_login(
         })
         .await;
 
-    Ok(HttpResponse::Ok()
-        .cookie(cookie)
-        .json(serde_json::json!({
-            "ok": true,
-            "email": email,
-            "display_name": display_name,
-            "org_slug": org.slug,
-            "user_id": user_id,
-        })))
+    Ok(HttpResponse::Ok().cookie(cookie).json(serde_json::json!({
+        "ok": true,
+        "email": email,
+        "display_name": display_name,
+        "org_slug": org.slug,
+        "user_id": user_id,
+    })))
 }
 
 /// DELETE /v1/test/cleanup
 ///
 /// Deletes all users, orgs, sessions, and audit rows created via test-login
 /// (identified by `*.test` email addresses). Only active in test mode.
-async fn test_cleanup(
-    state: web::Data<AppState>,
-) -> Result<HttpResponse, AppError> {
+async fn test_cleanup(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     if !test_mode_enabled() {
         return Err(AppError::NotFound("Test mode is not enabled.".into()));
     }
@@ -1520,7 +1729,7 @@ async fn test_cleanup(
         WHERE actor_user_id IN (
             SELECT user_id FROM user_emails WHERE email LIKE '%.test'
         )
-        "#
+        "#,
     )
     .execute(&state.db)
     .await
@@ -1534,7 +1743,7 @@ async fn test_cleanup(
         WHERE user_id IN (
             SELECT user_id FROM user_emails WHERE email LIKE '%.test'
         )
-        "#
+        "#,
     )
     .execute(&state.db)
     .await
@@ -1548,7 +1757,7 @@ async fn test_cleanup(
         WHERE user_id IN (
             SELECT user_id FROM user_emails WHERE email LIKE '%.test'
         )
-        "#
+        "#,
     )
     .execute(&state.db)
     .await?;
@@ -1564,7 +1773,7 @@ async fn test_cleanup(
               WHERE om.organization_id = organizations.id
                 AND ue.email NOT LIKE '%.test'
           )
-        "#
+        "#,
     )
     .execute(&state.db)
     .await
@@ -1578,7 +1787,7 @@ async fn test_cleanup(
         WHERE id IN (
             SELECT user_id FROM user_emails WHERE email LIKE '%.test'
         )
-        "#
+        "#,
     )
     .execute(&state.db)
     .await
@@ -1600,49 +1809,61 @@ async fn test_cleanup(
 
 pub fn routes(mode: crate::bootstrap::config::ServerMode) -> impl Fn(&mut web::ServiceConfig) {
     move |cfg: &mut web::ServiceConfig| {
-    // ── /v1/setup — wizard + public config (always registered) ───────────────
-    cfg.service(
-        web::scope("/setup")
-            .route("/status",                web::get().to(get_status))
-            .route("/config",                web::get().to(get_setup_config))
-            .route("/admin-access",          web::get().to(get_admin_access_policy))
-            .route("/public-urls",           web::get().to(get_public_urls))
-            .route("/test-database",         web::post().to(test_database_connection))
-            .route("/auth-methods",          web::get().to(get_public_auth_methods))
-            .route("/login-bootstrap",       web::get().to(get_login_bootstrap))
-            .route("/create-admin",          web::post().to(create_admin))
-            .route("/configure-public-urls", web::post().to(configure_public_urls))
-            .route("/configure-smtp",             web::post().to(configure_smtp))
-            .route("/test-smtp",                  web::post().to(test_smtp))
-            .route("/send-smtp-verification",     web::post().to(send_smtp_verification))
-            .route("/verify-smtp-code",           web::post().to(verify_smtp_code))
-            .route("/test-redis",            web::post().to(test_redis))
-            .route("/configure-oauth",       web::post().to(configure_oauth))
-            .route("/prepare-oauth-verification", web::post().to(prepare_oauth_verification))
-            .route("/configure-admin-access",web::post().to(configure_admin_access))
-            .route("/storage-config",        web::get().to(get_setup_storage_config))
-            .route("/storage-config",        web::post().to(save_setup_storage_config))
-            .route("/test-storage",          web::post().to(test_setup_storage))
-            .route("/complete",              web::post().to(complete_setup)),
-    );
-
-    // ── /v1/demo — demo showcase routes (demo + test mode only) ──────────────
-    if mode.demo_routes_enabled() {
+        // ── /v1/setup — wizard + public config (always registered) ───────────────
         cfg.service(
-            web::scope("/demo")
-                .route("/login",       web::post().to(demo_login))
-                .route("/app-catalog", web::get().to(get_demo_app_catalog))
-                .route("/app-config",  web::get().to(get_demo_app_config)),
+            web::scope("/setup")
+                .route("/status", web::get().to(get_status))
+                .route("/config", web::get().to(get_setup_config))
+                .route("/admin-access", web::get().to(get_admin_access_policy))
+                .route("/public-urls", web::get().to(get_public_urls))
+                .route("/test-database", web::post().to(test_database_connection))
+                .route("/auth-methods", web::get().to(get_public_auth_methods))
+                .route("/login-bootstrap", web::get().to(get_login_bootstrap))
+                .route("/create-admin", web::post().to(create_admin))
+                .route(
+                    "/configure-public-urls",
+                    web::post().to(configure_public_urls),
+                )
+                .route("/configure-smtp", web::post().to(configure_smtp))
+                .route("/test-smtp", web::post().to(test_smtp))
+                .route(
+                    "/send-smtp-verification",
+                    web::post().to(send_smtp_verification),
+                )
+                .route("/verify-smtp-code", web::post().to(verify_smtp_code))
+                .route("/test-redis", web::post().to(test_redis))
+                .route("/configure-oauth", web::post().to(configure_oauth))
+                .route(
+                    "/prepare-oauth-verification",
+                    web::post().to(prepare_oauth_verification),
+                )
+                .route(
+                    "/configure-admin-access",
+                    web::post().to(configure_admin_access),
+                )
+                .route("/storage-config", web::get().to(get_setup_storage_config))
+                .route("/storage-config", web::post().to(save_setup_storage_config))
+                .route("/test-storage", web::post().to(test_setup_storage))
+                .route("/complete", web::post().to(complete_setup)),
         );
-    }
 
-    // ── /v1/test — test automation routes (test mode only) ───────────────────
-    if mode == crate::bootstrap::config::ServerMode::Test {
-        cfg.service(
-            web::scope("/test")
-                .route("/login",   web::post().to(test_login))
-                .route("/cleanup", web::delete().to(test_cleanup)),
-        );
-    }
+        // ── /v1/demo — demo showcase routes (demo + test mode only) ──────────────
+        if mode.demo_routes_enabled() {
+            cfg.service(
+                web::scope("/demo")
+                    .route("/login", web::post().to(demo_login))
+                    .route("/app-catalog", web::get().to(get_demo_app_catalog))
+                    .route("/app-config", web::get().to(get_demo_app_config)),
+            );
+        }
+
+        // ── /v1/test — test automation routes (test mode only) ───────────────────
+        if mode == crate::bootstrap::config::ServerMode::Test {
+            cfg.service(
+                web::scope("/test")
+                    .route("/login", web::post().to(test_login))
+                    .route("/cleanup", web::delete().to(test_cleanup)),
+            );
+        }
     } // end move closure
 }

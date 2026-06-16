@@ -6,10 +6,10 @@ use uuid::Uuid;
 use crate::bootstrap::state::AppState;
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::organization::handlers::{
-    demo_app_icon_url, load_client_allowed_embed_origins, ClientListQuery, OrgClientResponse,
-    OrgOAuthClient, PaginatedActivityResponse, TenantAuthConfigResponse,
+    demo_app_icon_url, load_client_allowed_embed_origins, sort_order_or_error, ClientListQuery,
+    OrgClientResponse, OrgOAuthClient, PaginatedActivityResponse, TenantAuthConfigResponse,
     WorkspaceIntegrationClientSecretMetadataResponse, ORG_CLIENT_LIST_LIMIT,
-    ORG_CLIENT_REDIRECT_URI_LIMIT, sort_order_or_error,
+    ORG_CLIENT_REDIRECT_URI_LIMIT,
 };
 use crate::shared::error::AppError;
 use crate::shared::request_ip::client_ip_string_from_http_request;
@@ -112,8 +112,13 @@ pub fn normalize_workspace_api_key_permission_preset(raw: Option<&str>) -> &'sta
     }
 }
 
-pub fn workspace_api_key_has_permission(ctx: &WorkspaceIntegrationInfoRow, permission: &str) -> bool {
-    ctx.allowed_permissions.iter().any(|value| value == permission)
+pub fn workspace_api_key_has_permission(
+    ctx: &WorkspaceIntegrationInfoRow,
+    permission: &str,
+) -> bool {
+    ctx.allowed_permissions
+        .iter()
+        .any(|value| value == permission)
         || workspace_api_key_permissions_for_preset(&ctx.permission_preset)
             .iter()
             .any(|value| value == permission)
@@ -241,7 +246,9 @@ pub async fn resolve_workspace_api_key_context(
         .bind(&key_hash)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to update workspace API key usage: {e}")))?;
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to update workspace API key usage: {e}"))
+        })?;
 
     AuditService::new(state.db.clone())
         .log(AuditEvent {
@@ -346,24 +353,30 @@ pub async fn get_workspace_integration_branding(
     .bind(ctx.org_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace integration branding: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace integration branding: {e}"
+        ))
+    })?;
 
-    Ok(HttpResponse::Ok().json(WorkspaceIntegrationBrandingResponse {
-        workspace_id: row.org_id,
-        workspace_slug: row.org_slug,
-        workspace_name: row.org_name,
-        login_display_name: row.login_display_name,
-        login_title: row.login_title,
-        login_subtitle: row.login_subtitle,
-        icon_url: row.icon_url,
-        login_logo_url: row.login_logo_url,
-        brand_color: row.brand_color,
-        show_login_logo: row.show_login_logo,
-        show_login_title: row.show_login_title,
-        show_login_subtitle: row.show_login_subtitle,
-        show_powered_by: row.show_powered_by,
-        login_method_order: row.login_method_order.unwrap_or_default(),
-    }))
+    Ok(
+        HttpResponse::Ok().json(WorkspaceIntegrationBrandingResponse {
+            workspace_id: row.org_id,
+            workspace_slug: row.org_slug,
+            workspace_name: row.org_name,
+            login_display_name: row.login_display_name,
+            login_title: row.login_title,
+            login_subtitle: row.login_subtitle,
+            icon_url: row.icon_url,
+            login_logo_url: row.login_logo_url,
+            brand_color: row.brand_color,
+            show_login_logo: row.show_login_logo,
+            show_login_title: row.show_login_title,
+            show_login_subtitle: row.show_login_subtitle,
+            show_powered_by: row.show_powered_by,
+            login_method_order: row.login_method_order.unwrap_or_default(),
+        }),
+    )
 }
 
 #[utoipa::path(
@@ -395,7 +408,11 @@ pub async fn get_workspace_integration_auth_config(
     )
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace integration auth config: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace integration auth config: {e}"
+        ))
+    })?;
 
     let response = match row {
         None => TenantAuthConfigResponse {
@@ -479,10 +496,22 @@ pub async fn list_workspace_integration_clients(
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search = query.q.as_deref().unwrap_or("").trim().to_lowercase();
     if search.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
-    let status_filter = query.status.as_deref().unwrap_or("all").trim().to_lowercase();
-    let app_type_filter = query.app_type.as_deref().unwrap_or("all").trim().to_lowercase();
+    let status_filter = query
+        .status
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
+    let app_type_filter = query
+        .app_type
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
 
@@ -646,32 +675,46 @@ pub async fn get_workspace_integration_client_secret_metadata(
     .map_err(|e| AppError::Internal(format!("Failed to load workspace integration client secret metadata: {e}")))?
     .ok_or_else(|| AppError::NotFound("Client not found in your workspace.".into()))?;
 
-    let id: Uuid = row
-        .try_get("id")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration client id: {e}")))?;
-    let client_id: String = row
-        .try_get("client_id")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration client_id: {e}")))?;
-    let app_name: String = row
-        .try_get("app_name")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration app name: {e}")))?;
-    let app_type: String = row
-        .try_get("app_type")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration app type: {e}")))?;
-    let status: String = row
-        .try_get("status")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration client status: {e}")))?;
-    let has_client_secret: bool = row
-        .try_get("has_client_secret")
-        .map_err(|e| AppError::Internal(format!("Failed to read workspace integration client secret metadata: {e}")))?;
+    let id: Uuid = row.try_get("id").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration client id: {e}"
+        ))
+    })?;
+    let client_id: String = row.try_get("client_id").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration client_id: {e}"
+        ))
+    })?;
+    let app_name: String = row.try_get("app_name").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration app name: {e}"
+        ))
+    })?;
+    let app_type: String = row.try_get("app_type").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration app type: {e}"
+        ))
+    })?;
+    let status: String = row.try_get("status").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration client status: {e}"
+        ))
+    })?;
+    let has_client_secret: bool = row.try_get("has_client_secret").map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to read workspace integration client secret metadata: {e}"
+        ))
+    })?;
 
-    Ok(HttpResponse::Ok().json(WorkspaceIntegrationClientSecretMetadataResponse {
-        id,
-        client_id,
-        app_name,
-        app_type: app_type.clone(),
-        status: status.clone(),
-        has_client_secret,
-        can_rotate_secret: app_type == "web" && status == "active" && has_client_secret,
-    }))
+    Ok(
+        HttpResponse::Ok().json(WorkspaceIntegrationClientSecretMetadataResponse {
+            id,
+            client_id,
+            app_name,
+            app_type: app_type.clone(),
+            status: status.clone(),
+            has_client_secret,
+            can_rotate_secret: app_type == "web" && status == "active" && has_client_secret,
+        }),
+    )
 }

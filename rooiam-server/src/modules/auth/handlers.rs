@@ -1,31 +1,38 @@
-use actix_web::{web, HttpRequest, HttpResponse};
-use actix_web::http::header::{CONTENT_SECURITY_POLICY, HeaderValue};
-use crate::shared::error::AppError;
-use crate::bootstrap::state::AppState;
-use super::service::AuthService;
 use super::repository::AuthRepository;
-use crate::modules::session::{
-    service::SessionService,
-    repository::SessionRepository,
-    cookie::{build_clear_session_cookie, build_session_cookie, ROOIAM_SESSION_COOKIE},
-};
-use crate::modules::audit::service::{AuditService, AuditEvent};
+use super::service::AuthService;
+use crate::bootstrap::state::AppState;
+use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::identity::repository::IdentityRepository;
 use crate::modules::mfa::{repository::MfaRepository, service::MfaService};
+use crate::modules::organization::repository::OrganizationRepository;
+use crate::modules::session::{
+    cookie::{build_clear_session_cookie, build_session_cookie, ROOIAM_SESSION_COOKIE},
+    repository::SessionRepository,
+    service::SessionService,
+};
 use crate::shared::auth_context::resolve_login_context;
-use crate::shared::auth_policy::{ensure_auth_method_allowed, ensure_email_domain_allowed, get_workspace_policy_for_redirect, AuthMethod};
+use crate::shared::auth_policy::{
+    ensure_auth_method_allowed, ensure_email_domain_allowed, get_workspace_policy_for_redirect,
+    AuthMethod,
+};
+use crate::shared::error::AppError;
+use crate::shared::ip_policy::{
+    access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect,
+};
 use crate::shared::operator_policy::{enforce_operator_login_policy, AuthMethod as OpAuthMethod};
-use crate::shared::ip_policy::{access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect};
 use crate::shared::platform_org::get_platform_org_id;
 use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
-use crate::shared::runtime_config::{effective_admin_url, effective_app_url, effective_public_urls};
-use crate::shared::widget_login_context::{
-    consume_widget_login_context, create_widget_login_context, is_widget_login_context_invalid_error,
-    WidgetLoginContextPayload,
+use crate::shared::runtime_config::{
+    effective_admin_url, effective_app_url, effective_public_urls,
 };
-use crate::modules::organization::repository::OrganizationRepository;
-use sqlx::Row;
+use crate::shared::widget_login_context::{
+    consume_widget_login_context, create_widget_login_context,
+    is_widget_login_context_invalid_error, WidgetLoginContextPayload,
+};
+use actix_web::http::header::{HeaderValue, CONTENT_SECURITY_POLICY};
+use actix_web::{web, HttpRequest, HttpResponse};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use url::Url;
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -90,7 +97,9 @@ async fn build_login_ui_verify_url(
     mfa_challenge: Option<uuid::Uuid>,
     mfa_enrollment_challenge: Option<uuid::Uuid>,
 ) -> Result<String, AppError> {
-    let target_base = effective_public_urls(&state.db, state.config.as_ref()).await?.issuer_url;
+    let target_base = effective_public_urls(&state.db, state.config.as_ref())
+        .await?
+        .issuer_url;
     let mut url = Url::parse(&format!("{}/verify", target_base.trim_end_matches('/')))
         .map_err(|e| AppError::Internal(format!("Invalid login UI URL: {}", e)))?;
 
@@ -102,7 +111,10 @@ async fn build_login_ui_verify_url(
         if let Some(challenge_id) = mfa_enrollment_challenge {
             query.append_pair("mfa_enrollment_challenge", &challenge_id.to_string());
         }
-        if let Some(value) = redirect_uri.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(value) = redirect_uri
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             query.append_pair("redirect_uri", value);
         }
     }
@@ -233,20 +245,34 @@ async fn load_widget_allowed_embed_origins(
     .bind(client_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load hosted login widget embed origins: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load hosted login widget embed origins: {}",
+            e
+        ))
+    })?;
 
     let first = rows
         .first()
         .ok_or_else(|| AppError::NotFound("Workspace app not found for this widget.".into()))?;
 
-    let org_id: uuid::Uuid = first
-        .try_get("org_id")
-        .map_err(|e| AppError::Internal(format!("Hosted login widget is missing workspace ID: {}", e)))?;
-    let org_slug: String = first
-        .try_get("slug")
-        .map_err(|e| AppError::Internal(format!("Hosted login widget is missing workspace slug: {}", e)))?;
+    let org_id: uuid::Uuid = first.try_get("org_id").map_err(|e| {
+        AppError::Internal(format!(
+            "Hosted login widget is missing workspace ID: {}",
+            e
+        ))
+    })?;
+    let org_slug: String = first.try_get("slug").map_err(|e| {
+        AppError::Internal(format!(
+            "Hosted login widget is missing workspace slug: {}",
+            e
+        ))
+    })?;
 
-    if let Some(raw_workspace_id) = workspace_id.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(raw_workspace_id) = workspace_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let parsed = uuid::Uuid::parse_str(raw_workspace_id)
             .map_err(|_| AppError::Validation("Workspace ID is invalid.".into()))?;
         if parsed != org_id {
@@ -256,7 +282,10 @@ async fn load_widget_allowed_embed_origins(
         }
     }
 
-    if let Some(expected_slug) = workspace_slug.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(expected_slug) = workspace_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         if expected_slug != org_slug {
             return Err(AppError::Forbidden(
                 "This hosted login widget app does not belong to the requested workspace.".into(),
@@ -266,9 +295,12 @@ async fn load_widget_allowed_embed_origins(
 
     let mut origins = Vec::new();
     for row in rows {
-        let origin: Option<String> = row
-            .try_get("origin")
-            .map_err(|e| AppError::Internal(format!("Hosted login widget embed origin row is invalid: {}", e)))?;
+        let origin: Option<String> = row.try_get("origin").map_err(|e| {
+            AppError::Internal(format!(
+                "Hosted login widget embed origin row is invalid: {}",
+                e
+            ))
+        })?;
         if let Some(value) = origin {
             origins.push(value);
         }
@@ -285,9 +317,18 @@ async fn load_widget_app_redirect(
     workspace_slug: Option<&str>,
     preferred_origin: Option<&str>,
 ) -> Result<Option<HostedLoginWidgetAppRow>, AppError> {
-    let org_id = if let Some(value) = workspace_id.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(uuid::Uuid::parse_str(value).map_err(|_| AppError::Validation("Invalid workspace_id.".into()))?)
-    } else if let Some(slug) = workspace_slug.map(str::trim).filter(|value| !value.is_empty()) {
+    let org_id = if let Some(value) = workspace_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(
+            uuid::Uuid::parse_str(value)
+                .map_err(|_| AppError::Validation("Invalid workspace_id.".into()))?,
+        )
+    } else if let Some(slug) = workspace_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let repo = OrganizationRepository::new(state.db.clone());
         repo.get_organization_by_slug(slug).await?.map(|org| org.id)
     } else {
@@ -309,9 +350,17 @@ async fn load_widget_app_redirect(
     .bind(org_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load hosted login widget app redirects: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load hosted login widget app redirects: {}",
+            e
+        ))
+    })?;
 
-    if let Some(index) = rows.iter().position(|row| redirect_matches_origin(&row.redirect_uri, preferred_origin)) {
+    if let Some(index) = rows
+        .iter()
+        .position(|row| redirect_matches_origin(&row.redirect_uri, preferred_origin))
+    {
         return Ok(Some(rows.swap_remove(index)));
     }
 
@@ -322,7 +371,10 @@ async fn load_widget_app_redirect(
     Ok(rows.into_iter().next())
 }
 
-async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+async fn hosted_login_page(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     if req.path() != "/login-widget" {
         return Ok(HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
@@ -331,7 +383,14 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
 
     let query = web::Query::<HostedLoginWidgetQuery>::from_query(req.query_string())
         .map(|value| value.into_inner())
-        .map_err(|e| AppError::Validation(crate::shared::request_validation::normalize_extractor_error("query", e.to_string())))?;
+        .map_err(|e| {
+            AppError::Validation(
+                crate::shared::request_validation::normalize_extractor_error(
+                    "query",
+                    e.to_string(),
+                ),
+            )
+        })?;
     let preview_mode = query.preview.as_deref() == Some("1");
     let workspace_slug = query.workspace.as_deref().or(query.org.as_deref());
 
@@ -343,22 +402,33 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| AppError::Forbidden("The hosted login widget requires a workspace app client_id.".into()))?;
-        load_widget_allowed_embed_origins(&state, client_id, query.workspace_id.as_deref(), workspace_slug).await?
+            .ok_or_else(|| {
+                AppError::Forbidden(
+                    "The hosted login widget requires a workspace app client_id.".into(),
+                )
+            })?;
+        load_widget_allowed_embed_origins(
+            &state,
+            client_id,
+            query.workspace_id.as_deref(),
+            workspace_slug,
+        )
+        .await?
     };
 
     if allowed_origins.is_empty() {
-        return Err(AppError::Forbidden(
-            if require_explicit_embed_origins() {
-                "This workspace app does not have any allowed embed origins configured. Add explicit embed origins in Workspace Apps before using the hosted login widget.".into()
-            } else {
-                "This workspace app does not have any allowed embed origins configured.".into()
-            },
-        ));
+        return Err(AppError::Forbidden(if require_explicit_embed_origins() {
+            "This workspace app does not have any allowed embed origins configured. Add explicit embed origins in Workspace Apps before using the hosted login widget.".into()
+        } else {
+            "This workspace app does not have any allowed embed origins configured.".into()
+        }));
     }
 
-    let embed_origin = request_embed_origin(&req)
-        .ok_or_else(|| AppError::Forbidden("Unable to determine the embedding site origin for this widget request.".into()))?;
+    let embed_origin = request_embed_origin(&req).ok_or_else(|| {
+        AppError::Forbidden(
+            "Unable to determine the embedding site origin for this widget request.".into(),
+        )
+    })?;
 
     if !allowed_origins.iter().any(|origin| origin == &embed_origin) {
         log_blocked_widget_embed_probe(
@@ -369,27 +439,30 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
                 .and_then(|value| value.to_str().ok()),
             &embed_origin,
             query.client_id.as_deref(),
-        ).await;
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: get_platform_org_id(&state.db).await,
-            action: "auth.widget.embed_origin_blocked".into(),
-            target_type: "oauth_client".into(),
-            target_id: query.client_id.clone(),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req
-                .headers()
-                .get("user-agent")
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_string),
-            metadata: serde_json::json!({
-                "embed_origin": embed_origin,
-                "allowed_origins": allowed_origins,
-                "workspace_id": query.workspace_id,
-                "workspace": workspace_slug,
-                "path": req.path(),
-            }),
-        }).await;
+        )
+        .await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: get_platform_org_id(&state.db).await,
+                action: "auth.widget.embed_origin_blocked".into(),
+                target_type: "oauth_client".into(),
+                target_id: query.client_id.clone(),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string),
+                metadata: serde_json::json!({
+                    "embed_origin": embed_origin,
+                    "allowed_origins": allowed_origins,
+                    "workspace_id": query.workspace_id,
+                    "workspace": workspace_slug,
+                    "path": req.path(),
+                }),
+            })
+            .await;
         return Err(AppError::Forbidden(format!(
             "This site is not allowed to embed the hosted login widget: {}.",
             embed_origin
@@ -404,29 +477,43 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| AppError::Forbidden("The hosted login widget requires a workspace app client_id.".into()))?;
-        let app_row = match load_widget_app_redirect(&state, client_id, query.workspace_id.as_deref(), workspace_slug, Some(&embed_origin)).await? {
+            .ok_or_else(|| {
+                AppError::Forbidden(
+                    "The hosted login widget requires a workspace app client_id.".into(),
+                )
+            })?;
+        let app_row = match load_widget_app_redirect(
+            &state,
+            client_id,
+            query.workspace_id.as_deref(),
+            workspace_slug,
+            Some(&embed_origin),
+        )
+        .await?
+        {
             Some(value) => value,
             None => {
-                AuditService::new(state.db.clone()).log(AuditEvent {
-                    actor_user_id: None,
-                    organization_id: get_platform_org_id(&state.db).await,
-                    action: "auth.widget.app_callback_rejected".into(),
-                    target_type: "oauth_client".into(),
-                    target_id: Some(client_id.to_string()),
-                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                    user_agent: req
-                        .headers()
-                        .get("user-agent")
-                        .and_then(|value| value.to_str().ok())
-                        .map(str::to_string),
-                    metadata: serde_json::json!({
-                        "reason": "no_registered_callback_for_embed_origin",
-                        "embed_origin": embed_origin,
-                        "workspace_id": query.workspace_id,
-                        "workspace": workspace_slug,
-                    }),
-                }).await;
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: get_platform_org_id(&state.db).await,
+                        action: "auth.widget.app_callback_rejected".into(),
+                        target_type: "oauth_client".into(),
+                        target_id: Some(client_id.to_string()),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_string),
+                        metadata: serde_json::json!({
+                            "reason": "no_registered_callback_for_embed_origin",
+                            "embed_origin": embed_origin,
+                            "workspace_id": query.workspace_id,
+                            "workspace": workspace_slug,
+                        }),
+                    })
+                    .await;
                 return Err(AppError::Forbidden(
                     "This hosted login widget app does not have a matching app callback for this site. Add a redirect URI with the same origin as the embedding site.".into()
                 ));
@@ -436,12 +523,16 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
             state.get_ref(),
             WidgetLoginContextPayload {
                 redirect_uri: app_row.redirect_uri,
-                workspace_id: query.workspace_id.as_deref().and_then(|value| uuid::Uuid::parse_str(value.trim()).ok()),
+                workspace_id: query
+                    .workspace_id
+                    .as_deref()
+                    .and_then(|value| uuid::Uuid::parse_str(value.trim()).ok()),
                 client_id: app_row.client_id,
                 app_name: app_row.app_name,
                 embed_origin: embed_origin.clone(),
             },
-        ).await?
+        )
+        .await?
     };
 
     let frame_ancestors = frame_ancestors_directive(&allowed_origins);
@@ -453,15 +544,24 @@ async fn hosted_login_page(req: HttpRequest, state: web::Data<AppState>) -> Resu
     // so the rendered widget must not send widget_embed_origin back into
     // /setup/login-bootstrap. Inject an empty origin so the widget script skips
     // embedded-app bootstrap requirements during preview.
-    let widget_embed_origin_for_html = if preview_mode { "" } else { embed_origin.as_str() };
+    let widget_embed_origin_for_html = if preview_mode {
+        ""
+    } else {
+        embed_origin.as_str()
+    };
     let html = HOSTED_LOGIN_HTML
-        .replace("__INITIAL_WIDGET_LOGIN_CONTEXT__", &initial_widget_login_context)
+        .replace(
+            "__INITIAL_WIDGET_LOGIN_CONTEXT__",
+            &initial_widget_login_context,
+        )
         .replace("__WIDGET_EMBED_ORIGIN__", widget_embed_origin_for_html);
 
     Ok(HttpResponse::Ok()
         .insert_header((
             CONTENT_SECURITY_POLICY,
-            HeaderValue::from_str(&csp).unwrap_or(HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'")),
+            HeaderValue::from_str(&csp).unwrap_or(HeaderValue::from_static(
+                "default-src 'none'; frame-ancestors 'none'",
+            )),
         ))
         .content_type("text/html; charset=utf-8")
         .body(html))
@@ -474,10 +574,16 @@ async fn log_blocked_widget_embed_probe(
     embed_origin: &str,
     client_id: Option<&str>,
 ) {
-    let Some(ip) = ip else { return; };
+    let Some(ip) = ip else {
+        return;
+    };
     let mut redis_conn = state.redis.clone();
     let key = format!("security:blocked_widget_origin:{}", ip);
-    let count: i64 = redis::cmd("INCR").arg(&key).query_async(&mut redis_conn).await.unwrap_or(0);
+    let count: i64 = redis::cmd("INCR")
+        .arg(&key)
+        .query_async(&mut redis_conn)
+        .await
+        .unwrap_or(0);
     if count == 1 {
         let _: () = redis::cmd("EXPIRE")
             .arg(&key)
@@ -487,22 +593,24 @@ async fn log_blocked_widget_embed_probe(
             .unwrap_or(());
     }
     if count >= 4 {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: get_platform_org_id(&state.db).await,
-            action: "auth.login.suspicious".into(),
-            target_type: "ip".into(),
-            target_id: Some(ip.to_string()),
-            ip: Some(ip.to_string()),
-            user_agent: user_agent.map(str::to_string),
-            metadata: serde_json::json!({
-                "reason": "repeated_blocked_embed_origin_probe",
-                "window_seconds": 600,
-                "failed_attempts": count,
-                "embed_origin": embed_origin,
-                "client_id": client_id,
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: None,
+                organization_id: get_platform_org_id(&state.db).await,
+                action: "auth.login.suspicious".into(),
+                target_type: "ip".into(),
+                target_id: Some(ip.to_string()),
+                ip: Some(ip.to_string()),
+                user_agent: user_agent.map(str::to_string),
+                metadata: serde_json::json!({
+                    "reason": "repeated_blocked_embed_origin_probe",
+                    "window_seconds": 600,
+                    "failed_attempts": count,
+                    "embed_origin": embed_origin,
+                    "client_id": client_id,
+                }),
+            })
+            .await;
     }
 }
 
@@ -524,7 +632,10 @@ async fn resolve_post_login_redirect(
     surface: Option<&str>,
     redirect_uri: Option<&str>,
 ) -> Result<String, AppError> {
-    if let Some(value) = redirect_uri.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(value) = redirect_uri
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         if value.starts_with('/') && !value.starts_with("//") {
             let target_base = if infer_magic_link_surface(surface) == "admin" {
                 effective_admin_url(&state.db).await?
@@ -533,10 +644,9 @@ async fn resolve_post_login_redirect(
             };
             let base = Url::parse(&target_base)
                 .map_err(|e| AppError::Internal(format!("Invalid redirect base URL: {}", e)))?;
-            return base
-                .join(value)
-                .map(|url| url.to_string())
-                .map_err(|e| AppError::Internal(format!("Invalid post-login redirect URL: {}", e)));
+            return base.join(value).map(|url| url.to_string()).map_err(|e| {
+                AppError::Internal(format!("Invalid post-login redirect URL: {}", e))
+            });
         }
         return Ok(value.to_string());
     }
@@ -565,7 +675,11 @@ async fn complete_magic_link_verification(
     let audit_service = AuditService::new(state.db.clone());
 
     let ip = client_ip_string_from_http_request(req, state.config.as_ref());
-    let ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
 
     let token_attempt_key = {
         let hash = hex::encode(Sha256::digest(token.as_bytes()));
@@ -587,32 +701,55 @@ async fn complete_magic_link_verification(
         Ok(link) => link,
         Err(e) => {
             let mut redis = state.redis.clone();
-            let count: i64 = redis::cmd("INCR").arg(&token_attempt_key).query_async(&mut redis).await.unwrap_or(0);
+            let count: i64 = redis::cmd("INCR")
+                .arg(&token_attempt_key)
+                .query_async(&mut redis)
+                .await
+                .unwrap_or(0);
             if count == 1 {
-                let _: () = redis::cmd("EXPIRE").arg(&token_attempt_key).arg(900).query_async(&mut redis).await.unwrap_or(());
+                let _: () = redis::cmd("EXPIRE")
+                    .arg(&token_attempt_key)
+                    .arg(900)
+                    .query_async(&mut redis)
+                    .await
+                    .unwrap_or(());
             }
             let platform_org_id = get_platform_org_id(&state.db).await;
-            audit_service.log(AuditEvent {
-                actor_user_id: None,
-                organization_id: platform_org_id,
-                action: "auth.login.failed".into(),
-                target_type: "magic_link".into(),
-                target_id: None,
-                ip: ip.clone(),
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({ "error": e.to_string() }),
-            }).await;
+            audit_service
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: platform_org_id,
+                    action: "auth.login.failed".into(),
+                    target_type: "magic_link".into(),
+                    target_id: None,
+                    ip: ip.clone(),
+                    user_agent: ua.clone(),
+                    metadata: serde_json::json!({ "error": e.to_string() }),
+                })
+                .await;
             log_suspicious_login_if_needed(state, ip.as_deref(), ua.as_deref()).await;
             return Err(e);
         }
     };
 
-    ensure_auth_method_allowed(&state.db, verified_link.redirect_uri.as_deref(), AuthMethod::MagicLink).await?;
+    ensure_auth_method_allowed(
+        &state.db,
+        verified_link.redirect_uri.as_deref(),
+        AuthMethod::MagicLink,
+    )
+    .await?;
 
     let identity_repo = IdentityRepository::new(state.db.clone());
-    let logged_in_user_id = match identity_repo.get_user_id_by_email(&verified_link.email).await? {
+    let logged_in_user_id = match identity_repo
+        .get_user_id_by_email(&verified_link.email)
+        .await?
+    {
         Some(uid) => uid,
-        None => identity_repo.create_user_with_email(&verified_link.email).await?,
+        None => {
+            identity_repo
+                .create_user_with_email(&verified_link.email)
+                .await?
+        }
     };
 
     let mfa_service = MfaService::new(
@@ -620,8 +757,14 @@ async fn complete_magic_link_verification(
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
-    let login_context = resolve_login_context(&state.db, logged_in_user_id, verified_link.redirect_uri.as_deref()).await?;
-    let workspace_policy = get_workspace_policy_for_redirect(&state.db, verified_link.redirect_uri.as_deref()).await?;
+    let login_context = resolve_login_context(
+        &state.db,
+        logged_in_user_id,
+        verified_link.redirect_uri.as_deref(),
+    )
+    .await?;
+    let workspace_policy =
+        get_workspace_policy_for_redirect(&state.db, verified_link.redirect_uri.as_deref()).await?;
 
     if let Some(ref org) = workspace_policy {
         ensure_email_domain_allowed(org, &verified_link.email)?;
@@ -636,13 +779,25 @@ async fn complete_magic_link_verification(
         OpAuthMethod::MagicLink,
         login_context.current_org_id,
         client_ip_from_http_request(req, state.config.as_ref()),
-    ).await?;
+    )
+    .await?;
 
     let workspace_requires_mfa = match workspace_policy.as_ref() {
-        Some(org) => org.require_mfa || (org.require_mfa_for_admins && org_repo.is_org_admin_or_owner(org.id, logged_in_user_id).await.unwrap_or(false)),
+        Some(org) => {
+            org.require_mfa
+                || (org.require_mfa_for_admins
+                    && org_repo
+                        .is_org_admin_or_owner(org.id, logged_in_user_id)
+                        .await
+                        .unwrap_or(false))
+        }
         None => {
             if let Some(org_id) = login_context.current_org_id {
-                let portal_mfa = org_repo.get_organization_by_id(org_id).await?.map(|org| org.tenant_portal_require_mfa).unwrap_or(false);
+                let portal_mfa = org_repo
+                    .get_organization_by_id(org_id)
+                    .await?
+                    .map(|org| org.tenant_portal_require_mfa)
+                    .unwrap_or(false);
                 portal_mfa || op_policy.as_ref().map(|p| p.require_mfa).unwrap_or(false)
             } else {
                 op_policy.as_ref().map(|p| p.require_mfa).unwrap_or(false)
@@ -652,7 +807,14 @@ async fn complete_magic_link_verification(
     let (totp_enabled, _) = mfa_service.totp_status(logged_in_user_id).await?;
 
     if workspace_requires_mfa && !totp_enabled {
-        let enrollment = mfa_service.start_login_enrollment(logged_in_user_id, verified_link.redirect_uri.clone(), "magic_link", None).await?;
+        let enrollment = mfa_service
+            .start_login_enrollment(
+                logged_in_user_id,
+                verified_link.redirect_uri.clone(),
+                "magic_link",
+                None,
+            )
+            .await?;
         return Ok(MagicLinkVerificationResult::MfaEnrollmentRequired {
             challenge_id: enrollment.challenge.id,
             redirect_uri: verified_link.redirect_uri,
@@ -661,7 +823,14 @@ async fn complete_magic_link_verification(
     }
 
     if totp_enabled {
-        let challenge = mfa_service.start_login_challenge(logged_in_user_id, verified_link.redirect_uri.clone(), "magic_link", None).await?;
+        let challenge = mfa_service
+            .start_login_challenge(
+                logged_in_user_id,
+                verified_link.redirect_uri.clone(),
+                "magic_link",
+                None,
+            )
+            .await?;
         return Ok(MagicLinkVerificationResult::MfaRequired {
             challenge_id: challenge.challenge.id,
             redirect_uri: verified_link.redirect_uri,
@@ -671,17 +840,19 @@ async fn complete_magic_link_verification(
 
     let session_repo = SessionRepository::new(state.db.clone());
     let session_service = SessionService::new(session_repo, state.db.clone());
-    let (_session, opaque_string) = session_service.create_opaque_session_with_context(
-        logged_in_user_id,
-        crate::modules::session::models::SessionCreateContext {
-            user_agent: ua.clone(),
-            ip: client_ip_from_http_request(req, state.config.as_ref()),
-            current_org_id: login_context.current_org_id,
-            login_surface: verified_link.surface.clone(),
-            login_app_name: login_context.app_name.clone(),
-            login_workspace_slug: login_context.workspace_slug.clone(),
-        },
-    ).await?;
+    let (_session, opaque_string) = session_service
+        .create_opaque_session_with_context(
+            logged_in_user_id,
+            crate::modules::session::models::SessionCreateContext {
+                user_agent: ua.clone(),
+                ip: client_ip_from_http_request(req, state.config.as_ref()),
+                current_org_id: login_context.current_org_id,
+                login_surface: verified_link.surface.clone(),
+                login_app_name: login_context.app_name.clone(),
+                login_workspace_slug: login_context.workspace_slug.clone(),
+            },
+        )
+        .await?;
 
     Ok(MagicLinkVerificationResult::Success {
         user_id: logged_in_user_id,
@@ -710,32 +881,45 @@ pub async fn start_magic_link(
     tracing::info!("Starting magic link flow");
 
     let ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
 
-    let widget_login_context = match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
-        Ok(value) => value,
-        Err(AppError::Validation(message)) if is_widget_login_context_invalid_error(&message) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: get_platform_org_id(&state.db).await,
-                action: "auth.widget.context_invalid".into(),
-                target_type: "widget_login_context".into(),
-                target_id: body.widget_login_context.clone(),
-                ip: ip.clone(),
-                user_agent: ua.clone(),
-                metadata: serde_json::json!({
-                    "reason": "expired_or_replayed",
-                    "embed_origin": body.widget_embed_origin,
-                    "surface": body.surface,
-                    "stage": "magic_link_start",
-                }),
-            }).await;
-            return Err(AppError::Validation(message));
-        }
-        Err(err) => return Err(err),
-    };
+    let widget_login_context =
+        match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
+            Ok(value) => value,
+            Err(AppError::Validation(message))
+                if is_widget_login_context_invalid_error(&message) =>
+            {
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: get_platform_org_id(&state.db).await,
+                        action: "auth.widget.context_invalid".into(),
+                        target_type: "widget_login_context".into(),
+                        target_id: body.widget_login_context.clone(),
+                        ip: ip.clone(),
+                        user_agent: ua.clone(),
+                        metadata: serde_json::json!({
+                            "reason": "expired_or_replayed",
+                            "embed_origin": body.widget_embed_origin,
+                            "surface": body.surface,
+                            "stage": "magic_link_start",
+                        }),
+                    })
+                    .await;
+                return Err(AppError::Validation(message));
+            }
+            Err(err) => return Err(err),
+        };
     if let Some(ctx) = widget_login_context.as_ref() {
-        let supplied_embed_origin = body.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let supplied_embed_origin = body
+            .widget_embed_origin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
             return Err(AppError::Forbidden(
                 "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
@@ -752,7 +936,9 @@ pub async fn start_magic_link(
         None
     };
 
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, effective_redirect_uri.as_deref()).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, effective_redirect_uri.as_deref())
+            .await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -765,51 +951,59 @@ pub async fn start_magic_link(
     let service = AuthService::new(repo);
     let mut redis_conn = state.redis.clone();
 
-    if let Err(err) = service.start_magic_link(
-        body.email.clone(),
-        effective_redirect_uri.clone(),
-        body.surface.clone(),
-        &mut redis_conn,
-    ).await {
+    if let Err(err) = service
+        .start_magic_link(
+            body.email.clone(),
+            effective_redirect_uri.clone(),
+            body.surface.clone(),
+            &mut redis_conn,
+        )
+        .await
+    {
         if let AppError::Validation(message) = &err {
             if message.contains("redirect_uri must match a registered app callback") {
-                AuditService::new(state.db.clone()).log(AuditEvent {
-                    actor_user_id: None,
-                    organization_id: get_platform_org_id(&state.db).await,
-                    action: "auth.app_callback_rejected".into(),
-                    target_type: "redirect_uri".into(),
-                    target_id: effective_redirect_uri.clone(),
-                    ip: ip.clone(),
-                    user_agent: ua.clone(),
-                    metadata: serde_json::json!({
-                        "method": "magic_link",
-                        "surface": body.surface,
-                        "email": body.email.trim().to_lowercase(),
-                    }),
-                }).await;
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: get_platform_org_id(&state.db).await,
+                        action: "auth.app_callback_rejected".into(),
+                        target_type: "redirect_uri".into(),
+                        target_id: effective_redirect_uri.clone(),
+                        ip: ip.clone(),
+                        user_agent: ua.clone(),
+                        metadata: serde_json::json!({
+                            "method": "magic_link",
+                            "surface": body.surface,
+                            "email": body.email.trim().to_lowercase(),
+                        }),
+                    })
+                    .await;
             }
         }
         return Err(err);
     }
 
-    let workspace_policy = get_workspace_policy_for_redirect(&state.db, effective_redirect_uri.as_deref()).await?;
+    let workspace_policy =
+        get_workspace_policy_for_redirect(&state.db, effective_redirect_uri.as_deref()).await?;
     let audit_org_id = match workspace_policy {
         Some(ref org) => Some(org.id),
         None => get_platform_org_id(&state.db).await,
     };
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: audit_org_id,
-        action: "auth.magic_link.requested".into(),
-        target_type: "email".into(),
-        target_id: Some(body.email.clone()),
-        ip,
-        user_agent: ua,
-        metadata: serde_json::json!({
-            "surface": body.surface,
-            "redirect_uri": effective_redirect_uri,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: audit_org_id,
+            action: "auth.magic_link.requested".into(),
+            target_type: "email".into(),
+            target_id: Some(body.email.clone()),
+            ip,
+            user_agent: ua,
+            metadata: serde_json::json!({
+                "surface": body.surface,
+                "redirect_uri": effective_redirect_uri,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(StartMagicLinkResponse {
         ok: true,
@@ -889,31 +1083,55 @@ async fn verify_magic_link_link(
     tracing::info!("Verifying magic link token via email link...");
 
     match complete_magic_link_verification(&req, &state, &query.token).await? {
-        MagicLinkVerificationResult::MfaEnrollmentRequired { challenge_id, redirect_uri, surface } => {
+        MagicLinkVerificationResult::MfaEnrollmentRequired {
+            challenge_id,
+            redirect_uri,
+            surface,
+        } => {
             let redirect = build_login_ui_verify_url(
                 &state,
                 surface.as_deref(),
                 redirect_uri.as_deref(),
                 None,
                 Some(challenge_id),
-            ).await?;
-            Ok(HttpResponse::Found().insert_header(("Location", redirect)).finish())
+            )
+            .await?;
+            Ok(HttpResponse::Found()
+                .insert_header(("Location", redirect))
+                .finish())
         }
-        MagicLinkVerificationResult::MfaRequired { challenge_id, redirect_uri, surface } => {
+        MagicLinkVerificationResult::MfaRequired {
+            challenge_id,
+            redirect_uri,
+            surface,
+        } => {
             let redirect = build_login_ui_verify_url(
                 &state,
                 surface.as_deref(),
                 redirect_uri.as_deref(),
                 Some(challenge_id),
                 None,
-            ).await?;
-            Ok(HttpResponse::Found().insert_header(("Location", redirect)).finish())
+            )
+            .await?;
+            Ok(HttpResponse::Found()
+                .insert_header(("Location", redirect))
+                .finish())
         }
-        MagicLinkVerificationResult::Success { user_id, redirect_uri, opaque_session, surface, .. } => {
+        MagicLinkVerificationResult::Success {
+            user_id,
+            redirect_uri,
+            opaque_session,
+            surface,
+            ..
+        } => {
             let cookie = build_session_cookie(opaque_session, &state.config, 7 * 24 * 3600);
-            let login_context = resolve_login_context(&state.db, user_id, redirect_uri.as_deref()).await?;
-            let workspace_policy = get_workspace_policy_for_redirect(&state.db, redirect_uri.as_deref()).await?;
-            let audit_org_id = login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id));
+            let login_context =
+                resolve_login_context(&state.db, user_id, redirect_uri.as_deref()).await?;
+            let workspace_policy =
+                get_workspace_policy_for_redirect(&state.db, redirect_uri.as_deref()).await?;
+            let audit_org_id = login_context
+                .current_org_id
+                .or_else(|| workspace_policy.as_ref().map(|org| org.id));
             let mut metadata = serde_json::Map::new();
             metadata.insert("method".into(), serde_json::json!("magic_link"));
             metadata.insert("redirect_to".into(), serde_json::json!(redirect_uri));
@@ -923,18 +1141,25 @@ async fn verify_magic_link_link(
             if let Some(workspace_slug) = login_context.workspace_slug {
                 metadata.insert("workspace_slug".into(), serde_json::json!(workspace_slug));
             }
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: Some(user_id),
-                organization_id: audit_org_id,
-                action: "auth.login.success".into(),
-                target_type: "user".into(),
-                target_id: Some(user_id.to_string()),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::Value::Object(metadata),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: Some(user_id),
+                    organization_id: audit_org_id,
+                    action: "auth.login.success".into(),
+                    target_type: "user".into(),
+                    target_id: Some(user_id.to_string()),
+                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                    user_agent: req
+                        .headers()
+                        .get("user-agent")
+                        .and_then(|h| h.to_str().ok())
+                        .map(String::from),
+                    metadata: serde_json::Value::Object(metadata),
+                })
+                .await;
             let target = append_magic_link_verified_marker(
-                &resolve_post_login_redirect(&state, surface.as_deref(), redirect_uri.as_deref()).await?
+                &resolve_post_login_redirect(&state, surface.as_deref(), redirect_uri.as_deref())
+                    .await?,
             )?;
             Ok(HttpResponse::Found()
                 .cookie(cookie)
@@ -944,12 +1169,29 @@ async fn verify_magic_link_link(
     }
 }
 
-async fn log_suspicious_login_if_needed(state: &web::Data<AppState>, ip: Option<&str>, user_agent: Option<&str>) {
-    let Some(ip) = ip else { return; };
+async fn log_suspicious_login_if_needed(
+    state: &web::Data<AppState>,
+    ip: Option<&str>,
+    user_agent: Option<&str>,
+) {
+    let Some(ip) = ip else {
+        return;
+    };
     let mut redis_conn = state.redis.clone();
     let key = format!("security:failed_login:{}", ip);
-    let count: i64 = redis::cmd("INCR").arg(&key).query_async(&mut redis_conn).await.unwrap_or(0);
-    if count == 1 { let _: () = redis::cmd("EXPIRE").arg(&key).arg(600).query_async(&mut redis_conn).await.unwrap_or(()); }
+    let count: i64 = redis::cmd("INCR")
+        .arg(&key)
+        .query_async(&mut redis_conn)
+        .await
+        .unwrap_or(0);
+    if count == 1 {
+        let _: () = redis::cmd("EXPIRE")
+            .arg(&key)
+            .arg(600)
+            .query_async(&mut redis_conn)
+            .await
+            .unwrap_or(());
+    }
     if count >= 5 {
         let platform_org_id = get_platform_org_id(&state.db).await;
         AuditService::new(state.db.clone()).log(AuditEvent {
@@ -969,20 +1211,32 @@ async fn log_suspicious_login_if_needed(state: &web::Data<AppState>, ip: Option<
         (status = 200, description = "Session revoked and cookie cleared (idempotent)"),
     ),
 )]
-pub async fn logout(req: actix_web::HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn logout(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     if let Some(cookie) = req.cookie(ROOIAM_SESSION_COOKIE) {
         let session_repo = SessionRepository::new(state.db.clone());
         let session_service = SessionService::new(session_repo.clone(), state.db.clone());
         if let Ok(session) = session_service.verify_opaque_session(cookie.value()).await {
             let _ = session_repo.revoke_session(session.session_id).await;
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: Some(session.user_id), organization_id: session.current_org_id, action: "auth.logout.success".into(),
-                target_type: "session".into(), target_id: Some(session.session_id.to_string()),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()), user_agent: None, metadata: serde_json::json!({}),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: Some(session.user_id),
+                    organization_id: session.current_org_id,
+                    action: "auth.logout.success".into(),
+                    target_type: "session".into(),
+                    target_id: Some(session.session_id.to_string()),
+                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                    user_agent: None,
+                    metadata: serde_json::json!({}),
+                })
+                .await;
         }
     }
-    Ok(HttpResponse::Ok().cookie(build_clear_session_cookie(&state.config)).json(serde_json::json!({ "ok": true })))
+    Ok(HttpResponse::Ok()
+        .cookie(build_clear_session_cookie(&state.config))
+        .json(serde_json::json!({ "ok": true })))
 }
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
@@ -991,7 +1245,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("/magic-link/start", web::post().to(start_magic_link))
             .route("/magic-link/verify", web::post().to(verify_magic_link))
             .route("/magic-link/verify", web::get().to(verify_magic_link_link))
-            .route("/logout", web::post().to(logout))
+            .route("/logout", web::post().to(logout)),
     );
 }
 
@@ -1002,55 +1256,71 @@ const AUTH_UI_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 pub fn ui_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::resource("/widget-assets/login-widget.css")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(
-                AUTH_UI_PER_ENDPOINT_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip(
-                "auth_ui",
-                AUTH_UI_GLOBAL_PER_IP_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .route(web::get().to(hosted_login_widget_stylesheet))
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                    AUTH_UI_PER_ENDPOINT_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                    "auth_ui",
+                    AUTH_UI_GLOBAL_PER_IP_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .route(web::get().to(hosted_login_widget_stylesheet)),
     );
     cfg.service(
         web::resource("/login-widget")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(
-                AUTH_UI_PER_ENDPOINT_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip(
-                "auth_ui",
-                AUTH_UI_GLOBAL_PER_IP_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .route(web::get().to(hosted_login_page))
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                    AUTH_UI_PER_ENDPOINT_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                    "auth_ui",
+                    AUTH_UI_GLOBAL_PER_IP_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .route(web::get().to(hosted_login_page)),
     );
     cfg.service(
         web::resource("/login")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(
-                AUTH_UI_PER_ENDPOINT_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip(
-                "auth_ui",
-                AUTH_UI_GLOBAL_PER_IP_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .route(web::get().to(hosted_login_page))
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                    AUTH_UI_PER_ENDPOINT_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                    "auth_ui",
+                    AUTH_UI_GLOBAL_PER_IP_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .route(web::get().to(hosted_login_page)),
     );
     cfg.service(
         web::resource("/verify")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(
-                AUTH_UI_PER_ENDPOINT_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip(
-                "auth_ui",
-                AUTH_UI_GLOBAL_PER_IP_LIMIT,
-                AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
-            ))
-            .route(web::get().to(hosted_verify_page))
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                    AUTH_UI_PER_ENDPOINT_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .wrap(
+                crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                    "auth_ui",
+                    AUTH_UI_GLOBAL_PER_IP_LIMIT,
+                    AUTH_UI_RATE_LIMIT_WINDOW_SECONDS,
+                ),
+            )
+            .route(web::get().to(hosted_verify_page)),
     );
 }
 

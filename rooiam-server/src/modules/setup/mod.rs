@@ -1,9 +1,9 @@
-pub mod handlers;
-pub mod cli;
 pub mod access;
 pub mod auth_bootstrap;
+pub mod cli;
 pub mod demo;
 pub mod diagnostics;
+pub mod handlers;
 pub mod policy;
 pub mod settings;
 pub mod support;

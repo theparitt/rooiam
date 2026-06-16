@@ -29,7 +29,9 @@ pub(super) struct PaginatedResponse<T> {
 pub(super) fn normalize_page(query: &AdminListQuery) -> Result<i64, AppError> {
     let page = query.page.unwrap_or(1);
     if page < 1 {
-        return Err(AppError::Validation("page must be greater than or equal to 1.".into()));
+        return Err(AppError::Validation(
+            "page must be greater than or equal to 1.".into(),
+        ));
     }
     Ok(page)
 }

@@ -1,12 +1,12 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 use sqlx::PgPool;
+use uuid::Uuid;
 
-use crate::shared::error::AppError;
-use super::repository::SessionRepository;
 use super::models::SessionCreateContext;
+use super::repository::SessionRepository;
+use crate::shared::error::AppError;
 
 pub use crate::shared::request_ip::parse_client_ip;
 
@@ -23,7 +23,7 @@ async fn list_org_operator_emails(db: &PgPool, org_id: Uuid) -> Vec<String> {
           AND om.status = 'active'
           AND u.status = 'active'
           AND r.code IN ('owner', 'admin')
-        "#
+        "#,
     )
     .bind(org_id)
     .fetch_all(db)
@@ -42,7 +42,7 @@ async fn list_platform_operator_emails(db: &PgPool) -> Vec<String> {
         JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
         WHERE u.status = 'active'
           AND (u.is_platform_owner = true OR u.is_superuser = true)
-        "#
+        "#,
     )
     .fetch_all(db)
     .await
@@ -74,7 +74,9 @@ async fn send_high_severity_operator_alerts(
         return;
     }
 
-    let scope = workspace_slug.clone().unwrap_or_else(|| "platform".to_string());
+    let scope = workspace_slug
+        .clone()
+        .unwrap_or_else(|| "platform".to_string());
     let subject = format!("High-severity suspicious sign-in detected for {}", scope);
     let ip_text = ip.unwrap_or_else(|| "unknown".to_string());
     let ua_text = user_agent.unwrap_or_else(|| "unknown device".to_string());
@@ -129,7 +131,11 @@ async fn send_high_severity_operator_alerts(
             continue;
         }
         if let Err(e) = send_notification_email(&db, &recipient, &subject, &text, &html).await {
-            tracing::warn!("High-severity operator suspicious-login email to {} failed: {}", recipient, e);
+            tracing::warn!(
+                "High-severity operator suspicious-login email to {} failed: {}",
+                recipient,
+                e
+            );
         }
     }
 }
@@ -149,7 +155,7 @@ async fn should_send_high_severity_operator_alert(
           AND ($2::uuid IS NULL OR organization_id IS NOT DISTINCT FROM $2)
           AND metadata->>'reason' = $3
           AND created_at >= NOW() - INTERVAL '30 minutes'
-        "#
+        "#,
     )
     .bind(user_id)
     .bind(org_id)
@@ -178,7 +184,8 @@ impl SessionService {
         &self,
         user_id: Uuid,
     ) -> Result<(super::models::Session, String), AppError> {
-        self.create_opaque_session_with_context(user_id, SessionCreateContext::default()).await
+        self.create_opaque_session_with_context(user_id, SessionCreateContext::default())
+            .await
     }
 
     pub async fn create_opaque_session_with_context(
@@ -202,7 +209,7 @@ impl SessionService {
         // 3. Set expiry — org override (max_session_age_hours → days) first,
         //    then platform system_settings, default 7 days.
         let platform_days: i64 = sqlx::query_scalar(
-            "SELECT value::bigint FROM system_settings WHERE key = 'session_duration_days'"
+            "SELECT value::bigint FROM system_settings WHERE key = 'session_duration_days'",
         )
         .fetch_optional(&self.db)
         .await
@@ -211,7 +218,7 @@ impl SessionService {
         .unwrap_or(7);
 
         let tenant_days: i64 = sqlx::query_scalar(
-            "SELECT value::bigint FROM system_settings WHERE key = 'tenant_session_duration_days'"
+            "SELECT value::bigint FROM system_settings WHERE key = 'tenant_session_duration_days'",
         )
         .fetch_optional(&self.db)
         .await
@@ -243,18 +250,21 @@ impl SessionService {
         let expiry = chrono::Utc::now() + chrono::Duration::days(duration_days);
 
         // 4. Save hash to DB
-        let session = self.repo.create_session(
-            session_id,
-            user_id,
-            &secret_hash_hex,
-            expiry,
-            context.current_org_id,
-            context.login_surface.as_deref(),
-            context.login_app_name.as_deref(),
-            context.login_workspace_slug.as_deref(),
-            context.user_agent.as_deref(),
-            context.ip,
-        ).await?;
+        let session = self
+            .repo
+            .create_session(
+                session_id,
+                user_id,
+                &secret_hash_hex,
+                expiry,
+                context.current_org_id,
+                context.login_surface.as_deref(),
+                context.login_app_name.as_deref(),
+                context.login_workspace_slug.as_deref(),
+                context.user_agent.as_deref(),
+                context.ip,
+            )
+            .await?;
 
         // 5. Enforce per-workspace concurrent session limit (if applicable)
         if let Some(org_id) = context.current_org_id {
@@ -266,7 +276,8 @@ impl SessionService {
                 if let Some(max) = org.max_concurrent_sessions {
                     // Keep the `max` most recent sessions; the new session is already in the DB.
                     // Revoke any that exceed the limit (oldest first).
-                    let _ = self.repo
+                    let _ = self
+                        .repo
                         .revoke_oldest_sessions_for_org(user_id, org_id, i64::from(max))
                         .await;
                 }
@@ -277,30 +288,33 @@ impl SessionService {
         {
             use crate::shared::session_fingerprint::device_class;
             let current_class = device_class(context.user_agent.as_deref());
-            if let Ok(prior_uas) = self.repo
+            if let Ok(prior_uas) = self
+                .repo
                 .get_recent_session_user_agents(user_id, session_id)
                 .await
             {
                 if !prior_uas.is_empty() {
-                    let seen_this_class = prior_uas.iter().any(|ua| {
-                        device_class(ua.as_deref()) == current_class
-                    });
+                    let seen_this_class = prior_uas
+                        .iter()
+                        .any(|ua| device_class(ua.as_deref()) == current_class);
                     if !seen_this_class {
                         use crate::modules::audit::service::{AuditEvent, AuditService};
-                        AuditService::new(self.db.clone()).log(AuditEvent {
-                            actor_user_id: Some(user_id),
-                            organization_id: context.current_org_id,
-                            action: "auth.login.suspicious".into(),
-                            target_type: "session".into(),
-                            target_id: Some(session_id.to_string()),
-                            ip: context.ip.map(|ip| ip.to_string()),
-                            user_agent: context.user_agent.clone(),
-                            metadata: serde_json::json!({
-                                "reason": "new_device_class",
-                                "device_class": current_class,
-                                "session_id": session_id,
-                            }),
-                        }).await;
+                        AuditService::new(self.db.clone())
+                            .log(AuditEvent {
+                                actor_user_id: Some(user_id),
+                                organization_id: context.current_org_id,
+                                action: "auth.login.suspicious".into(),
+                                target_type: "session".into(),
+                                target_id: Some(session_id.to_string()),
+                                ip: context.ip.map(|ip| ip.to_string()),
+                                user_agent: context.user_agent.clone(),
+                                metadata: serde_json::json!({
+                                    "reason": "new_device_class",
+                                    "device_class": current_class,
+                                    "session_id": session_id,
+                                }),
+                            })
+                            .await;
 
                         // Fire-and-forget security email — never blocks or fails the login
                         {
@@ -308,10 +322,13 @@ impl SessionService {
                             use crate::modules::identity::repository::IdentityRepository;
 
                             let db_clone = self.db.clone();
-                            let ip_str = context.ip
+                            let ip_str = context
+                                .ip
                                 .map(|ip| ip.to_string())
                                 .unwrap_or_else(|| "unknown".to_string());
-                            let ua_str = context.user_agent.clone()
+                            let ua_str = context
+                                .user_agent
+                                .clone()
                                 .unwrap_or_else(|| "unknown device".to_string());
 
                             tokio::spawn(async move {
@@ -322,7 +339,9 @@ impl SessionService {
                                     .flatten()
                                     .unwrap_or_default();
 
-                                if email.is_empty() { return; }
+                                if email.is_empty() {
+                                    return;
+                                }
 
                                 let subject = "New sign-in from an unrecognized device";
                                 let text = format!(
@@ -348,10 +367,13 @@ impl SessionService {
 
                                 if let Err(e) = send_notification_email(
                                     &db_clone, &email, subject, &text, &html,
-                                ).await {
+                                )
+                                .await
+                                {
                                     tracing::warn!(
                                         "Suspicious login notification to {} failed: {}",
-                                        email, e,
+                                        email,
+                                        e,
                                     );
                                 }
                             });
@@ -364,15 +386,24 @@ impl SessionService {
         // 7. Risk assessment: evaluate login signals and log any suspicious ones.
         //    Fire-and-forget — never blocks or fails the login.
         {
-            use crate::shared::risk;
-            use crate::modules::audit::service::{AuditEvent, AuditService};
             use crate::infra::email::send_notification_email;
+            use crate::modules::audit::service::{AuditEvent, AuditService};
             use crate::modules::identity::repository::IdentityRepository;
+            use crate::shared::risk;
 
             let ip_str = context.ip.map(|ip| ip.to_string());
             let policy = risk::load_policy(&self.db).await;
-            let signals = risk::evaluate(&self.db, user_id, ip_str.as_deref(), context.user_agent.as_deref()).await;
-            let ua_str = context.user_agent.clone().unwrap_or_else(|| "unknown device".to_string());
+            let signals = risk::evaluate(
+                &self.db,
+                user_id,
+                ip_str.as_deref(),
+                context.user_agent.as_deref(),
+            )
+            .await;
+            let ua_str = context
+                .user_agent
+                .clone()
+                .unwrap_or_else(|| "unknown device".to_string());
             let login_app_name = context.login_app_name.clone();
             let login_workspace_slug = context.login_workspace_slug.clone();
             let user_email = IdentityRepository::new(self.db.clone())
@@ -383,16 +414,18 @@ impl SessionService {
                 .unwrap_or_default();
 
             for signal in signals {
-                AuditService::new(self.db.clone()).log(AuditEvent {
-                    actor_user_id: Some(user_id),
-                    organization_id: context.current_org_id,
-                    action: "auth.login.suspicious".into(),
-                    target_type: "session".into(),
-                    target_id: Some(session_id.to_string()),
-                    ip: ip_str.clone(),
-                    user_agent: context.user_agent.clone(),
-                    metadata: signal.metadata(),
-                }).await;
+                AuditService::new(self.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: Some(user_id),
+                        organization_id: context.current_org_id,
+                        action: "auth.login.suspicious".into(),
+                        target_type: "session".into(),
+                        target_id: Some(session_id.to_string()),
+                        ip: ip_str.clone(),
+                        user_agent: context.user_agent.clone(),
+                        metadata: signal.metadata(),
+                    })
+                    .await;
 
                 if policy.operator_email_enabled
                     && signal.severity() == risk::RiskSeverity::High
@@ -402,7 +435,8 @@ impl SessionService {
                         user_id,
                         context.current_org_id,
                         signal.reason_key(),
-                    ).await
+                    )
+                    .await
                 {
                     let db_clone = self.db.clone();
                     let app_name = login_app_name.clone();
@@ -422,7 +456,8 @@ impl SessionService {
                             operator_ip,
                             operator_ua,
                             &reason,
-                        ).await;
+                        )
+                        .await;
                     });
                 }
 
@@ -487,8 +522,14 @@ impl SessionService {
                             workspace_html = workspace_html,
                         );
 
-                        if let Err(e) = send_notification_email(&db_clone, &email, subject, &text, &html).await {
-                            tracing::warn!("New-IP suspicious login notification to {} failed: {}", email, e);
+                        if let Err(e) =
+                            send_notification_email(&db_clone, &email, subject, &text, &html).await
+                        {
+                            tracing::warn!(
+                                "New-IP suspicious login notification to {} failed: {}",
+                                email,
+                                e
+                            );
                         }
                     });
                 }
@@ -503,12 +544,14 @@ impl SessionService {
                 hex::encode(hasher.finalize())
             });
 
-            let _ = sqlx::query("UPDATE users SET last_login_ip = $1, last_login_ua_hash = $2 WHERE id = $3")
-                .bind(context.ip.map(|ip| ip.to_string()))
-                .bind(ua_hash)
-                .bind(user_id)
-                .execute(&self.db)
-                .await;
+            let _ = sqlx::query(
+                "UPDATE users SET last_login_ip = $1, last_login_ua_hash = $2 WHERE id = $3",
+            )
+            .bind(context.ip.map(|ip| ip.to_string()))
+            .bind(ua_hash)
+            .bind(user_id)
+            .execute(&self.db)
+            .await;
         }
 
         // 9. Build raw cookie string (e.g. "uuid.raw_secret_value")
@@ -541,7 +584,13 @@ impl SessionService {
 
         // Secure constant-time string comparison avoids basic timing attacks
         use subtle::ConstantTimeEq;
-        if db_session.session_secret_hash.as_bytes().ct_eq(hash_hex.as_bytes()).unwrap_u8() == 0 {
+        if db_session
+            .session_secret_hash
+            .as_bytes()
+            .ct_eq(hash_hex.as_bytes())
+            .unwrap_u8()
+            == 0
+        {
             // Hash didn't match. It's an invalid cookie or session hijacking attempt.
             return Err(AppError::Unauthorized);
         }

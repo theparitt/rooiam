@@ -28,30 +28,64 @@ pub struct EffectiveClientPolicy {
     pub allow_native_clients: bool,
 }
 
-pub async fn load_platform_client_governance(db: &PgPool) -> Result<PlatformClientGovernance, AppError> {
+pub async fn load_platform_client_governance(
+    db: &PgPool,
+) -> Result<PlatformClientGovernance, AppError> {
     Ok(PlatformClientGovernance {
-        tenant_client_management_enabled: get_system_bool(db, "tenant_client_management_enabled", true).await?,
+        tenant_client_management_enabled: get_system_bool(
+            db,
+            "tenant_client_management_enabled",
+            true,
+        )
+        .await?,
         tenant_web_clients_enabled: get_system_bool(db, "tenant_web_clients_enabled", true).await?,
         tenant_spa_clients_enabled: get_system_bool(db, "tenant_spa_clients_enabled", true).await?,
-        tenant_native_clients_enabled: get_system_bool(db, "tenant_native_clients_enabled", true).await?,
+        tenant_native_clients_enabled: get_system_bool(db, "tenant_native_clients_enabled", true)
+            .await?,
     })
 }
 
-pub async fn save_platform_client_governance(db: &PgPool, policy: &PlatformClientGovernance) -> Result<(), AppError> {
-    set_system_bool(db, "tenant_client_management_enabled", policy.tenant_client_management_enabled).await?;
-    set_system_bool(db, "tenant_web_clients_enabled", policy.tenant_web_clients_enabled).await?;
-    set_system_bool(db, "tenant_spa_clients_enabled", policy.tenant_spa_clients_enabled).await?;
-    set_system_bool(db, "tenant_native_clients_enabled", policy.tenant_native_clients_enabled).await?;
+pub async fn save_platform_client_governance(
+    db: &PgPool,
+    policy: &PlatformClientGovernance,
+) -> Result<(), AppError> {
+    set_system_bool(
+        db,
+        "tenant_client_management_enabled",
+        policy.tenant_client_management_enabled,
+    )
+    .await?;
+    set_system_bool(
+        db,
+        "tenant_web_clients_enabled",
+        policy.tenant_web_clients_enabled,
+    )
+    .await?;
+    set_system_bool(
+        db,
+        "tenant_spa_clients_enabled",
+        policy.tenant_spa_clients_enabled,
+    )
+    .await?;
+    set_system_bool(
+        db,
+        "tenant_native_clients_enabled",
+        policy.tenant_native_clients_enabled,
+    )
+    .await?;
     Ok(())
 }
 
-pub async fn load_tenant_client_policy(db: &PgPool, org_id: Uuid) -> Result<TenantClientPolicy, AppError> {
+pub async fn load_tenant_client_policy(
+    db: &PgPool,
+    org_id: Uuid,
+) -> Result<TenantClientPolicy, AppError> {
     let row = sqlx::query(
         r#"
         SELECT allow_client_management, allow_web_clients, allow_spa_clients, allow_native_clients
         FROM organizations
         WHERE id = $1
-        "#
+        "#,
     )
     .bind(org_id)
     .fetch_optional(db)
@@ -67,7 +101,10 @@ pub async fn load_tenant_client_policy(db: &PgPool, org_id: Uuid) -> Result<Tena
     })
 }
 
-pub fn effective_client_policy(platform: &PlatformClientGovernance, tenant: &TenantClientPolicy) -> EffectiveClientPolicy {
+pub fn effective_client_policy(
+    platform: &PlatformClientGovernance,
+    tenant: &TenantClientPolicy,
+) -> EffectiveClientPolicy {
     let allow_client_management =
         platform.tenant_client_management_enabled && tenant.allow_client_management;
 
@@ -95,16 +132,22 @@ pub fn is_client_type_allowed(policy: &EffectiveClientPolicy, app_type: &str) ->
 }
 
 async fn get_system_bool(db: &PgPool, key: &str, default: bool) -> Result<bool, AppError> {
-    let value: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM system_settings WHERE key = $1"
-    )
-    .bind(key)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load system setting '{}': {}", key, e)))?;
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to load system setting '{}': {}", key, e))
+            })?;
 
     Ok(value
-        .map(|raw| matches!(raw.trim(), "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"))
+        .map(|raw| {
+            matches!(
+                raw.trim(),
+                "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"
+            )
+        })
         .unwrap_or(default))
 }
 
@@ -118,7 +161,7 @@ async fn set_system_string(db: &PgPool, key: &str, value: &str) -> Result<(), Ap
         INSERT INTO system_settings (key, value, updated_at)
         VALUES ($1, $2, NOW())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        "#
+        "#,
     )
     .bind(key)
     .bind(value)

@@ -29,8 +29,43 @@ Local vs public is explicit via `ROOIAM_DEPLOY_TARGET`.
 | `ROOIAM_REDIS_URL` | Redis connection | required |
 | `ROOIAM_HOST` | bind host | defaults to server local bind behavior |
 | `ROOIAM_PORT` | bind port | defaults to `5170` locally |
+| `ROOIAM_SERVICE_ENVIRONMENT` | MKS-1 environment label | `development`, `staging`, `production`, `test`, or `local` |
 | `ROOIAM_ALLOWED_ORIGINS` | CORS allowlist | frontend origins that may call the API |
 | `ROOIAM_DB_POOL_SIZE` | database pool size | optional tuning |
+
+## Meerkateer / MKS-1
+
+`rooiam-server` exposes the Meerkateer MKS-1 pull interface:
+
+- `GET /health`
+- `GET /ready`
+- `GET /metrics`
+- `GET /.well-known/meerkateer.json`
+- `GET /server-info`
+
+It can also push heartbeat, event, and deploy telemetry to Meerkateer when enabled.
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `ROOIAM_MEERKATEER_ENABLED` | enable Meerkateer push delivery | `true` or `false` |
+| `ROOIAM_MEERKATEER_INGEST_URL` | Meerkateer ingest base URL | use `https://www.meerkateer.com` |
+| `ROOIAM_MEERKATEER_SERVICE_KEY` | Bearer token for Meerkateer ingest | secret |
+| `ROOIAM_MEERKATEER_TIMEOUT_MS` | push timeout in milliseconds | defaults to `3000` |
+| `ROOIAM_MEERKATEER_HEARTBEAT_INTERVAL_SECONDS` | heartbeat cadence | defaults to `60` |
+| `ROOIAM_METRICS_ENABLED` | enable `/metrics` endpoint | defaults to `true` |
+| `ROOIAM_METRICS_TOKEN` | optional Bearer token for `/metrics` | if set, clients must send `Authorization: Bearer <token>` |
+
+`ROOIAM_MEERKATEER_INGEST_URL` is a base URL only. Rooiam appends:
+
+- `/v1/ingest/heartbeat`
+- `/v1/ingest/event`
+- `/v1/ingest/deploy`
+
+For live fault-injection testing only:
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `ROOIAM_MKS1_FORCE_CHECK_FAILURES` | force `/health` and `/ready` failures | example: `database=unavailable`, `redis=timeout`, or `all=unavailable` |
 
 ## Public URLs
 

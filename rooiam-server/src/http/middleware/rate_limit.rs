@@ -130,7 +130,7 @@ where
                         redis.call("EXPIRE", KEYS[1], ARGV[1])
                     end
                     return current
-                    "#
+                    "#,
                 );
 
                 match script
@@ -168,36 +168,84 @@ mod tests {
     fn per_endpoint_key_includes_method_and_path() {
         let key = build_rate_limit_key(
             RateLimitKeyMode::PerEndpoint,
-            "1.2.3.4", "POST", "/v1/auth/send",
+            "1.2.3.4",
+            "POST",
+            "/v1/auth/send",
         );
         assert_eq!(key, "rl:ep:1.2.3.4:POST:/v1/auth/send");
     }
 
     #[test]
     fn per_endpoint_different_paths_produce_different_keys() {
-        let k1 = build_rate_limit_key(RateLimitKeyMode::PerEndpoint, "1.2.3.4", "POST", "/v1/auth/send");
-        let k2 = build_rate_limit_key(RateLimitKeyMode::PerEndpoint, "1.2.3.4", "POST", "/v1/auth/verify");
-        assert_ne!(k1, k2, "Different paths must produce different per-endpoint keys");
+        let k1 = build_rate_limit_key(
+            RateLimitKeyMode::PerEndpoint,
+            "1.2.3.4",
+            "POST",
+            "/v1/auth/send",
+        );
+        let k2 = build_rate_limit_key(
+            RateLimitKeyMode::PerEndpoint,
+            "1.2.3.4",
+            "POST",
+            "/v1/auth/verify",
+        );
+        assert_ne!(
+            k1, k2,
+            "Different paths must produce different per-endpoint keys"
+        );
     }
 
     #[test]
     fn global_per_ip_key_ignores_method_and_path() {
-        let k1 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "auth" }, "1.2.3.4", "POST", "/v1/auth/send");
-        let k2 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "auth" }, "1.2.3.4", "GET",  "/v1/auth/other");
-        assert_eq!(k1, k2, "Global per-IP key must be same regardless of method/path");
+        let k1 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "auth" },
+            "1.2.3.4",
+            "POST",
+            "/v1/auth/send",
+        );
+        let k2 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "auth" },
+            "1.2.3.4",
+            "GET",
+            "/v1/auth/other",
+        );
+        assert_eq!(
+            k1, k2,
+            "Global per-IP key must be same regardless of method/path"
+        );
     }
 
     #[test]
     fn global_per_ip_different_ips_produce_different_keys() {
-        let k1 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "auth" }, "1.2.3.4", "POST", "/");
-        let k2 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "auth" }, "5.6.7.8", "POST", "/");
+        let k1 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "auth" },
+            "1.2.3.4",
+            "POST",
+            "/",
+        );
+        let k2 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "auth" },
+            "5.6.7.8",
+            "POST",
+            "/",
+        );
         assert_ne!(k1, k2);
     }
 
     #[test]
     fn global_per_ip_different_scopes_produce_different_keys() {
-        let k1 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "auth" },    "1.2.3.4", "POST", "/");
-        let k2 = build_rate_limit_key(RateLimitKeyMode::GlobalPerIp { scope: "webauthn" }, "1.2.3.4", "POST", "/");
+        let k1 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "auth" },
+            "1.2.3.4",
+            "POST",
+            "/",
+        );
+        let k2 = build_rate_limit_key(
+            RateLimitKeyMode::GlobalPerIp { scope: "webauthn" },
+            "1.2.3.4",
+            "POST",
+            "/",
+        );
         assert_ne!(k1, k2, "Different scopes must not share counters");
     }
 
@@ -221,7 +269,10 @@ mod tests {
     #[test]
     fn global_per_ip_constructor() {
         let rl = RateLimit::global_per_ip("mfa", 5, 60);
-        assert!(matches!(rl.key_mode, RateLimitKeyMode::GlobalPerIp { scope: "mfa" }));
+        assert!(matches!(
+            rl.key_mode,
+            RateLimitKeyMode::GlobalPerIp { scope: "mfa" }
+        ));
         assert_eq!(rl.max_requests, 5);
     }
 }

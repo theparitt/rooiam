@@ -1,8 +1,8 @@
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::shared::error::AppError;
 use super::models::Role;
+use crate::shared::error::AppError;
 
 #[derive(Clone)]
 pub struct RbacRepository {
@@ -15,7 +15,11 @@ impl RbacRepository {
     }
 
     /// Retrieve all distinct permission codes a user has within a specific organization context.
-    pub async fn get_user_permissions(&self, user_id: Uuid, organization_id: Uuid) -> Result<Vec<String>, AppError> {
+    pub async fn get_user_permissions(
+        &self,
+        user_id: Uuid,
+        organization_id: Uuid,
+    ) -> Result<Vec<String>, AppError> {
         let records = sqlx::query(
             r#"
             SELECT DISTINCT p.code 
@@ -24,7 +28,7 @@ impl RbacRepository {
             JOIN member_roles mr ON rp.role_id = mr.role_id
             JOIN organization_members om ON mr.member_id = om.id
             WHERE om.user_id = $1 AND om.organization_id = $2 AND om.status = 'active'
-            "#
+            "#,
         )
         .bind(user_id)
         .bind(organization_id)
@@ -45,7 +49,7 @@ impl RbacRepository {
                     FROM roles
                     WHERE organization_id = $1 OR is_system = true
                     ORDER BY name ASC
-                    "#
+                    "#,
                 )
                 .bind(org_id)
                 .fetch_all(&self.pool)
@@ -59,7 +63,7 @@ impl RbacRepository {
                     FROM roles
                     WHERE is_system = true
                     ORDER BY name ASC
-                    "#
+                    "#,
                 )
                 .fetch_all(&self.pool)
                 .await?;
@@ -71,7 +75,7 @@ impl RbacRepository {
     /// List all permissions available in the system.
     pub async fn list_permissions(&self) -> Result<Vec<super::models::Permission>, AppError> {
         let perms = sqlx::query_as::<_, super::models::Permission>(
-            "SELECT id, code, description FROM permissions ORDER BY code ASC"
+            "SELECT id, code, description FROM permissions ORDER BY code ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -102,7 +106,10 @@ impl RbacRepository {
         .await
         .map_err(|e| {
             if e.to_string().contains("unique") || e.to_string().contains("duplicate") {
-                crate::shared::error::AppError::Validation(format!("Role code '{}' already exists in this workspace.", code))
+                crate::shared::error::AppError::Validation(format!(
+                    "Role code '{}' already exists in this workspace.",
+                    code
+                ))
             } else {
                 e.into()
             }
@@ -130,9 +137,13 @@ impl RbacRepository {
 
     /// Delete a custom (non-system) role scoped to an organization.
     /// Returns false if the role does not exist or is a system role.
-    pub async fn delete_custom_role(&self, organization_id: Uuid, role_id: Uuid) -> Result<bool, AppError> {
+    pub async fn delete_custom_role(
+        &self,
+        organization_id: Uuid,
+        role_id: Uuid,
+    ) -> Result<bool, AppError> {
         let affected = sqlx::query(
-            "DELETE FROM roles WHERE id = $1 AND organization_id = $2 AND is_system = false"
+            "DELETE FROM roles WHERE id = $1 AND organization_id = $2 AND is_system = false",
         )
         .bind(role_id)
         .bind(organization_id)
@@ -159,7 +170,12 @@ impl RbacRepository {
     }
 
     /// Validates if a user holds a specific permission code in an organization.
-    pub async fn has_permission(&self, user_id: Uuid, organization_id: Uuid, permission_code: &str) -> Result<bool, AppError> {
+    pub async fn has_permission(
+        &self,
+        user_id: Uuid,
+        organization_id: Uuid,
+        permission_code: &str,
+    ) -> Result<bool, AppError> {
         let record = sqlx::query(
             r#"
             SELECT 1 

@@ -1,8 +1,8 @@
+use super::models::MagicLink;
+use crate::shared::error::AppError;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::shared::error::AppError;
-use super::models::MagicLink;
 
 #[derive(Clone)]
 pub struct AuthRepository {
@@ -42,10 +42,7 @@ impl AuthRepository {
     }
 
     /// Fetches an unused, non-expired magic link token
-    pub async fn get_valid_magic_link(
-        &self,
-        token_hash: &str,
-    ) -> Result<MagicLink, AppError> {
+    pub async fn get_valid_magic_link(&self, token_hash: &str) -> Result<MagicLink, AppError> {
         let link = sqlx::query_as::<sqlx::Postgres, MagicLink>(
             r#"
             SELECT id, email, token_hash, purpose, redirect_uri, surface, code_challenge, code_challenge_method, expires_at, used_at, created_at
@@ -65,12 +62,10 @@ impl AuthRepository {
 
     /// Mark the link as redeemed securely to prevent replay attacks
     pub async fn mark_magic_link_used(&self, id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE magic_links SET used_at = NOW() WHERE id = $1"
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE magic_links SET used_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }

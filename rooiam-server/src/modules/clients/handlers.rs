@@ -1,13 +1,15 @@
+use crate::bootstrap::state::AppState;
+use crate::http::middleware::auth::{extract_session, RequireAuth};
+use crate::shared::error::AppError;
+use crate::shared::oauth_client::{
+    generate_client_id, generate_confidential_client_secret, normalize_client_redirect_uris,
+};
+use crate::shared::request_ip::client_ip_string_from_http_request;
 use actix_web::{web, HttpResponse};
-use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::bootstrap::state::AppState;
-use crate::shared::error::AppError;
-use crate::http::middleware::auth::{extract_session, RequireAuth};
-use crate::shared::oauth_client::{generate_client_id, generate_confidential_client_secret, normalize_client_redirect_uris};
-use crate::shared::request_ip::client_ip_string_from_http_request;
 
 const MY_CLIENT_LIST_LIMIT: i64 = 100;
 const CLIENT_REDIRECT_URI_LIMIT: i64 = 25;
@@ -99,7 +101,9 @@ pub async fn create_client(
         return Err(AppError::Validation("App name is required.".into()));
     }
     if !["web", "spa", "native"].contains(&body.app_type.as_str()) {
-        return Err(AppError::Validation("app_type must be web, spa, or native.".into()));
+        return Err(AppError::Validation(
+            "app_type must be web, spa, or native.".into(),
+        ));
     }
     let redirect_uris = normalize_client_redirect_uris(&body.app_type, &body.redirect_uris)?;
 
@@ -112,11 +116,12 @@ pub async fn create_client(
         client_secret_hash = Some(hash);
     }
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to start OAuth client creation transaction: {}", e)))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to start OAuth client creation transaction: {}",
+            e
+        ))
+    })?;
 
     let client = sqlx::query_as::<_, OAuthClient>(
         r#"
@@ -144,23 +149,27 @@ pub async fn create_client(
             .map_err(|e| AppError::Internal(format!("Failed to save OAuth client redirect URI: {}", e)))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to commit OAuth client creation: {}", e)))?;
+    tx.commit().await.map_err(|e| {
+        AppError::Internal(format!("Failed to commit OAuth client creation: {}", e))
+    })?;
 
     // Audit log
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: None,
             action: "oauth_client.created".into(),
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": client.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Created().json(ClientResponse {
         client,
@@ -188,10 +197,14 @@ pub async fn rotate_client_secret(
     .ok_or_else(|| AppError::NotFound("Client not found.".into()))?;
 
     if client.app_type != "web" {
-        return Err(AppError::Validation("Only confidential web clients can rotate a client secret.".into()));
+        return Err(AppError::Validation(
+            "Only confidential web clients can rotate a client secret.".into(),
+        ));
     }
     if client.status != "active" {
-        return Err(AppError::Validation("Paused clients cannot rotate a client secret until resumed.".into()));
+        return Err(AppError::Validation(
+            "Paused clients cannot rotate a client secret until resumed.".into(),
+        ));
     }
 
     let (client_secret, client_secret_hash) = generate_confidential_client_secret()?;
@@ -201,20 +214,26 @@ pub async fn rotate_client_secret(
         .bind(client.id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to rotate the OAuth client secret: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to rotate the OAuth client secret: {}", e))
+        })?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: None,
             action: "oauth_client.secret_rotated".into(),
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": client.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(RotateClientSecretResponse {
         client_id: client.client_id,
@@ -233,7 +252,9 @@ pub async fn update_client_status(
     let normalized_status = body.status.trim().to_lowercase();
 
     if normalized_status != "active" && normalized_status != "suspended" {
-        return Err(AppError::Validation("Status must be either 'active' or 'suspended'.".into()));
+        return Err(AppError::Validation(
+            "Status must be either 'active' or 'suspended'.".into(),
+        ));
     }
 
     let client = sqlx::query_as::<_, OAuthClient>(
@@ -255,8 +276,8 @@ pub async fn update_client_status(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to update the OAuth client status: {}", e)))?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: None,
             action: if normalized_status == "active" {
@@ -267,10 +288,14 @@ pub async fn update_client_status(
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": updated.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(updated))
 }
@@ -282,6 +307,6 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_my_clients))
             .route("", web::post().to(create_client))
             .route("/{id}/rotate-secret", web::post().to(rotate_client_secret))
-            .route("/{id}/status", web::patch().to(update_client_status))
+            .route("/{id}/status", web::patch().to(update_client_status)),
     );
 }

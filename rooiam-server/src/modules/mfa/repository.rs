@@ -31,7 +31,11 @@ impl MfaRepository {
         Ok(method)
     }
 
-    pub async fn upsert_totp_method(&self, user_id: Uuid, secret_encrypted: &str) -> Result<UserMfaMethod, AppError> {
+    pub async fn upsert_totp_method(
+        &self,
+        user_id: Uuid,
+        secret_encrypted: &str,
+    ) -> Result<UserMfaMethod, AppError> {
         let method = sqlx::query_as::<_, UserMfaMethod>(
             r#"
             INSERT INTO user_mfa_methods (user_id, method_type, secret_encrypted, is_primary, verified_at)
@@ -52,11 +56,12 @@ impl MfaRepository {
     }
 
     pub async fn delete_totp_method(&self, user_id: Uuid) -> Result<bool, AppError> {
-        let deleted = sqlx::query("DELETE FROM user_mfa_methods WHERE user_id = $1 AND method_type = 'totp'")
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
+        let deleted =
+            sqlx::query("DELETE FROM user_mfa_methods WHERE user_id = $1 AND method_type = 'totp'")
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
 
         Ok(deleted > 0)
     }
@@ -89,7 +94,11 @@ impl MfaRepository {
         Ok(challenge)
     }
 
-    pub async fn get_valid_challenge(&self, challenge_id: Uuid, purpose: &str) -> Result<MfaChallenge, AppError> {
+    pub async fn get_valid_challenge(
+        &self,
+        challenge_id: Uuid,
+        purpose: &str,
+    ) -> Result<MfaChallenge, AppError> {
         let challenge = sqlx::query_as::<_, MfaChallenge>(
             r#"
             SELECT id, user_id, session_id, method_type, purpose, payload, expires_at, used_at, created_at
@@ -118,7 +127,11 @@ impl MfaRepository {
         Ok(())
     }
 
-    pub async fn replace_backup_codes(&self, user_id: Uuid, code_hashes: &[String]) -> Result<(), AppError> {
+    pub async fn replace_backup_codes(
+        &self,
+        user_id: Uuid,
+        code_hashes: &[String],
+    ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM user_mfa_backup_codes WHERE user_id = $1")
             .bind(user_id)
@@ -126,13 +139,11 @@ impl MfaRepository {
             .await?;
 
         for hash in code_hashes {
-            sqlx::query(
-                "INSERT INTO user_mfa_backup_codes (user_id, code_hash) VALUES ($1, $2)"
-            )
-            .bind(user_id)
-            .bind(hash)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("INSERT INTO user_mfa_backup_codes (user_id, code_hash) VALUES ($1, $2)")
+                .bind(user_id)
+                .bind(hash)
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;
@@ -141,7 +152,7 @@ impl MfaRepository {
 
     pub async fn count_remaining_backup_codes(&self, user_id: Uuid) -> Result<i64, AppError> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM user_mfa_backup_codes WHERE user_id = $1 AND used_at IS NULL"
+            "SELECT COUNT(*) FROM user_mfa_backup_codes WHERE user_id = $1 AND used_at IS NULL",
         )
         .bind(user_id)
         .fetch_one(&self.pool)
@@ -150,7 +161,11 @@ impl MfaRepository {
         Ok(count)
     }
 
-    pub async fn consume_backup_code(&self, user_id: Uuid, code_hash: &str) -> Result<Option<MfaBackupCode>, AppError> {
+    pub async fn consume_backup_code(
+        &self,
+        user_id: Uuid,
+        code_hash: &str,
+    ) -> Result<Option<MfaBackupCode>, AppError> {
         let record = sqlx::query_as::<_, MfaBackupCode>(
             r#"
             UPDATE user_mfa_backup_codes
@@ -159,7 +174,7 @@ impl MfaRepository {
               AND code_hash = $2
               AND used_at IS NULL
             RETURNING id, user_id, code_hash, used_at, created_at
-            "#
+            "#,
         )
         .bind(user_id)
         .bind(code_hash)

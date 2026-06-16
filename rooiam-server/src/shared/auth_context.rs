@@ -14,7 +14,10 @@ pub struct ResolvedLoginContext {
 }
 
 fn parse_login_context(redirect_uri: Option<&str>) -> ResolvedLoginContext {
-    let Some(redirect_uri) = redirect_uri.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(redirect_uri) = redirect_uri
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return ResolvedLoginContext::default();
     };
 
@@ -70,7 +73,9 @@ pub async fn resolve_login_context(
     redirect_uri: Option<&str>,
 ) -> Result<ResolvedLoginContext, AppError> {
     let mut context = parse_login_context(redirect_uri);
-    let normalized_redirect = redirect_uri.map(str::trim).filter(|value| !value.is_empty());
+    let normalized_redirect = redirect_uri
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     if let Some(redirect_uri) = normalized_redirect {
         if let Some(row) = sqlx::query(
@@ -89,7 +94,12 @@ pub async fn resolve_login_context(
         .bind(redirect_uri)
         .fetch_optional(db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to resolve login context from redirect URI: {}", e)))? {
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to resolve login context from redirect URI: {}",
+                e
+            ))
+        })? {
             let org_id = row.get::<Uuid, _>("org_id");
             let workspace_slug = row.get::<String, _>("workspace_slug");
             let app_name = row.get::<String, _>("app_name");
@@ -104,7 +114,9 @@ pub async fn resolve_login_context(
             let org_repo = OrganizationRepository::new(db.clone());
             if let Some(org) = org_repo.get_organization_by_id(org_id).await? {
                 if org.status != "active" || org.platform_locked {
-                    return Err(AppError::Forbidden("This workspace is suspended and cannot be accessed.".into()));
+                    return Err(AppError::Forbidden(
+                        "This workspace is suspended and cannot be accessed.".into(),
+                    ));
                 }
                 if org_repo.is_member(org.id, user_id).await? {
                     context.current_org_id = Some(org.id);
@@ -117,7 +129,9 @@ pub async fn resolve_login_context(
         let org_repo = OrganizationRepository::new(db.clone());
         if let Some(org) = org_repo.get_organization_by_slug(&slug).await? {
             if org.status != "active" || org.platform_locked {
-                return Err(AppError::Forbidden("This workspace is suspended and cannot be accessed.".into()));
+                return Err(AppError::Forbidden(
+                    "This workspace is suspended and cannot be accessed.".into(),
+                ));
             }
             if org_repo.is_member(org.id, user_id).await? {
                 context.current_org_id = Some(org.id);
@@ -133,7 +147,7 @@ pub async fn is_registered_oauth_redirect_uri(
     redirect_uri: &str,
 ) -> Result<bool, AppError> {
     let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM oauth_client_redirect_uris WHERE redirect_uri = $1)"
+        "SELECT EXISTS(SELECT 1 FROM oauth_client_redirect_uris WHERE redirect_uri = $1)",
     )
     .bind(redirect_uri)
     .fetch_one(db)

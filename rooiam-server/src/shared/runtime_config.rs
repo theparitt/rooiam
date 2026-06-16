@@ -60,8 +60,14 @@ pub async fn effective_public_urls_detail(
         issuer_url_source: issuer.source,
         app_url: app.value,
         app_url_source: app.source,
-        enduser_url: enduser.as_ref().map(|u| u.value.clone()).unwrap_or_default(),
-        enduser_url_source: enduser.as_ref().map(|u| u.source.clone()).unwrap_or_default(),
+        enduser_url: enduser
+            .as_ref()
+            .map(|u| u.value.clone())
+            .unwrap_or_default(),
+        enduser_url_source: enduser
+            .as_ref()
+            .map(|u| u.source.clone())
+            .unwrap_or_default(),
         admin_url: admin.value,
         admin_url_source: admin.source,
     })
@@ -126,7 +132,10 @@ struct UrlValueSource {
     source: String,
 }
 
-async fn resolve_url_with_source(db: &PgPool, internal_key: &str) -> Result<UrlValueSource, AppError> {
+async fn resolve_url_with_source(
+    db: &PgPool,
+    internal_key: &str,
+) -> Result<UrlValueSource, AppError> {
     let env_key = get_env_key(internal_key);
     let env_value = std::env::var(env_key).ok();
     let env_normalized = env_value
@@ -151,8 +160,7 @@ async fn resolve_url_with_source(db: &PgPool, internal_key: &str) -> Result<UrlV
                         value: env_normalized.clone(),
                         source: format!(
                             "env ({}) [local override over database (system_settings.{})]",
-                            env_key,
-                            internal_key,
+                            env_key, internal_key,
                         ),
                     });
                 }
@@ -171,30 +179,41 @@ async fn resolve_url_with_source(db: &PgPool, internal_key: &str) -> Result<UrlV
             internal_key, env_key
         ))
     })?;
-    tracing::debug!("{} resolved from env: {} = {}", internal_key, env_key, normalized);
+    tracing::debug!(
+        "{} resolved from env: {} = {}",
+        internal_key,
+        env_key,
+        normalized
+    );
     Ok(UrlValueSource {
         value: normalized,
         source: format!("env ({})", env_key),
     })
 }
 
-async fn resolve_url(db: &PgPool, internal_key: &str, _fallback: Option<&str>) -> Result<String, AppError> {
+async fn resolve_url(
+    db: &PgPool,
+    internal_key: &str,
+    _fallback: Option<&str>,
+) -> Result<String, AppError> {
     Ok(resolve_url_with_source(db, internal_key).await?.value)
 }
-
 
 fn normalize_url(value: &str, label: &str) -> Result<String, AppError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(AppError::Validation(format!(
-            "{} cannot be empty. Set a valid URL like https://example.com", label
+            "{} cannot be empty. Set a valid URL like https://example.com",
+            label
         )));
     }
 
-    let parsed = Url::parse(trimmed)
-        .map_err(|_| AppError::Validation(format!(
-            "Invalid {}: '{}'. Use a full URL like https://auth.example.com", label, trimmed
-        )))?;
+    let parsed = Url::parse(trimmed).map_err(|_| {
+        AppError::Validation(format!(
+            "Invalid {}: '{}'. Use a full URL like https://auth.example.com",
+            label, trimmed
+        ))
+    })?;
 
     let mut normalized = parsed.to_string();
     while normalized.ends_with('/') {
@@ -212,10 +231,7 @@ fn is_local_url(value: &str) -> bool {
     let Ok(parsed) = Url::parse(value) else {
         return false;
     };
-    parsed
-        .host_str()
-        .map(is_local_host)
-        .unwrap_or(false)
+    parsed.host_str().map(is_local_host).unwrap_or(false)
 }
 
 #[cfg(test)]

@@ -30,7 +30,9 @@ pub async fn get_workspace_policy_for_redirect(
     db: &PgPool,
     redirect_uri: Option<&str>,
 ) -> Result<Option<Organization>, AppError> {
-    let normalized_redirect = redirect_uri.map(str::trim).filter(|value| !value.is_empty());
+    let normalized_redirect = redirect_uri
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     if let Some(redirect_uri) = normalized_redirect {
         let org_id = sqlx::query(
@@ -45,7 +47,12 @@ pub async fn get_workspace_policy_for_redirect(
         .bind(redirect_uri)
         .fetch_optional(db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to resolve workspace policy for redirect URI: {}", e)))?
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to resolve workspace policy for redirect URI: {}",
+                e
+            ))
+        })?
         .map(|row| row.get::<Uuid, _>("org_id"));
 
         if let Some(org_id) = org_id {
@@ -72,7 +79,10 @@ pub async fn ensure_auth_method_allowed(
     redirect_uri: Option<&str>,
     method: AuthMethod,
 ) -> Result<Option<Organization>, AppError> {
-    ensure_auth_method_allowed_for_org(get_workspace_policy_for_redirect(db, redirect_uri).await?, method)
+    ensure_auth_method_allowed_for_org(
+        get_workspace_policy_for_redirect(db, redirect_uri).await?,
+        method,
+    )
 }
 
 pub async fn ensure_auth_method_allowed_for_workspace_id(
@@ -171,14 +181,15 @@ pub async fn admin_console_requires_mfa(db: &PgPool, user_id: Uuid) -> Result<bo
         return Ok(false);
     }
     // Only enforce on actual platform admins / owners
-    let is_admin: bool = sqlx::query_scalar(
-        "SELECT (is_superuser OR is_platform_owner) FROM users WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load platform admin MFA policy: {}", e)))?
-    .unwrap_or(false);
+    let is_admin: bool =
+        sqlx::query_scalar("SELECT (is_superuser OR is_platform_owner) FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to load platform admin MFA policy: {}", e))
+            })?
+            .unwrap_or(false);
 
     Ok(is_admin)
 }

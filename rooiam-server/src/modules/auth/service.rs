@@ -3,12 +3,14 @@ use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::shared::error::AppError;
-use crate::shared::auth_policy::{ensure_auth_method_allowed, AuthMethod};
-use crate::shared::auth_context::is_registered_oauth_redirect_uri;
-use crate::shared::redirect::{is_first_party_public_redirect_uri, is_relative_redirect_uri, normalize_redirect_uri};
-use crate::shared::runtime_config::effective_issuer_url;
 use super::repository::AuthRepository;
+use crate::shared::auth_context::is_registered_oauth_redirect_uri;
+use crate::shared::auth_policy::{ensure_auth_method_allowed, AuthMethod};
+use crate::shared::error::AppError;
+use crate::shared::redirect::{
+    is_first_party_public_redirect_uri, is_relative_redirect_uri, normalize_redirect_uri,
+};
+use crate::shared::runtime_config::effective_issuer_url;
 
 pub struct AuthService {
     repo: AuthRepository,
@@ -38,7 +40,12 @@ impl AuthService {
                 ));
             }
         }
-        let org = ensure_auth_method_allowed(&self.repo.pool, redirect_uri.as_deref(), AuthMethod::MagicLink).await?;
+        let org = ensure_auth_method_allowed(
+            &self.repo.pool,
+            redirect_uri.as_deref(),
+            AuthMethod::MagicLink,
+        )
+        .await?;
 
         let mut bytes = [0u8; 32];
         OsRng.fill_bytes(&mut bytes);
@@ -53,7 +60,7 @@ impl AuthService {
 
         // 3. Expiry — org override first, then platform system_settings, default 15 min
         let platform_expiry_minutes: i64 = sqlx::query_scalar(
-            "SELECT value::bigint FROM system_settings WHERE key = 'magic_link_expiry_minutes'"
+            "SELECT value::bigint FROM system_settings WHERE key = 'magic_link_expiry_minutes'",
         )
         .fetch_optional(&self.repo.pool)
         .await
@@ -74,8 +81,7 @@ impl AuthService {
         let expiry_minutes: i64 = if normalized_surface == "tenant" {
             tenant_expiry_minutes
         } else {
-            org
-                .as_ref()
+            org.as_ref()
                 .and_then(|o| o.magic_link_expiry_minutes)
                 .map(|v| v as i64)
                 .unwrap_or(platform_expiry_minutes)
@@ -85,14 +91,26 @@ impl AuthService {
 
         // 4. Save to Database
         let normalized_email = email.trim().to_lowercase();
-        self.repo.create_magic_link(&normalized_email, &hash_hex, expiry, redirect_uri.clone(), Some(normalized_surface.clone())).await?;
+        self.repo
+            .create_magic_link(
+                &normalized_email,
+                &hash_hex,
+                expiry,
+                redirect_uri.clone(),
+                Some(normalized_surface.clone()),
+            )
+            .await?;
 
         // 5. Fire off email
         let surface = normalized_surface;
         let issuer_url = effective_issuer_url(&self.repo.pool).await?;
-        let verify_url = format!("{}/v1/auth/magic-link/verify", issuer_url.trim_end_matches('/'));
-        let mut full_link = Url::parse(&verify_url)
-            .map_err(|e| AppError::Internal(format!("Invalid magic-link destination URL: {}", e)))?;
+        let verify_url = format!(
+            "{}/v1/auth/magic-link/verify",
+            issuer_url.trim_end_matches('/')
+        );
+        let mut full_link = Url::parse(&verify_url).map_err(|e| {
+            AppError::Internal(format!("Invalid magic-link destination URL: {}", e))
+        })?;
 
         {
             let mut query = full_link.query_pairs_mut();
@@ -126,7 +144,10 @@ impl AuthService {
     }
 
     /// Verification Flow
-    pub async fn verify_magic_link(&self, raw_token: &str) -> Result<super::models::MagicLink, AppError> {
+    pub async fn verify_magic_link(
+        &self,
+        raw_token: &str,
+    ) -> Result<super::models::MagicLink, AppError> {
         // Hash incoming value precisely identically to how it was stored
         let mut hasher = Sha256::new();
         hasher.update(raw_token.as_bytes());
@@ -146,7 +167,10 @@ async fn resolve_magic_link_redirect_uri(
     pool: &sqlx::PgPool,
     redirect_uri: Option<String>,
 ) -> Result<Option<String>, AppError> {
-    let Some(raw_redirect) = redirect_uri.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) else {
+    let Some(raw_redirect) = redirect_uri
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(None);
     };
 

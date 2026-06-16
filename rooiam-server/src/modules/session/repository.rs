@@ -1,8 +1,8 @@
+use super::models::Session;
+use crate::shared::error::AppError;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::shared::error::AppError;
-use super::models::Session;
 
 const USER_SESSION_LIST_LIMIT: i64 = 100;
 
@@ -58,10 +58,7 @@ impl SessionRepository {
     /// Retrieve an unrevoked, non-expired session for authentication middleware.
     /// Also returns the user's is_superuser flag so the middleware can apply
     /// the correct IP policy without an extra round-trip.
-    pub async fn get_valid_session(
-        &self,
-        session_id: Uuid,
-    ) -> Result<(Session, bool), AppError> {
+    pub async fn get_valid_session(&self, session_id: Uuid) -> Result<(Session, bool), AppError> {
         let row = sqlx::query(
             r#"
             SELECT s.id, s.user_id, s.current_org_id, s.login_surface, s.login_app_name, s.login_workspace_slug, s.session_secret_hash, s.user_agent, s.ip, s.last_seen_at, s.expires_at, s.revoked_at, s.created_at, s.session_fingerprint,
@@ -102,14 +99,13 @@ impl SessionRepository {
     }
 
     pub async fn ensure_user_active(&self, user_id: Uuid) -> Result<(), AppError> {
-        let status = sqlx::query_scalar::<_, Option<String>>(
-            "SELECT status FROM users WHERE id = $1"
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?
-        .flatten()
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+        let status =
+            sqlx::query_scalar::<_, Option<String>>("SELECT status FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .flatten()
+                .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
         if status != "active" {
             return Err(AppError::Forbidden("This account is not active.".into()));
@@ -119,12 +115,10 @@ impl SessionRepository {
     }
 
     pub async fn revoke_session(&self, session_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE sessions SET revoked_at = NOW() WHERE id = $1"
-        )
-        .bind(session_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE sessions SET revoked_at = NOW() WHERE id = $1")
+            .bind(session_id)
+            .execute(&self.pool)
+            .await?;
 
         // Cascade: revoke any OIDC refresh tokens issued for this session
         sqlx::query(
@@ -137,7 +131,11 @@ impl SessionRepository {
         Ok(())
     }
 
-    pub async fn revoke_sessions_by_user_id(&self, user_id: Uuid, except_session_id: Option<Uuid>) -> Result<u64, AppError> {
+    pub async fn revoke_sessions_by_user_id(
+        &self,
+        user_id: Uuid,
+        except_session_id: Option<Uuid>,
+    ) -> Result<u64, AppError> {
         let affected = if let Some(except_session_id) = except_session_id {
             sqlx::query(
                 "UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW() AND id != $2"
@@ -161,7 +159,7 @@ impl SessionRepository {
         sqlx::query(
             "UPDATE oauth_refresh_tokens SET revoked_at = NOW() \
              WHERE user_id = $1 AND revoked_at IS NULL \
-             AND (session_id IS NULL OR session_id != $2)"
+             AND (session_id IS NULL OR session_id != $2)",
         )
         .bind(user_id)
         .bind(except_session_id)
@@ -184,7 +182,7 @@ impl SessionRepository {
                 user_agent = COALESCE($2, user_agent),
                 ip = COALESCE($3, ip)
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(session_id)
         .bind(user_agent)

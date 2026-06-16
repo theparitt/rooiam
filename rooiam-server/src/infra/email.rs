@@ -1,14 +1,14 @@
+use crate::modules::organization::repository::OrganizationRepository;
+use crate::shared::auth_context::inspect_login_context;
+use crate::shared::demo_seed::demo_seed_enabled;
+use askama::Template;
 use lettre::{
-    transport::smtp::client::{Tls, TlsParameters},
-    transport::smtp::authentication::Credentials,
     message::{MultiPart, SinglePart},
-    Message, AsyncTransport, AsyncSmtpTransport, Tokio1Executor,
+    transport::smtp::authentication::Credentials,
+    transport::smtp::client::{Tls, TlsParameters},
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use sqlx::PgPool;
-use askama::Template;
-use crate::shared::demo_seed::demo_seed_enabled;
-use crate::shared::auth_context::inspect_login_context;
-use crate::modules::organization::repository::OrganizationRepository;
 use url::Url;
 
 #[derive(Template)]
@@ -75,7 +75,14 @@ pub async fn send_magic_link_email(
         }
     };
 
-    let email_view = build_magic_link_email_view(pool, magic_link_url, redirect_uri, surface, &config.from_email).await?;
+    let email_view = build_magic_link_email_view(
+        pool,
+        magic_link_url,
+        redirect_uri,
+        surface,
+        &config.from_email,
+    )
+    .await?;
     let from_formatted = format!("{} <{}>", email_view.from_display_name, config.from_email);
 
     let html_content = MagicLinkTemplate {
@@ -134,10 +141,11 @@ pub async fn send_magic_link_email(
         config.security,
         config.insecure_tls,
     );
-    mailer.send(email_msg)
+    mailer
+        .send(email_msg)
         .await
         .map_err(|e| format!("SMTP failed: {}", e))?;
-        
+
     tracing::info!("Email delivered successfully to {}", to_email);
 
     Ok(())
@@ -162,7 +170,8 @@ async fn build_magic_link_email_view(
             subject: "Your admin sign-in link for Rooiam".to_string(),
             from_display_name: "Rooiam Security".to_string(),
             heading: "Sign in to Rooiam Admin".to_string(),
-            intro_text: "Use this one-time link to securely access your Rooiam admin console.".to_string(),
+            intro_text: "Use this one-time link to securely access your Rooiam admin console."
+                .to_string(),
             action_label: "Open admin sign-in".to_string(),
             brand_color: default_brand,
             logo_url: None,
@@ -185,7 +194,8 @@ async fn build_magic_link_email_view(
             subject: "Your sign-in link for Rooiam".to_string(),
             from_display_name: "Rooiam Security".to_string(),
             heading: "Sign in securely".to_string(),
-            intro_text: "Use this one-time link to continue with your Rooiam sign-in request.".to_string(),
+            intro_text: "Use this one-time link to continue with your Rooiam sign-in request."
+                .to_string(),
             action_label: "Open sign-in link".to_string(),
             brand_color: default_brand,
             logo_url: None,
@@ -222,7 +232,8 @@ async fn build_magic_link_email_view(
             workspace_name
         ),
         action_label: format!("Continue to {}", workspace_name),
-        brand_color: sanitize_brand_color(workspace.brand_color.as_deref()).unwrap_or(default_brand),
+        brand_color: sanitize_brand_color(workspace.brand_color.as_deref())
+            .unwrap_or(default_brand),
         logo_url,
         workspace_name: Some(workspace_name),
         trusted_host,
@@ -259,7 +270,9 @@ async fn resolve_safe_email_logo_url(
     }
 
     let resolved = if candidate.starts_with('/') {
-        let base = if let Some(issuer_url) = get_setting(pool, "issuer_url", &["ROOIAM_SERVER_URL"]).await? {
+        let base = if let Some(issuer_url) =
+            get_setting(pool, "issuer_url", &["ROOIAM_SERVER_URL"]).await?
+        {
             Url::parse(&issuer_url).ok().unwrap_or(magic_link.clone())
         } else {
             magic_link.clone()
@@ -332,7 +345,10 @@ pub async fn send_notification_email(
     let config = match load_smtp_config(pool).await? {
         Some(config) => config,
         None => {
-            tracing::warn!("SMTP not configured — notification email to {} skipped.", to_email);
+            tracing::warn!(
+                "SMTP not configured — notification email to {} skipped.",
+                to_email
+            );
             return Ok(());
         }
     };
@@ -356,8 +372,15 @@ pub async fn send_notification_email(
         }
     }
     let mailer = mailer_builder.build();
-    mailer.send(email_msg).await.map_err(|e| format!("SMTP failed: {}", e))?;
-    tracing::info!("Notification email ({:?}) delivered to {}", subject, to_email);
+    mailer
+        .send(email_msg)
+        .await
+        .map_err(|e| format!("SMTP failed: {}", e))?;
+    tracing::info!(
+        "Notification email ({:?}) delivered to {}",
+        subject,
+        to_email
+    );
     Ok(())
 }
 
@@ -375,7 +398,10 @@ pub async fn send_action_email(
     let config = match load_smtp_config(pool).await? {
         Some(config) => config,
         None => {
-            tracing::warn!("SMTP not configured — action email to {} skipped.", to_email);
+            tracing::warn!(
+                "SMTP not configured — action email to {} skipped.",
+                to_email
+            );
             return Ok(());
         }
     };
@@ -427,7 +453,10 @@ pub async fn send_action_email(
         }
     }
     let mailer = mailer_builder.build();
-    mailer.send(email_msg).await.map_err(|e| format!("SMTP failed: {}", e))?;
+    mailer
+        .send(email_msg)
+        .await
+        .map_err(|e| format!("SMTP failed: {}", e))?;
     tracing::info!("Action email ({:?}) delivered to {}", subject, to_email);
     Ok(())
 }
@@ -457,9 +486,11 @@ pub async fn send_test_email(
         .map_err(|e| format!("Failed to build email: {}", e))?;
 
     let mut mailer_builder = smtp_builder(&config_override)?;
-    if let (Some(username), Some(password)) = (&config_override.username, &config_override.password) {
+    if let (Some(username), Some(password)) = (&config_override.username, &config_override.password)
+    {
         if !username.is_empty() && !password.is_empty() {
-            mailer_builder = mailer_builder.credentials(Credentials::new(username.clone(), password.clone()));
+            mailer_builder =
+                mailer_builder.credentials(Credentials::new(username.clone(), password.clone()));
         }
     }
 
@@ -487,10 +518,14 @@ pub async fn send_custom_email(
     body_text: &str,
 ) -> Result<(), String> {
     let email_msg = Message::builder()
-        .from(format!("Rooiam <{}>", config.from_email)
+        .from(
+            format!("Rooiam <{}>", config.from_email)
+                .parse()
+                .map_err(|_| "Invalid from email".to_string())?,
+        )
+        .to(to_email
             .parse()
-            .map_err(|_| "Invalid from email".to_string())?)
-        .to(to_email.parse().map_err(|_| "Invalid to email".to_string())?)
+            .map_err(|_| "Invalid to email".to_string())?)
         .subject(subject)
         .singlepart(SinglePart::plain(body_text.to_string()))
         .map_err(|e| format!("Failed to build email: {}", e))?;
@@ -498,24 +533,34 @@ pub async fn send_custom_email(
     let mut mailer_builder = smtp_builder(config)?;
     if let (Some(username), Some(password)) = (&config.username, &config.password) {
         if !username.is_empty() && !password.is_empty() {
-            mailer_builder = mailer_builder.credentials(Credentials::new(username.clone(), password.clone()));
+            mailer_builder =
+                mailer_builder.credentials(Credentials::new(username.clone(), password.clone()));
         }
     }
-    mailer_builder.build()
+    mailer_builder
+        .build()
         .send(email_msg)
         .await
         .map_err(|e| format!("SMTP failed: {}", e))?;
     Ok(())
 }
 
-async fn get_setting(pool: &PgPool, key: &str, env_keys: &[&str]) -> Result<Option<String>, String> {
-    let db_value: Option<String> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+async fn get_setting(
+    pool: &PgPool,
+    key: &str,
+    env_keys: &[&str],
+) -> Result<Option<String>, String> {
+    let db_value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
-    if db_value.as_deref().is_some_and(|value| !value.trim().is_empty()) {
+    if db_value
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
         return Ok(db_value);
     }
 
@@ -530,11 +575,12 @@ fn env_value(keys: &[&str]) -> Option<String> {
 }
 
 async fn legacy_setting(pool: &PgPool, key: &str) -> Result<Option<String>, String> {
-    let value: Option<String> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     Ok(value.filter(|value| !value.trim().is_empty()))
 }
@@ -545,7 +591,8 @@ async fn load_smtp_config(pool: &PgPool) -> Result<Option<SmtpConfig>, String> {
         let port = env_value(&["ROOIAM_DEMO_SMTP_PORT"])
             .and_then(|value| value.parse().ok())
             .unwrap_or(1025);
-        let from_email = env_value(&["ROOIAM_DEMO_SMTP_FROM"]).unwrap_or_else(|| "demo@rooiam.local".to_string());
+        let from_email = env_value(&["ROOIAM_DEMO_SMTP_FROM"])
+            .unwrap_or_else(|| "demo@rooiam.local".to_string());
 
         return Ok(Some(SmtpConfig {
             host,
@@ -564,29 +611,58 @@ async fn load_smtp_config(pool: &PgPool) -> Result<Option<SmtpConfig>, String> {
         _ => return Ok(None),
     };
 
-    let port = get_setting(pool, "smtp_port", &["ROOIAM_SMTP_PORT"]).await?
+    let port = get_setting(pool, "smtp_port", &["ROOIAM_SMTP_PORT"])
+        .await?
         .or_else(|| std::env::var("SMTP_PORT").ok())
         .or_else(|| Some("587".to_string()))
         .and_then(|value| value.parse().ok())
         .unwrap_or(587);
 
-    let username = match get_setting(pool, "smtp_username", &["ROOIAM_SMTP_USER", "SMTP_USER"]).await? {
-        some @ Some(_) => some,
-        None => legacy_setting(pool, "smtp_user").await?,
-    };
-    let password = match get_setting(pool, "smtp_password", &["ROOIAM_SMTP_PASS", "SMTP_PASS"]).await? {
-        some @ Some(_) => some,
-        None => legacy_setting(pool, "smtp_pass").await?,
-    };
-    let from_email = get_setting(pool, "smtp_from_email", &["ROOIAM_SMTP_FROM", "ROOIAM_FROM_EMAIL", "FROM_EMAIL"]).await?
-        .unwrap_or_else(|| "auth@rooiam.local".to_string());
-    let security = get_setting(pool, "smtp_security", &["ROOIAM_SMTP_SECURITY", "SMTP_SECURITY"]).await?
-        .unwrap_or_else(|| if port == 465 { "tls".to_string() } else { "starttls".to_string() })
-        .trim()
-        .to_lowercase();
-    let insecure_tls = get_setting(pool, "smtp_insecure_tls", &["ROOIAM_SMTP_INSECURE_TLS", "MAIL_INSECURE_TLS"]).await?
-        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false);
+    let username =
+        match get_setting(pool, "smtp_username", &["ROOIAM_SMTP_USER", "SMTP_USER"]).await? {
+            some @ Some(_) => some,
+            None => legacy_setting(pool, "smtp_user").await?,
+        };
+    let password =
+        match get_setting(pool, "smtp_password", &["ROOIAM_SMTP_PASS", "SMTP_PASS"]).await? {
+            some @ Some(_) => some,
+            None => legacy_setting(pool, "smtp_pass").await?,
+        };
+    let from_email = get_setting(
+        pool,
+        "smtp_from_email",
+        &["ROOIAM_SMTP_FROM", "ROOIAM_FROM_EMAIL", "FROM_EMAIL"],
+    )
+    .await?
+    .unwrap_or_else(|| "auth@rooiam.local".to_string());
+    let security = get_setting(
+        pool,
+        "smtp_security",
+        &["ROOIAM_SMTP_SECURITY", "SMTP_SECURITY"],
+    )
+    .await?
+    .unwrap_or_else(|| {
+        if port == 465 {
+            "tls".to_string()
+        } else {
+            "starttls".to_string()
+        }
+    })
+    .trim()
+    .to_lowercase();
+    let insecure_tls = get_setting(
+        pool,
+        "smtp_insecure_tls",
+        &["ROOIAM_SMTP_INSECURE_TLS", "MAIL_INSECURE_TLS"],
+    )
+    .await?
+    .map(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+    .unwrap_or(false);
 
     Ok(Some(SmtpConfig {
         host,
@@ -601,7 +677,8 @@ async fn load_smtp_config(pool: &PgPool) -> Result<Option<SmtpConfig>, String> {
 
 pub fn demo_smtp_present() -> bool {
     let host = env_value(&["ROOIAM_DEMO_SMTP_HOST"]).unwrap_or_else(|| "127.0.0.1".to_string());
-    let from_email = env_value(&["ROOIAM_DEMO_SMTP_FROM"]).unwrap_or_else(|| "demo@rooiam.local".to_string());
+    let from_email =
+        env_value(&["ROOIAM_DEMO_SMTP_FROM"]).unwrap_or_else(|| "demo@rooiam.local".to_string());
     !host.trim().is_empty() && !from_email.trim().is_empty()
 }
 
@@ -620,8 +697,14 @@ pub async fn smtp_runtime_summary(pool: &PgPool) -> Result<Option<SmtpRuntimeSum
         port: config.port,
         from_email: config.from_email,
         security: config.security,
-        username_present: config.username.as_deref().is_some_and(|value| !value.trim().is_empty()),
-        password_present: config.password.as_deref().is_some_and(|value| !value.trim().is_empty()),
+        username_present: config
+            .username
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        password_present: config
+            .password
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
     }))
 }
 
@@ -630,12 +713,25 @@ enum TlsMode {
     Wrapper,
 }
 
-fn smtp_builder(config: &SmtpConfig) -> Result<lettre::transport::smtp::AsyncSmtpTransportBuilder, String> {
+fn smtp_builder(
+    config: &SmtpConfig,
+) -> Result<lettre::transport::smtp::AsyncSmtpTransportBuilder, String> {
     match config.security.as_str() {
-        "tls" | "smtps" | "ssl" => smtp_builder_with_tls(&config.host, config.port, TlsMode::Wrapper, config.insecure_tls),
-        "none" | "plain" | "plaintext" => Ok(AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
-            .port(config.port)),
-        _ => smtp_builder_with_tls(&config.host, config.port, TlsMode::StartTls, config.insecure_tls),
+        "tls" | "smtps" | "ssl" => smtp_builder_with_tls(
+            &config.host,
+            config.port,
+            TlsMode::Wrapper,
+            config.insecure_tls,
+        ),
+        "none" | "plain" | "plaintext" => Ok(
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host).port(config.port),
+        ),
+        _ => smtp_builder_with_tls(
+            &config.host,
+            config.port,
+            TlsMode::StartTls,
+            config.insecure_tls,
+        ),
     }
 }
 
@@ -656,8 +752,7 @@ fn smtp_builder_with_tls(
             .map_err(|e| format!("Invalid SMTP TLS parameters: {}", e))?
     };
 
-    let builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
-        .port(port);
+    let builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host).port(port);
 
     Ok(match mode {
         TlsMode::StartTls => builder.tls(Tls::Required(tls)),
@@ -671,7 +766,10 @@ mod tests {
 
     #[test]
     fn accepts_hex_brand_color() {
-        assert_eq!(sanitize_brand_color(Some("#A1B2C3")).as_deref(), Some("#A1B2C3"));
+        assert_eq!(
+            sanitize_brand_color(Some("#A1B2C3")).as_deref(),
+            Some("#A1B2C3")
+        );
     }
 
     #[test]

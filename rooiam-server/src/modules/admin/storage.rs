@@ -61,7 +61,10 @@ pub async fn update_storage_config(
             )
             .await
             {
-                tracing::warn!("Saved MinIO storage config but could not set bucket public-read: {}", e);
+                tracing::warn!(
+                    "Saved MinIO storage config but could not set bucket public-read: {}",
+                    e
+                );
             }
         }
     }
@@ -80,14 +83,31 @@ pub async fn test_storage_config(
         "local" => {
             let path = body.local_path.as_deref().unwrap_or("").trim();
             match test_local_storage(path) {
-                Ok(msg) => Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg }))),
+                Ok(msg) => {
+                    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": msg })))
+                }
                 Err(e) => Err(AppError::Validation(e)),
             }
         }
         "minio" => {
-            let endpoint = body.minio_endpoint.as_deref().unwrap_or("").trim().to_string();
-            let bucket = body.minio_bucket.as_deref().unwrap_or("").trim().to_string();
-            let access_key = body.minio_access_key.as_deref().unwrap_or("").trim().to_string();
+            let endpoint = body
+                .minio_endpoint
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let bucket = body
+                .minio_bucket
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let access_key = body
+                .minio_access_key
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             let use_ssl = body.minio_use_ssl.unwrap_or(true);
 
             let secret_key = if let Some(ref sk) = body.minio_secret_key {
@@ -117,7 +137,11 @@ pub async fn test_storage_config(
                     // failure here is non-fatal (the connection itself is OK) — we
                     // just surface it in the message so the operator can fix it.
                     let public = match set_minio_bucket_public_read(
-                        &endpoint, &bucket, &access_key, &secret_key, use_ssl,
+                        &endpoint,
+                        &bucket,
+                        &access_key,
+                        &secret_key,
+                        use_ssl,
                     )
                     .await
                     {
@@ -129,7 +153,15 @@ pub async fn test_storage_config(
                     // anonymously (exactly like a browser). This is the test that
                     // actually proves uploaded images will be visible. If it fails,
                     // surface it as a hard error so the operator sees the problem now.
-                    match test_minio_roundtrip(&endpoint, &bucket, &access_key, &secret_key, use_ssl).await {
+                    match test_minio_roundtrip(
+                        &endpoint,
+                        &bucket,
+                        &access_key,
+                        &secret_key,
+                        use_ssl,
+                    )
+                    .await
+                    {
                         Ok(rt) => Ok(HttpResponse::Ok().json(serde_json::json!({
                             "ok": true,
                             "message": format!("{} {} {}", msg, public, rt),

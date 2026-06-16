@@ -2,25 +2,29 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use uuid::Uuid;
 
 use crate::bootstrap::state::AppState;
+use crate::http::middleware::auth::{extract_session, RequireAuth};
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::identity::repository::IdentityRepository;
 use crate::modules::mfa::{repository::MfaRepository, service::MfaService};
 use crate::modules::organization::repository::OrganizationRepository;
-use crate::http::middleware::auth::{extract_session, RequireAuth};
 use crate::modules::session::{
-    cookie::build_session_cookie,
-    repository::SessionRepository,
-    service::SessionService,
+    cookie::build_session_cookie, repository::SessionRepository, service::SessionService,
+};
+use crate::shared::auth_context::resolve_login_context;
+use crate::shared::auth_policy::{
+    admin_console_passkey_allowed, ensure_auth_method_allowed_for_workspace_id,
+    get_workspace_policy_for_redirect, AuthMethod,
 };
 use crate::shared::demo_seed::{demo_seed_enabled, is_seeded_demo_email};
-use crate::shared::auth_policy::{admin_console_passkey_allowed, ensure_auth_method_allowed_for_workspace_id, get_workspace_policy_for_redirect, AuthMethod};
-use crate::shared::operator_policy::{enforce_operator_login_policy, AuthMethod as OpAuthMethod};
 use crate::shared::error::AppError;
-use crate::shared::auth_context::resolve_login_context;
-use crate::shared::ip_policy::{access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect};
+use crate::shared::ip_policy::{
+    access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_redirect,
+};
+use crate::shared::operator_policy::{enforce_operator_login_policy, AuthMethod as OpAuthMethod};
 use crate::shared::request_ip::{client_ip_from_http_request, client_ip_string_from_http_request};
 use crate::shared::widget_login_context::{
-    consume_widget_login_context, create_widget_login_context, is_widget_login_context_invalid_error,
+    consume_widget_login_context, create_widget_login_context,
+    is_widget_login_context_invalid_error,
 };
 
 use super::{repository::WebauthnRepository, service::WebauthnService};
@@ -93,7 +97,10 @@ fn webauthn_service(state: &web::Data<AppState>) -> WebauthnService {
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn list_passkeys(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn list_passkeys(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let service = webauthn_service(&state);
     let passkeys = service.list_my_passkeys(session.user_id).await?;
@@ -131,31 +138,47 @@ pub async fn start_login(
     state: web::Data<AppState>,
     body: web::Json<StartLoginRequest>,
 ) -> Result<HttpResponse, AppError> {
-    let widget_login_context = match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
-        Ok(value) => value,
-        Err(AppError::Validation(message)) if is_widget_login_context_invalid_error(&message) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                action: "auth.widget.context_invalid".into(),
-                target_type: "widget_login_context".into(),
-                target_id: body.widget_login_context.clone(),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "reason": "expired_or_replayed",
-                    "embed_origin": body.widget_embed_origin,
-                    "surface": body.surface,
-                    "stage": "passkey_start",
-                    "email": body.email.trim().to_lowercase(),
-                }),
-            }).await;
-            return Err(AppError::Validation(message));
-        }
-        Err(err) => return Err(err),
-    };
+    let widget_login_context =
+        match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
+            Ok(value) => value,
+            Err(AppError::Validation(message))
+                if is_widget_login_context_invalid_error(&message) =>
+            {
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.widget.context_invalid".into(),
+                        target_type: "widget_login_context".into(),
+                        target_id: body.widget_login_context.clone(),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "reason": "expired_or_replayed",
+                            "embed_origin": body.widget_embed_origin,
+                            "surface": body.surface,
+                            "stage": "passkey_start",
+                            "email": body.email.trim().to_lowercase(),
+                        }),
+                    })
+                    .await;
+                return Err(AppError::Validation(message));
+            }
+            Err(err) => return Err(err),
+        };
     if let Some(ctx) = widget_login_context.as_ref() {
-        let supplied_embed_origin = body.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let supplied_embed_origin = body
+            .widget_embed_origin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
             return Err(AppError::Forbidden(
                 "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
@@ -174,7 +197,9 @@ pub async fn start_login(
     } else {
         None
     };
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, effective_redirect_uri.as_deref()).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, effective_redirect_uri.as_deref())
+            .await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -185,42 +210,62 @@ pub async fn start_login(
 
     let service = webauthn_service(&state);
     let result = match service
-        .start_authentication(body.email.clone(), effective_redirect_uri.clone(), effective_workspace_id, body.surface.clone())
+        .start_authentication(
+            body.email.clone(),
+            effective_redirect_uri.clone(),
+            effective_workspace_id,
+            body.surface.clone(),
+        )
         .await
     {
         Ok(result) => result,
         Err(err) => {
             if let AppError::Validation(message) = &err {
                 if message.contains("redirect_uri must match a registered app callback") {
-                    AuditService::new(state.db.clone()).log(AuditEvent {
-                        actor_user_id: None,
-                        organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                        action: "auth.app_callback_rejected".into(),
-                        target_type: "redirect_uri".into(),
-                        target_id: effective_redirect_uri.clone(),
-                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                        metadata: serde_json::json!({
-                            "method": "passkey",
-                            "surface": body.surface,
-                            "email": body.email.trim().to_lowercase(),
-                        }),
-                    }).await;
+                    AuditService::new(state.db.clone())
+                        .log(AuditEvent {
+                            actor_user_id: None,
+                            organization_id: crate::shared::platform_org::get_platform_org_id(
+                                &state.db,
+                            )
+                            .await,
+                            action: "auth.app_callback_rejected".into(),
+                            target_type: "redirect_uri".into(),
+                            target_id: effective_redirect_uri.clone(),
+                            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                            user_agent: req
+                                .headers()
+                                .get("user-agent")
+                                .and_then(|h| h.to_str().ok())
+                                .map(String::from),
+                            metadata: serde_json::json!({
+                                "method": "passkey",
+                                "surface": body.surface,
+                                "email": body.email.trim().to_lowercase(),
+                            }),
+                        })
+                        .await;
                 }
             }
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "auth.passkey.login.failed".into(),
-                target_type: "user".into(),
-                target_id: Some(body.email.trim().to_lowercase()),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "error": err.to_string(),
-                    "stage": "start",
-                }),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "auth.passkey.login.failed".into(),
+                    target_type: "user".into(),
+                    target_id: Some(body.email.trim().to_lowercase()),
+                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                    user_agent: req
+                        .headers()
+                        .get("user-agent")
+                        .and_then(|h| h.to_str().ok())
+                        .map(String::from),
+                    metadata: serde_json::json!({
+                        "error": err.to_string(),
+                        "stage": "start",
+                    }),
+                })
+                .await;
             return Err(err);
         }
     };
@@ -244,7 +289,10 @@ pub async fn start_login(
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn start_registration(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn start_registration(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let service = webauthn_service(&state);
     let result = service.start_registration(session.user_id).await?;
@@ -275,9 +323,16 @@ pub async fn finish_login(
     let repo = WebauthnRepository::new(state.db.clone());
     let identity_repo = IdentityRepository::new(state.db.clone());
     let target_email = async {
-        let user_id = repo.peek_challenge_user_id(body.challenge_id, "login").await?;
-        identity_repo.get_primary_email_by_user_id(user_id).await.ok().flatten()
-    }.await;
+        let user_id = repo
+            .peek_challenge_user_id(body.challenge_id, "login")
+            .await?;
+        identity_repo
+            .get_primary_email_by_user_id(user_id)
+            .await
+            .ok()
+            .flatten()
+    }
+    .await;
 
     let service = webauthn_service(&state);
     let auth = match service
@@ -286,19 +341,25 @@ pub async fn finish_login(
     {
         Ok(auth) => auth,
         Err(err) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: None,
-                action: "auth.passkey.login.failed".into(),
-                target_type: "user".into(),
-                target_id: target_email,
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "error": err.to_string(),
-                    "stage": "finish",
-                }),
-            }).await;
+            AuditService::new(state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: None,
+                    action: "auth.passkey.login.failed".into(),
+                    target_type: "user".into(),
+                    target_id: target_email,
+                    ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                    user_agent: req
+                        .headers()
+                        .get("user-agent")
+                        .and_then(|h| h.to_str().ok())
+                        .map(String::from),
+                    metadata: serde_json::json!({
+                        "error": err.to_string(),
+                        "stage": "finish",
+                    }),
+                })
+                .await;
             return Err(err);
         }
     };
@@ -330,14 +391,23 @@ async fn complete_passkey_login_response(
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
-    let workspace_org = ensure_auth_method_allowed_for_workspace_id(&state.db, auth.workspace_id, auth.redirect_uri.as_deref(), AuthMethod::Passkey).await?;
+    let workspace_org = ensure_auth_method_allowed_for_workspace_id(
+        &state.db,
+        auth.workspace_id,
+        auth.redirect_uri.as_deref(),
+        AuthMethod::Passkey,
+    )
+    .await?;
     // Admin console login (no workspace in redirect_uri) — enforce platform passkey policy
     if workspace_org.is_none() {
         if !admin_console_passkey_allowed(&state.db).await? {
-            return Err(AppError::Validation("Passkey sign-in is disabled for the admin console.".into()));
+            return Err(AppError::Validation(
+                "Passkey sign-in is disabled for the admin console.".into(),
+            ));
         }
     }
-    let (_, effective_ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, auth.redirect_uri.as_deref()).await?;
+    let (_, effective_ip_policy) =
+        resolve_effective_ip_policy_for_redirect(&state.db, auth.redirect_uri.as_deref()).await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         client_ip_from_http_request(&req, state.config.as_ref()),
@@ -345,13 +415,19 @@ async fn complete_passkey_login_response(
     if decision != crate::shared::ip_policy::IpAccessDecision::Allowed {
         return Err(AppError::Forbidden(access_denied_message(&decision).into()));
     }
-    let login_context = resolve_login_context(&state.db, auth.user_id, auth.redirect_uri.as_deref()).await?;
-    let workspace_policy = get_workspace_policy_for_redirect(&state.db, auth.redirect_uri.as_deref()).await?;
+    let login_context =
+        resolve_login_context(&state.db, auth.user_id, auth.redirect_uri.as_deref()).await?;
+    let workspace_policy =
+        get_workspace_policy_for_redirect(&state.db, auth.redirect_uri.as_deref()).await?;
     let org_repo = OrganizationRepository::new(state.db.clone());
 
     // Operator policy gate: enforces auth method, IP, email domain for operator logins.
     let identity_repo = IdentityRepository::new(state.db.clone());
-    let user_email = identity_repo.get_primary_email_by_user_id(auth.user_id).await.unwrap_or_default().unwrap_or_default();
+    let user_email = identity_repo
+        .get_primary_email_by_user_id(auth.user_id)
+        .await
+        .unwrap_or_default()
+        .unwrap_or_default();
     let op_policy = enforce_operator_login_policy(
         &state.db,
         auth.user_id,
@@ -359,17 +435,23 @@ async fn complete_passkey_login_response(
         OpAuthMethod::Passkey,
         login_context.current_org_id,
         client_ip_from_http_request(&req, state.config.as_ref()),
-    ).await?;
+    )
+    .await?;
 
     let workspace_requires_mfa = match workspace_policy.as_ref() {
         Some(org) => {
             org.require_mfa
                 || (org.require_mfa_for_admins
-                    && org_repo.is_org_admin_or_owner(org.id, auth.user_id).await.unwrap_or(false))
+                    && org_repo
+                        .is_org_admin_or_owner(org.id, auth.user_id)
+                        .await
+                        .unwrap_or(false))
         }
         None => {
             if let Some(org_id) = login_context.current_org_id {
-                let portal_mfa = org_repo.get_organization_by_id(org_id).await?
+                let portal_mfa = org_repo
+                    .get_organization_by_id(org_id)
+                    .await?
                     .map(|org| org.tenant_portal_require_mfa)
                     .unwrap_or(false);
                 portal_mfa || op_policy.as_ref().map(|p| p.require_mfa).unwrap_or(false)
@@ -380,25 +462,35 @@ async fn complete_passkey_login_response(
         }
     };
     let (totp_enabled, _) = mfa_service.totp_status(auth.user_id).await?;
-    let audit_org_id = login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id));
+    let audit_org_id = login_context
+        .current_org_id
+        .or_else(|| workspace_policy.as_ref().map(|org| org.id));
 
     if workspace_requires_mfa && !totp_enabled {
         let enrollment = mfa_service
             .start_login_enrollment(auth.user_id, auth.redirect_uri.clone(), "passkey", None)
             .await?;
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(auth.user_id),
-            organization_id: login_context.current_org_id.or_else(|| workspace_policy.as_ref().map(|org| org.id)),
-            action: "auth.mfa.enrollment.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({
-                "reason": "workspace_requires_mfa_but_user_has_no_totp",
-                "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(auth.user_id),
+                organization_id: login_context
+                    .current_org_id
+                    .or_else(|| workspace_policy.as_ref().map(|org| org.id)),
+                action: "auth.mfa.enrollment.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::json!({
+                    "reason": "workspace_requires_mfa_but_user_has_no_totp",
+                    "workspace_slug": workspace_policy.as_ref().map(|org| org.slug.clone()),
+                }),
+            })
+            .await;
 
         return Ok(HttpResponse::Ok().json(serde_json::json!({
             "ok": true,
@@ -422,16 +514,22 @@ async fn complete_passkey_login_response(
             .start_login_challenge(auth.user_id, auth.redirect_uri.clone(), "passkey", None)
             .await?;
 
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(auth.user_id),
-            organization_id: audit_org_id,
-            action: "auth.mfa.required".into(),
-            target_type: "mfa_method".into(),
-            target_id: Some("totp".into()),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::Value::Object(metadata),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(auth.user_id),
+                organization_id: audit_org_id,
+                action: "auth.mfa.required".into(),
+                target_type: "mfa_method".into(),
+                target_id: Some("totp".into()),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::Value::Object(metadata),
+            })
+            .await;
 
         return Ok(HttpResponse::Ok().json(serde_json::json!({
             "ok": true,
@@ -443,17 +541,23 @@ async fn complete_passkey_login_response(
 
     let session_repo = SessionRepository::new(state.db.clone());
     let session_service = SessionService::new(session_repo, state.db.clone());
-    let (_session, opaque) = session_service.create_opaque_session_with_context(
-        auth.user_id,
-        crate::modules::session::models::SessionCreateContext {
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            ip: client_ip_from_http_request(&req, state.config.as_ref()),
-            current_org_id: login_context.current_org_id,
-            login_surface: auth.surface.clone(),
-            login_app_name: login_context.app_name.clone(),
-            login_workspace_slug: login_context.workspace_slug.clone(),
-        },
-    ).await?;
+    let (_session, opaque) = session_service
+        .create_opaque_session_with_context(
+            auth.user_id,
+            crate::modules::session::models::SessionCreateContext {
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                ip: client_ip_from_http_request(&req, state.config.as_ref()),
+                current_org_id: login_context.current_org_id,
+                login_surface: auth.surface.clone(),
+                login_app_name: login_context.app_name.clone(),
+                login_workspace_slug: login_context.workspace_slug.clone(),
+            },
+        )
+        .await?;
 
     let cookie = build_session_cookie(opaque, &state.config, 7 * 24 * 3600);
 
@@ -466,23 +570,27 @@ async fn complete_passkey_login_response(
         metadata.insert("workspace_slug".into(), serde_json::json!(workspace_slug));
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(auth.user_id),
-        organization_id: audit_org_id,
-        action: success_action.into(),
-        target_type: "user".into(),
-        target_id: Some(auth.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::Value::Object(metadata),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(auth.user_id),
+            organization_id: audit_org_id,
+            action: success_action.into(),
+            target_type: "user".into(),
+            target_id: Some(auth.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::Value::Object(metadata),
+        })
+        .await;
 
-    Ok(HttpResponse::Ok()
-        .cookie(cookie)
-        .json(serde_json::json!({
-            "ok": true,
-            "redirect_uri": auth.redirect_uri,
-        })))
+    Ok(HttpResponse::Ok().cookie(cookie).json(serde_json::json!({
+        "ok": true,
+        "redirect_uri": auth.redirect_uri,
+    })))
 }
 
 async fn demo_login(
@@ -493,34 +601,52 @@ async fn demo_login(
     // Demo mode skips browser WebAuthn ceremony, but still reuses the normal
     // passkey policy, IP, MFA, and session issuance path below.
     if !demo_seed_enabled() {
-        return Err(AppError::NotFound("Demo passkey sign-in is unavailable.".into()));
+        return Err(AppError::NotFound(
+            "Demo passkey sign-in is unavailable.".into(),
+        ));
     }
 
-    let widget_login_context = match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
-        Ok(value) => value,
-        Err(AppError::Validation(message)) if is_widget_login_context_invalid_error(&message) => {
-            AuditService::new(state.db.clone()).log(AuditEvent {
-                actor_user_id: None,
-                organization_id: crate::shared::platform_org::get_platform_org_id(&state.db).await,
-                action: "auth.widget.context_invalid".into(),
-                target_type: "widget_login_context".into(),
-                target_id: body.widget_login_context.clone(),
-                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-                user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-                metadata: serde_json::json!({
-                    "reason": "expired_or_replayed",
-                    "embed_origin": body.widget_embed_origin,
-                    "surface": body.surface,
-                    "stage": "passkey_demo_start",
-                    "email": body.email.trim().to_lowercase(),
-                }),
-            }).await;
-            return Err(AppError::Validation(message));
-        }
-        Err(err) => return Err(err),
-    };
+    let widget_login_context =
+        match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
+            Ok(value) => value,
+            Err(AppError::Validation(message))
+                if is_widget_login_context_invalid_error(&message) =>
+            {
+                AuditService::new(state.db.clone())
+                    .log(AuditEvent {
+                        actor_user_id: None,
+                        organization_id: crate::shared::platform_org::get_platform_org_id(
+                            &state.db,
+                        )
+                        .await,
+                        action: "auth.widget.context_invalid".into(),
+                        target_type: "widget_login_context".into(),
+                        target_id: body.widget_login_context.clone(),
+                        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                        user_agent: req
+                            .headers()
+                            .get("user-agent")
+                            .and_then(|h| h.to_str().ok())
+                            .map(String::from),
+                        metadata: serde_json::json!({
+                            "reason": "expired_or_replayed",
+                            "embed_origin": body.widget_embed_origin,
+                            "surface": body.surface,
+                            "stage": "passkey_demo_start",
+                            "email": body.email.trim().to_lowercase(),
+                        }),
+                    })
+                    .await;
+                return Err(AppError::Validation(message));
+            }
+            Err(err) => return Err(err),
+        };
     if let Some(ctx) = widget_login_context.as_ref() {
-        let supplied_embed_origin = body.widget_embed_origin.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let supplied_embed_origin = body
+            .widget_embed_origin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if supplied_embed_origin != Some(ctx.embed_origin.as_str()) {
             return Err(AppError::Forbidden(
                 "Hosted login session mismatch: this widget session was issued for a different site. Refresh the widget on the current site and try again.".into()
@@ -534,14 +660,20 @@ async fn demo_login(
 
     let normalized_email = body.email.trim().to_ascii_lowercase();
     if !is_seeded_demo_email(&normalized_email) {
-        return Err(AppError::Validation("Demo passkey is only available for seeded demo accounts.".into()));
+        return Err(AppError::Validation(
+            "Demo passkey is only available for seeded demo accounts.".into(),
+        ));
     }
 
     let identity_repo = IdentityRepository::new(state.db.clone());
     let user_id = identity_repo
         .get_user_id_by_email(&normalized_email)
         .await?
-        .ok_or_else(|| AppError::Validation("Demo account is unavailable. Restart demo mode to reseed it.".into()))?;
+        .ok_or_else(|| {
+            AppError::Validation(
+                "Demo account is unavailable. Restart demo mode to reseed it.".into(),
+            )
+        })?;
 
     complete_passkey_login_response(
         req,
@@ -549,7 +681,9 @@ async fn demo_login(
         CompletedPasskeyLogin {
             user_id,
             redirect_uri: effective_redirect_uri,
-            workspace_id: widget_login_context.as_ref().and_then(|ctx| ctx.workspace_id),
+            workspace_id: widget_login_context
+                .as_ref()
+                .and_then(|ctx| ctx.workspace_id),
             surface: body.surface.clone(),
         },
         "passkey_demo",
@@ -577,23 +711,34 @@ pub async fn finish_registration(
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     let service = webauthn_service(&state);
-    let passkey = service.finish_registration(
-        session.user_id,
-        body.challenge_id,
-        body.name.clone().filter(|value| !value.trim().is_empty()).unwrap_or_else(|| "Security Key".into()),
-        body.credential.clone(),
-    ).await?;
+    let passkey = service
+        .finish_registration(
+            session.user_id,
+            body.challenge_id,
+            body.name
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Security Key".into()),
+            body.credential.clone(),
+        )
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.registered".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey.id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "name": passkey.name }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.registered".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey.id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "name": passkey.name }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -616,21 +761,27 @@ pub async fn report_login_failure(
     state: web::Data<AppState>,
     body: web::Json<ReportLoginFailureRequest>,
 ) -> Result<HttpResponse, AppError> {
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: None,
-        action: "auth.passkey.login.failed".into(),
-        target_type: "passkey".into(),
-        target_id: None,
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "error": body.reason,
-            "stage": body.stage,
-            "email": body.email.as_ref().map(|email| email.trim().to_lowercase()),
-            "source": "client_reported",
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: None,
+            action: "auth.passkey.login.failed".into(),
+            target_type: "passkey".into(),
+            target_id: None,
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "error": body.reason,
+                "stage": body.stage,
+                "email": body.email.as_ref().map(|email| email.trim().to_lowercase()),
+                "source": "client_reported",
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
@@ -656,18 +807,26 @@ pub async fn delete_passkey(
     let session = extract_session(&req)?;
     let passkey_id = path.into_inner();
     let service = webauthn_service(&state);
-    service.delete_my_passkey(session.user_id, passkey_id).await?;
+    service
+        .delete_my_passkey(session.user_id, passkey_id)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.deleted".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.deleted".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -702,7 +861,9 @@ pub async fn rename_passkey(
         return Err(AppError::Validation("Passkey name cannot be empty.".into()));
     }
     if new_name.len() > 100 {
-        return Err(AppError::Validation("Passkey name is too long (max 100 characters).".into()));
+        return Err(AppError::Validation(
+            "Passkey name is too long (max 100 characters).".into(),
+        ));
     }
 
     let service = webauthn_service(&state);
@@ -713,18 +874,25 @@ pub async fn rename_passkey(
     }
 
     let repo = WebauthnRepository::new(state.db.clone());
-    repo.rename_passkey(passkey_id, session.user_id, &new_name).await?;
+    repo.rename_passkey(passkey_id, session.user_id, &new_name)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.renamed".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "new_name": new_name }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.renamed".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "new_name": new_name }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -733,30 +901,43 @@ pub async fn rename_passkey(
 }
 
 pub fn routes(rl: crate::bootstrap::config::RateLimitConfig) -> impl Fn(&mut web::ServiceConfig) {
-  move |cfg: &mut web::ServiceConfig| {
-    cfg.service(
-        web::scope("/webauthn/login")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(rl.webauthn_per_endpoint, 60))
-            .wrap(crate::http::middleware::rate_limit::RateLimit::global_per_ip("webauthn", rl.webauthn_per_ip, 60))
-            .route("/start", web::post().to(start_login))
-            .route("/finish", web::post().to(finish_login))
-            .route("/demo", web::post().to(demo_login))
-            .route("/report-failure", web::post().to(report_login_failure))
-    );
+    move |cfg: &mut web::ServiceConfig| {
+        cfg.service(
+            web::scope("/webauthn/login")
+                .wrap(
+                    crate::http::middleware::rate_limit::RateLimit::per_endpoint(
+                        rl.webauthn_per_endpoint,
+                        60,
+                    ),
+                )
+                .wrap(
+                    crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                        "webauthn",
+                        rl.webauthn_per_ip,
+                        60,
+                    ),
+                )
+                .route("/start", web::post().to(start_login))
+                .route("/finish", web::post().to(finish_login))
+                .route("/demo", web::post().to(demo_login))
+                .route("/report-failure", web::post().to(report_login_failure)),
+        );
 
-    cfg.service(
-        web::scope("/webauthn")
-            .wrap(RequireAuth)
-            .route("/register/start", web::post().to(start_registration))
-            .route("/register/finish", web::post().to(finish_registration))
-            .route("/passkeys", web::get().to(list_passkeys))
-            .route("/passkeys/{id}", web::delete().to(delete_passkey))
-            .route("/passkeys/{id}", web::patch().to(rename_passkey)),
-    );
-  }
+        cfg.service(
+            web::scope("/webauthn")
+                .wrap(RequireAuth)
+                .route("/register/start", web::post().to(start_registration))
+                .route("/register/finish", web::post().to(finish_registration))
+                .route("/passkeys", web::get().to(list_passkeys))
+                .route("/passkeys/{id}", web::delete().to(delete_passkey))
+                .route("/passkeys/{id}", web::patch().to(rename_passkey)),
+        );
+    }
 }
 
 /// Alias — same as `routes()`. Used from router for clarity.
-pub fn routes_global(rl: crate::bootstrap::config::RateLimitConfig) -> impl Fn(&mut web::ServiceConfig) {
+pub fn routes_global(
+    rl: crate::bootstrap::config::RateLimitConfig,
+) -> impl Fn(&mut web::ServiceConfig) {
     routes(rl)
 }

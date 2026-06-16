@@ -4,7 +4,10 @@ use url::Url;
 use crate::shared::error::AppError;
 
 pub fn callback_url(issuer_url: &str, provider: &str) -> String {
-    format!("{}/api/v1/auth/{provider}/callback", issuer_url.trim_end_matches('/'))
+    format!(
+        "{}/api/v1/auth/{provider}/callback",
+        issuer_url.trim_end_matches('/')
+    )
 }
 
 pub fn mask_connection_url(url: &str) -> String {
@@ -31,7 +34,9 @@ pub struct DatabaseDiagnostics {
     pub latest_migration: String,
 }
 
-pub fn load_database_diagnostics(config: &crate::bootstrap::config::AppConfig) -> DatabaseDiagnostics {
+pub fn load_database_diagnostics(
+    config: &crate::bootstrap::config::AppConfig,
+) -> DatabaseDiagnostics {
     let mut diagnostics = DatabaseDiagnostics {
         url_masked: mask_connection_url(&config.database.url),
         port: 5432,
@@ -64,19 +69,28 @@ pub async fn enrich_database_diagnostics(
         .map_err(|e| AppError::Internal(format!("Failed to verify database readiness: {}", e)))?;
     diagnostics.ready = ready == 1;
 
-    diagnostics.migration_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM _sqlx_migrations"
-    )
-    .fetch_one(db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to count applied database migrations: {}", e)))?;
+    diagnostics.migration_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to count applied database migrations: {}",
+                    e
+                ))
+            })?;
 
     diagnostics.latest_migration = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT description FROM _sqlx_migrations ORDER BY version DESC LIMIT 1"
+        "SELECT description FROM _sqlx_migrations ORDER BY version DESC LIMIT 1",
     )
     .fetch_one(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load latest database migration metadata: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load latest database migration metadata: {}",
+            e
+        ))
+    })?
     .unwrap_or_else(|| "No migrations applied".to_string());
 
     Ok(diagnostics)
@@ -88,6 +102,9 @@ pub fn normalized_url_or_error(value: &str, label: &str) -> Result<String, AppEr
         .map_err(|_| AppError::Validation(format!("Invalid {}. Use a full http(s) URL.", label)))?;
     match parsed.scheme() {
         "http" | "https" => Ok(parsed.to_string().trim_end_matches('/').to_string()),
-        _ => Err(AppError::Validation(format!("Invalid {}. Use http:// or https://.", label))),
+        _ => Err(AppError::Validation(format!(
+            "Invalid {}. Use http:// or https://.",
+            label
+        ))),
     }
 }

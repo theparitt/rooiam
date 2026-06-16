@@ -44,7 +44,10 @@ impl actix_web::ResponseError for AppError {
             AppError::External(_) => StatusCode::BAD_GATEWAY,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Database(sqlx::Error::Database(db_err))
-                if db_err.code().as_deref() == Some("23505") => StatusCode::CONFLICT,
+                if db_err.code().as_deref() == Some("23505") =>
+            {
+                StatusCode::CONFLICT
+            }
             AppError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -106,7 +109,10 @@ mod tests {
     #[test]
     fn rate_limited_returns_429() {
         let err = AppError::RateLimited;
-        assert_eq!(err.status_code(), actix_web::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            err.status_code(),
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS
+        );
     }
 
     #[test]
@@ -114,7 +120,10 @@ mod tests {
         let err = AppError::RateLimited;
         let resp = err.error_response();
         let retry_after = resp.headers().get("Retry-After");
-        assert!(retry_after.is_some(), "Retry-After header must be present on 429");
+        assert!(
+            retry_after.is_some(),
+            "Retry-After header must be present on 429"
+        );
         assert_eq!(retry_after.unwrap(), "60");
     }
 
@@ -140,7 +149,10 @@ mod tests {
         // error_response() returns JSON — just check status and header; body requires async read
         let err = AppError::RateLimited;
         let resp = err.error_response();
-        assert_eq!(resp.status(), actix_web::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS
+        );
     }
 }
 

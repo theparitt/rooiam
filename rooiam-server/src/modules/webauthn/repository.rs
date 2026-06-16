@@ -31,7 +31,10 @@ impl WebauthnRepository {
         &self.pool
     }
 
-    pub async fn list_passkeys_by_user_id(&self, user_id: Uuid) -> Result<Vec<UserPasskey>, AppError> {
+    pub async fn list_passkeys_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<UserPasskey>, AppError> {
         let passkeys = sqlx::query_as::<_, UserPasskey>(
             r#"
             SELECT id, user_id, credential_id, public_key, sign_count, transports, aaguid, name, credential, last_used_at, created_at
@@ -69,7 +72,10 @@ impl WebauthnRepository {
         Ok(passkey)
     }
 
-    pub async fn get_passkey_by_credential_id(&self, credential_id: &str) -> Result<Option<UserPasskey>, AppError> {
+    pub async fn get_passkey_by_credential_id(
+        &self,
+        credential_id: &str,
+    ) -> Result<Option<UserPasskey>, AppError> {
         let passkey = sqlx::query_as::<_, UserPasskey>(
             r#"
             SELECT id, user_id, credential_id, public_key, sign_count, transports, aaguid, name, credential, last_used_at, created_at
@@ -84,7 +90,11 @@ impl WebauthnRepository {
         Ok(passkey)
     }
 
-    pub async fn update_passkey_usage(&self, credential_id: &str, sign_count: i64) -> Result<(), AppError> {
+    pub async fn update_passkey_usage(
+        &self,
+        credential_id: &str,
+        sign_count: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE user_passkeys
@@ -106,8 +116,9 @@ impl WebauthnRepository {
         credential: serde_json::Value,
         sign_count: i64,
     ) -> Result<(), AppError> {
-        let serialized = serde_json::to_string(&credential)
-            .map_err(|e| AppError::Internal(format!("Failed to serialize stored passkey: {}", e)))?;
+        let serialized = serde_json::to_string(&credential).map_err(|e| {
+            AppError::Internal(format!("Failed to serialize stored passkey: {}", e))
+        })?;
 
         sqlx::query(
             r#"
@@ -130,28 +141,29 @@ impl WebauthnRepository {
     }
 
     pub async fn delete_passkey(&self, user_id: Uuid, passkey_id: Uuid) -> Result<bool, AppError> {
-        let deleted = sqlx::query(
-            "DELETE FROM user_passkeys WHERE id = $1 AND user_id = $2",
-        )
-        .bind(passkey_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
+        let deleted = sqlx::query("DELETE FROM user_passkeys WHERE id = $1 AND user_id = $2")
+            .bind(passkey_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
 
         Ok(deleted > 0)
     }
 
-    pub async fn rename_passkey(&self, passkey_id: Uuid, user_id: Uuid, new_name: &str) -> Result<(), AppError> {
-        let rows = sqlx::query(
-            "UPDATE user_passkeys SET name = $1 WHERE id = $2 AND user_id = $3",
-        )
-        .bind(new_name)
-        .bind(passkey_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
+    pub async fn rename_passkey(
+        &self,
+        passkey_id: Uuid,
+        user_id: Uuid,
+        new_name: &str,
+    ) -> Result<(), AppError> {
+        let rows = sqlx::query("UPDATE user_passkeys SET name = $1 WHERE id = $2 AND user_id = $3")
+            .bind(new_name)
+            .bind(passkey_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
 
         if rows == 0 {
             return Err(AppError::NotFound("Passkey not found.".into()));
@@ -185,7 +197,12 @@ impl WebauthnRepository {
         Ok(challenge)
     }
 
-    pub async fn consume_challenge(&self, user_id: Uuid, challenge_id: Uuid, purpose: &str) -> Result<WebauthnChallenge, AppError> {
+    pub async fn consume_challenge(
+        &self,
+        user_id: Uuid,
+        challenge_id: Uuid,
+        purpose: &str,
+    ) -> Result<WebauthnChallenge, AppError> {
         let challenge = sqlx::query_as::<_, WebauthnChallenge>(
             r#"
             UPDATE webauthn_challenges
@@ -220,7 +237,11 @@ impl WebauthnRepository {
         .flatten()
     }
 
-    pub async fn consume_challenge_by_id(&self, challenge_id: Uuid, purpose: &str) -> Result<WebauthnChallenge, AppError> {
+    pub async fn consume_challenge_by_id(
+        &self,
+        challenge_id: Uuid,
+        purpose: &str,
+    ) -> Result<WebauthnChallenge, AppError> {
         let challenge = sqlx::query_as::<_, WebauthnChallenge>(
             r#"
             UPDATE webauthn_challenges

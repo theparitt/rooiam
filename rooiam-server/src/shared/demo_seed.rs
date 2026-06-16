@@ -113,9 +113,16 @@ fn build_redirect_uri(base_url: &str, target: &RedirectTarget) -> String {
 }
 
 fn extract_origin(url: &str) -> Option<String> {
-    if let Some(without_scheme) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+    if let Some(without_scheme) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    {
         let host_port = without_scheme.split('/').next().unwrap_or("");
-        let scheme = if url.starts_with("https://") { "https" } else { "http" };
+        let scheme = if url.starts_with("https://") {
+            "https"
+        } else {
+            "http"
+        };
         Some(format!("{}://{}", scheme, host_port))
     } else {
         None
@@ -257,55 +264,42 @@ const DEMO_APPS: [DemoApp; 6] = [
         app_type: "spa",
         owner_email: DEMO_TENANT_EMAIL,
         org_slug: Some("roochoco"),
-        redirect_targets: &[
-            RedirectTarget::Callback,
-        ],
+        redirect_targets: &[RedirectTarget::Callback],
     },
     DemoApp {
         app_name: "MintMallow Portal",
         app_type: "spa",
         owner_email: DEMO_TENANT_EMAIL,
         org_slug: Some("mintmallow"),
-        redirect_targets: &[
-            RedirectTarget::Callback,
-        ],
+        redirect_targets: &[RedirectTarget::Callback],
     },
     DemoApp {
         app_name: "Rooiam Admin Console",
         app_type: "spa",
         owner_email: DEMO_ADMIN_EMAIL,
         org_slug: Some("roochoco"),
-        redirect_targets: &[
-            RedirectTarget::AdminLogin,
-            RedirectTarget::AdminVerify,
-        ],
+        redirect_targets: &[RedirectTarget::AdminLogin, RedirectTarget::AdminVerify],
     },
     DemoApp {
         app_name: "MelonHoneyToast Portal",
         app_type: "spa",
         owner_email: DEMO_MOOMOO_EMAIL,
         org_slug: Some("melonhoneytoast"),
-        redirect_targets: &[
-            RedirectTarget::Callback,
-        ],
+        redirect_targets: &[RedirectTarget::Callback],
     },
     DemoApp {
         app_name: "BerryBurger Portal",
         app_type: "spa",
         owner_email: DEMO_MOOMOO_EMAIL,
         org_slug: Some("berryburger"),
-        redirect_targets: &[
-            RedirectTarget::Callback,
-        ],
+        redirect_targets: &[RedirectTarget::Callback],
     },
     DemoApp {
         app_name: "MooPizza Portal",
         app_type: "spa",
         owner_email: DEMO_MOOMOO_EMAIL,
         org_slug: Some("moopizza"),
-        redirect_targets: &[
-            RedirectTarget::Callback,
-        ],
+        redirect_targets: &[RedirectTarget::Callback],
     },
 ];
 
@@ -320,7 +314,6 @@ pub fn demo_seed_enabled() -> bool {
 pub fn demo_routes_enabled() -> bool {
     crate::bootstrap::config::ServerMode::from_env().demo_routes_enabled()
 }
-
 
 pub fn demo_reset_enabled() -> bool {
     matches!(
@@ -345,10 +338,18 @@ pub fn demo_owner_email() -> &'static str {
     DEMO_OWNER_EMAIL
 }
 
-pub fn demo_toffee_email() -> &'static str { DEMO_TOFFEE_EMAIL }
-pub fn demo_roochoco_truffle_email() -> &'static str { DEMO_ROOCHOCO_TRUFFLE_EMAIL }
-pub fn demo_roochoco_praline_email() -> &'static str { DEMO_ROOCHOCO_PRALINE_EMAIL }
-pub fn demo_roochoco_ganache_email() -> &'static str { DEMO_ROOCHOCO_GANACHE_EMAIL }
+pub fn demo_toffee_email() -> &'static str {
+    DEMO_TOFFEE_EMAIL
+}
+pub fn demo_roochoco_truffle_email() -> &'static str {
+    DEMO_ROOCHOCO_TRUFFLE_EMAIL
+}
+pub fn demo_roochoco_praline_email() -> &'static str {
+    DEMO_ROOCHOCO_PRALINE_EMAIL
+}
+pub fn demo_roochoco_ganache_email() -> &'static str {
+    DEMO_ROOCHOCO_GANACHE_EMAIL
+}
 
 pub fn demo_customer_email_for_org(org_slug: &str) -> Option<&'static str> {
     match org_slug.trim().to_ascii_lowercase().as_str() {
@@ -371,8 +372,14 @@ pub fn demo_end_user_email_for_org(org_slug: &str) -> Option<&'static str> {
 /// - surface="user" or anything else, with workspace → tenant admin for that org
 /// - no surface, no workspace → platform owner (owner@rooiam.demo)
 /// This is the single authoritative place for demo email selection. Do not duplicate this logic.
-pub fn demo_default_email_for_context(surface: Option<&str>, workspace_slug: Option<&str>) -> &'static str {
-    match (surface, workspace_slug.map(str::trim).filter(|s| !s.is_empty())) {
+pub fn demo_default_email_for_context(
+    surface: Option<&str>,
+    workspace_slug: Option<&str>,
+) -> &'static str {
+    match (
+        surface,
+        workspace_slug.map(str::trim).filter(|s| !s.is_empty()),
+    ) {
         (Some("admin"), None) => DEMO_ADMIN_EMAIL,
         (_, Some(slug)) => demo_tenant_admin_email_for_org(slug),
         (_, None) => DEMO_OWNER_EMAIL,
@@ -396,7 +403,13 @@ pub fn is_seeded_demo_org_slug(slug: &str) -> bool {
 }
 
 pub fn seeded_demo_org_slugs() -> &'static [&'static str] {
-    &["roochoco", "mintmallow", "melonhoneytoast", "berryburger", "moopizza"]
+    &[
+        "roochoco",
+        "mintmallow",
+        "melonhoneytoast",
+        "berryburger",
+        "moopizza",
+    ]
 }
 
 pub fn seeded_demo_emails() -> &'static [&'static str] {
@@ -614,10 +627,7 @@ async fn ensure_demo_rbac_baseline(pool: &PgPool) -> Result<(), anyhow::Error> {
                 "activity:read",
             ],
         ),
-        (
-            "00000000-0000-0000-0000-000000000003",
-            vec!["members:read"],
-        ),
+        ("00000000-0000-0000-0000-000000000003", vec!["members:read"]),
         (
             "00000000-0000-0000-0000-000000000004",
             vec!["members:read", "members:invite", "activity:read"],
@@ -653,11 +663,16 @@ async fn ensure_company(
     owner_user_id: Uuid,
     company: &DemoCompany,
 ) -> Result<Organization, anyhow::Error> {
-    let organization = match organization_repo.get_organization_by_slug(company.slug).await? {
+    let organization = match organization_repo
+        .get_organization_by_slug(company.slug)
+        .await?
+    {
         Some(org) => org,
-        None => organization_repo
-            .create_organization(owner_user_id, company.name, company.slug)
-            .await?,
+        None => {
+            organization_repo
+                .create_organization(owner_user_id, company.name, company.slug)
+                .await?
+        }
     };
 
     ensure_owner_membership(pool, organization.id, owner_user_id).await?;
@@ -721,11 +736,7 @@ async fn ensure_company(
     Ok(organization)
 }
 
-async fn upsert_system_setting(
-    pool: &PgPool,
-    key: &str,
-    value: &str,
-) -> Result<(), anyhow::Error> {
+async fn upsert_system_setting(pool: &PgPool, key: &str, value: &str) -> Result<(), anyhow::Error> {
     sqlx::query(
         r#"
         INSERT INTO system_settings (key, value)
@@ -780,10 +791,14 @@ async fn ensure_demo_app(
     // ROOIAM_ENDUSER_URL is the downstream demo customer app (candycloud-web).
     // ROOIAM_ADMIN_URL is the demo admin console.
     // ROOIAM_APP_URL is rooiam-app tenant portal and must not be used for downstream app callbacks.
-    let enduser_url = std::env::var("ROOIAM_ENDUSER_URL")
-        .map_err(|_| anyhow::anyhow!("ROOIAM_ENDUSER_URL is required in demo mode for downstream demo app callbacks"))?;
-    let admin_url = std::env::var("ROOIAM_ADMIN_URL")
-        .map_err(|_| anyhow::anyhow!("ROOIAM_ADMIN_URL is required in demo mode for admin console callbacks"))?;
+    let enduser_url = std::env::var("ROOIAM_ENDUSER_URL").map_err(|_| {
+        anyhow::anyhow!(
+            "ROOIAM_ENDUSER_URL is required in demo mode for downstream demo app callbacks"
+        )
+    })?;
+    let admin_url = std::env::var("ROOIAM_ADMIN_URL").map_err(|_| {
+        anyhow::anyhow!("ROOIAM_ADMIN_URL is required in demo mode for admin console callbacks")
+    })?;
 
     let mut all_uris: Vec<String> = Vec::new();
     let mut embed_origins: Vec<String> = Vec::new();
@@ -794,14 +809,18 @@ async fn ensure_demo_app(
                 if !enduser_url.trim().is_empty() {
                     build_redirect_uri(&enduser_url, target)
                 } else {
-                    return Err(anyhow::anyhow!("ROOIAM_ENDUSER_URL cannot be empty in demo mode"));
+                    return Err(anyhow::anyhow!(
+                        "ROOIAM_ENDUSER_URL cannot be empty in demo mode"
+                    ));
                 }
             }
             RedirectTarget::AdminLogin | RedirectTarget::AdminVerify => {
                 if !admin_url.trim().is_empty() {
                     build_redirect_uri(&admin_url, target)
                 } else {
-                    return Err(anyhow::anyhow!("ROOIAM_ADMIN_URL cannot be empty in demo mode"));
+                    return Err(anyhow::anyhow!(
+                        "ROOIAM_ADMIN_URL cannot be empty in demo mode"
+                    ));
                 }
             }
         };
@@ -841,9 +860,16 @@ async fn ensure_demo_app(
     // Extract unique origins (scheme+host+port) from all_uris.
     let mut embed_origins: Vec<String> = Vec::new();
     for uri in &all_uris {
-        if let Some(without_scheme) = uri.strip_prefix("http://").or_else(|| uri.strip_prefix("https://")) {
+        if let Some(without_scheme) = uri
+            .strip_prefix("http://")
+            .or_else(|| uri.strip_prefix("https://"))
+        {
             let host_port = without_scheme.split('/').next().unwrap_or("");
-            let scheme = if uri.starts_with("https://") { "https" } else { "http" };
+            let scheme = if uri.starts_with("https://") {
+                "https"
+            } else {
+                "http"
+            };
             let origin = format!("{}://{}", scheme, host_port);
             if !embed_origins.contains(&origin) {
                 embed_origins.push(origin);
@@ -940,10 +966,21 @@ async fn seed_demo_audit_logs(
     mintmallow_customer_id: Uuid,
     tenant_admin_id: Uuid,
 ) -> Result<(), anyhow::Error> {
-    let find_org = |slug: &str| demo_org_ids.iter().find(|(s, _)| s == slug).map(|(_, id)| *id);
+    let find_org = |slug: &str| {
+        demo_org_ids
+            .iter()
+            .find(|(s, _)| s == slug)
+            .map(|(_, id)| *id)
+    };
 
-    let roochoco_id = match find_org("roochoco") { Some(id) => id, None => return Ok(()) };
-    let mintmallow_id = match find_org("mintmallow") { Some(id) => id, None => return Ok(()) };
+    let roochoco_id = match find_org("roochoco") {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+    let mintmallow_id = match find_org("mintmallow") {
+        Some(id) => id,
+        None => return Ok(()),
+    };
 
     sqlx::query(
         "DELETE FROM audit_logs WHERE organization_id = ANY($1) AND metadata->>'demo_mode' = 'true'"
@@ -1081,7 +1118,10 @@ async fn seed_demo_audit_logs(
         .await?;
     }
 
-    tracing::info!("Demo seed: seeded {} audit log entries for tenant orgs", count);
+    tracing::info!(
+        "Demo seed: seeded {} audit log entries for tenant orgs",
+        count
+    );
 
     Ok(())
 }
@@ -1120,7 +1160,7 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
                 'melonhoneytoast', 'berryburger', 'moopizza')
         )
         AND client_id NOT LIKE 'demo-%'
-        "#
+        "#,
     )
     .execute(pool)
     .await?;
@@ -1315,41 +1355,38 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
             DEMO_MOOMOO_EMAIL => demo_moomoo_id,
             _ => continue,
         };
-        let org_id = app.org_slug.and_then(|slug| demo_org_ids.iter().find(|(org_slug, _)| org_slug == slug).map(|(_, org_id)| *org_id));
+        let org_id = app.org_slug.and_then(|slug| {
+            demo_org_ids
+                .iter()
+                .find(|(org_slug, _)| org_slug == slug)
+                .map(|(_, org_id)| *org_id)
+        });
         ensure_demo_app(pool, app, owner_user_id, org_id).await?;
     }
 
     // Clear platform owner from any other user first (constraint allows only one).
-    sqlx::query(
-        "UPDATE users SET is_platform_owner = false WHERE id != $1"
-    )
-    .bind(demo_owner_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET is_platform_owner = false WHERE id != $1")
+        .bind(demo_owner_id)
+        .execute(pool)
+        .await?;
 
     // Set platform owner role on owner demo account.
-    sqlx::query(
-        "UPDATE users SET is_platform_owner = true, is_superuser = true WHERE id = $1"
-    )
-    .bind(demo_owner_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET is_platform_owner = true, is_superuser = true WHERE id = $1")
+        .bind(demo_owner_id)
+        .execute(pool)
+        .await?;
 
     // Set platform admin role on admin demo account (superuser only, not owner).
-    sqlx::query(
-        "UPDATE users SET is_platform_owner = false, is_superuser = true WHERE id = $1"
-    )
-    .bind(demo_admin_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET is_platform_owner = false, is_superuser = true WHERE id = $1")
+        .bind(demo_admin_id)
+        .execute(pool)
+        .await?;
 
     // Set platform admin role on toffee demo account.
-    sqlx::query(
-        "UPDATE users SET is_platform_owner = false, is_superuser = true WHERE id = $1"
-    )
-    .bind(demo_toffee_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE users SET is_platform_owner = false, is_superuser = true WHERE id = $1")
+        .bind(demo_toffee_id)
+        .execute(pool)
+        .await?;
 
     // Ensure platform org exists and add owner + admin as members
     let platform_org_id: Uuid = sqlx::query_scalar(
@@ -1358,7 +1395,7 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
         VALUES ('Rooiam', 'rooiam', true)
         ON CONFLICT (slug) DO UPDATE SET is_platform_org = true
         RETURNING id
-        "#
+        "#,
     )
     .fetch_one(pool)
     .await?;
@@ -1374,7 +1411,8 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
         demo_roochoco_customer_id,
         demo_mintmallow_customer_id,
         demo_tenant_id,
-    ).await?;
+    )
+    .await?;
 
     upsert_system_setting(pool, "superuser_email", DEMO_OWNER_EMAIL).await?;
     upsert_system_setting(pool, "setup_completed", "true").await?;
@@ -1382,31 +1420,49 @@ pub async fn seed_demo_data(pool: &PgPool) -> Result<(), anyhow::Error> {
     // Storage: default to MinIO in demo mode using env-provided credentials.
     // Only set if not already configured (preserves any manual changes).
     let current_backend = sqlx::query_scalar::<_, String>(
-        "SELECT value FROM system_settings WHERE key = 'storage_backend'"
+        "SELECT value FROM system_settings WHERE key = 'storage_backend'",
     )
-    .fetch_optional(pool).await.ok().flatten().unwrap_or_default();
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
 
     if current_backend.is_empty() || current_backend == "local" {
-        let endpoint  = std::env::var("ROOIAM_MINIO_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".into());
-        let bucket    = std::env::var("ROOIAM_MINIO_BUCKET").unwrap_or_else(|_| "rooiam".into());
+        let endpoint = std::env::var("ROOIAM_MINIO_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:9000".into());
+        let bucket = std::env::var("ROOIAM_MINIO_BUCKET").unwrap_or_else(|_| "rooiam".into());
         let access_key = std::env::var("ROOIAM_MINIO_USER").unwrap_or_else(|_| "rooiam".into());
         let secret_key = std::env::var("ROOIAM_MINIO_PASSWORD").unwrap_or_default();
 
         if !secret_key.is_empty() {
-            upsert_system_setting(pool, "storage_backend",          "minio").await?;
-            upsert_system_setting(pool, "storage_minio_endpoint",   &endpoint).await?;
-            upsert_system_setting(pool, "storage_minio_bucket",     &bucket).await?;
+            upsert_system_setting(pool, "storage_backend", "minio").await?;
+            upsert_system_setting(pool, "storage_minio_endpoint", &endpoint).await?;
+            upsert_system_setting(pool, "storage_minio_bucket", &bucket).await?;
             upsert_system_setting(pool, "storage_minio_access_key", &access_key).await?;
             upsert_system_setting(pool, "storage_minio_secret_key", &secret_key).await?;
-            upsert_system_setting(pool, "storage_minio_use_ssl",    "false").await?;
-            tracing::info!("Demo seed: storage configured → MinIO at {}/{}", endpoint, bucket);
+            upsert_system_setting(pool, "storage_minio_use_ssl", "false").await?;
+            tracing::info!(
+                "Demo seed: storage configured → MinIO at {}/{}",
+                endpoint,
+                bucket
+            );
 
             // Auto-create the bucket if it doesn't exist yet.
             match crate::shared::storage_config::ensure_minio_bucket_exists(
-                &endpoint, &bucket, &access_key, &secret_key,
-            ).await {
+                &endpoint,
+                &bucket,
+                &access_key,
+                &secret_key,
+            )
+            .await
+            {
                 Ok(()) => tracing::info!("Demo seed: MinIO bucket '{}' ready", bucket),
-                Err(e) => tracing::warn!("Demo seed: could not create MinIO bucket '{}': {}", bucket, e),
+                Err(e) => tracing::warn!(
+                    "Demo seed: could not create MinIO bucket '{}': {}",
+                    bucket,
+                    e
+                ),
             }
         }
     }

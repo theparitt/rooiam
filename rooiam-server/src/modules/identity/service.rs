@@ -1,7 +1,7 @@
-use uuid::Uuid;
-use crate::shared::error::AppError;
-use super::repository::IdentityRepository;
 use super::models::User;
+use super::repository::IdentityRepository;
+use crate::shared::error::AppError;
+use uuid::Uuid;
 
 pub struct IdentityService {
     repo: IdentityRepository,
@@ -26,6 +26,8 @@ impl IdentityService {
             return Err(AppError::Validation("Nothing to update".into()));
         }
 
-        self.repo.update_user_profile(user_id, display_name, avatar_url).await
+        self.repo
+            .update_user_profile(user_id, display_name, avatar_url)
+            .await
     }
 }

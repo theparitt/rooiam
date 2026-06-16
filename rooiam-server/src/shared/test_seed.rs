@@ -1,3 +1,5 @@
+use crate::modules::identity::repository::IdentityRepository;
+use crate::modules::organization::repository::OrganizationRepository;
 /// Test seed — mirrors the demo persona structure with `.test` TLD.
 ///
 /// Two layers:
@@ -12,63 +14,72 @@
 /// - Only active when `ROOIAM_MODE=test`
 /// - No runtime privilege escalation — roles are set at seed time only
 /// - Org slugs mirror demo slugs so test scripts can reuse the same slug names
-
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use crate::modules::identity::repository::IdentityRepository;
-use crate::modules::organization::repository::OrganizationRepository;
 
 // ── Platform accounts ─────────────────────────────────────────────────────────
-const TEST_OWNER_EMAIL: &str    = "owner@rooiam.test";
-const TEST_OWNER_NAME: &str     = "Test Owner";
+const TEST_OWNER_EMAIL: &str = "owner@rooiam.test";
+const TEST_OWNER_NAME: &str = "Test Owner";
 
-const TEST_ADMIN_EMAIL: &str    = "admin@rooiam.test";
-const TEST_ADMIN_NAME: &str     = "Test Admin";
+const TEST_ADMIN_EMAIL: &str = "admin@rooiam.test";
+const TEST_ADMIN_NAME: &str = "Test Admin";
 
-const TEST_TOFFEE_EMAIL: &str   = "toffee@rooiam.test";
-const TEST_TOFFEE_NAME: &str    = "Test Toffee";
+const TEST_TOFFEE_EMAIL: &str = "toffee@rooiam.test";
+const TEST_TOFFEE_NAME: &str = "Test Toffee";
 
 // ── Tenant (owns roochoco-test + mintmallow-test) ────────────────────────────
-const TEST_TENANT_EMAIL: &str   = "rooroo@sweetfactory.test";
-const TEST_TENANT_NAME: &str    = "Test Rooroo";
+const TEST_TENANT_EMAIL: &str = "rooroo@sweetfactory.test";
+const TEST_TENANT_NAME: &str = "Test Rooroo";
 
 // ── RooChoco workspace members (chocolate theme) ─────────────────────────────
-const TEST_ROOCHOCO_TRUFFLE_EMAIL: &str   = "truffle@roochoco.test";
-const TEST_ROOCHOCO_TRUFFLE_NAME: &str    = "Test Truffle";
+const TEST_ROOCHOCO_TRUFFLE_EMAIL: &str = "truffle@roochoco.test";
+const TEST_ROOCHOCO_TRUFFLE_NAME: &str = "Test Truffle";
 
-const TEST_ROOCHOCO_PRALINE_EMAIL: &str   = "praline@roochoco.test";
-const TEST_ROOCHOCO_PRALINE_NAME: &str    = "Test Praline";
+const TEST_ROOCHOCO_PRALINE_EMAIL: &str = "praline@roochoco.test";
+const TEST_ROOCHOCO_PRALINE_NAME: &str = "Test Praline";
 
-const TEST_ROOCHOCO_GANACHE_EMAIL: &str   = "ganache@roochoco.test";
-const TEST_ROOCHOCO_GANACHE_NAME: &str    = "Test Ganache";
+const TEST_ROOCHOCO_GANACHE_EMAIL: &str = "ganache@roochoco.test";
+const TEST_ROOCHOCO_GANACHE_NAME: &str = "Test Ganache";
 
 // ── MintMallow workspace members (mint theme) ────────────────────────────────
-const TEST_MINTMALLOW_ADMIN_1_EMAIL: &str  = "peppermint@mintmallow.test";
-const TEST_MINTMALLOW_ADMIN_1_NAME: &str   = "Test Peppermint";
+const TEST_MINTMALLOW_ADMIN_1_EMAIL: &str = "peppermint@mintmallow.test";
+const TEST_MINTMALLOW_ADMIN_1_NAME: &str = "Test Peppermint";
 
-const TEST_MINTMALLOW_ADMIN_2_EMAIL: &str  = "spearmint@mintmallow.test";
-const TEST_MINTMALLOW_ADMIN_2_NAME: &str   = "Test Spearmint";
+const TEST_MINTMALLOW_ADMIN_2_EMAIL: &str = "spearmint@mintmallow.test";
+const TEST_MINTMALLOW_ADMIN_2_NAME: &str = "Test Spearmint";
 
 // Regular member — used by IDOR and permission-denial tests
-const TEST_MINTMALLOW_LULU_EMAIL: &str     = "lulu@softmallow.test";
-const TEST_MINTMALLOW_LULU_NAME: &str      = "Test Lulu";
+const TEST_MINTMALLOW_LULU_EMAIL: &str = "lulu@softmallow.test";
+const TEST_MINTMALLOW_LULU_NAME: &str = "Test Lulu";
 
 // ── Org slugs ─────────────────────────────────────────────────────────────────
-const TEST_PLATFORM_ORG_SLUG: &str  = "rooiam-test";
-const TEST_ROOCHOCO_SLUG: &str      = "roochoco-test";
-const TEST_MINTMALLOW_SLUG: &str    = "mintmallow-test";
+const TEST_PLATFORM_ORG_SLUG: &str = "rooiam-test";
+const TEST_ROOCHOCO_SLUG: &str = "roochoco-test";
+const TEST_MINTMALLOW_SLUG: &str = "mintmallow-test";
 
 /// Returns true only in test mode (`ROOIAM_MODE=test`).
 pub fn test_mode_enabled() -> bool {
     crate::bootstrap::config::ServerMode::from_env() == crate::bootstrap::config::ServerMode::Test
 }
 
-pub fn test_owner_email() -> &'static str { TEST_OWNER_EMAIL }
-pub fn test_admin_email() -> &'static str { TEST_ADMIN_EMAIL }
-pub fn test_tenant_email() -> &'static str { TEST_TENANT_EMAIL }
-pub fn test_roochoco_slug() -> &'static str { TEST_ROOCHOCO_SLUG }
-pub fn test_mintmallow_slug() -> &'static str { TEST_MINTMALLOW_SLUG }
-pub fn test_platform_org_slug() -> &'static str { TEST_PLATFORM_ORG_SLUG }
+pub fn test_owner_email() -> &'static str {
+    TEST_OWNER_EMAIL
+}
+pub fn test_admin_email() -> &'static str {
+    TEST_ADMIN_EMAIL
+}
+pub fn test_tenant_email() -> &'static str {
+    TEST_TENANT_EMAIL
+}
+pub fn test_roochoco_slug() -> &'static str {
+    TEST_ROOCHOCO_SLUG
+}
+pub fn test_mintmallow_slug() -> &'static str {
+    TEST_MINTMALLOW_SLUG
+}
+pub fn test_platform_org_slug() -> &'static str {
+    TEST_PLATFORM_ORG_SLUG
+}
 
 /// Seeds a full demo-mirrored cast at startup in test mode.
 ///
@@ -136,18 +147,54 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
     let org_repo = OrganizationRepository::new(pool.clone());
 
     // ── Create users ──────────────────────────────────────────────────────────
-    let owner_id   = ensure_user(pool, &identity_repo, TEST_OWNER_EMAIL,   TEST_OWNER_NAME).await?;
-    let admin_id   = ensure_user(pool, &identity_repo, TEST_ADMIN_EMAIL,   TEST_ADMIN_NAME).await?;
-    let toffee_id  = ensure_user(pool, &identity_repo, TEST_TOFFEE_EMAIL,  TEST_TOFFEE_NAME).await?;
-    let tenant_id  = ensure_user(pool, &identity_repo, TEST_TENANT_EMAIL,  TEST_TENANT_NAME).await?;
+    let owner_id = ensure_user(pool, &identity_repo, TEST_OWNER_EMAIL, TEST_OWNER_NAME).await?;
+    let admin_id = ensure_user(pool, &identity_repo, TEST_ADMIN_EMAIL, TEST_ADMIN_NAME).await?;
+    let toffee_id = ensure_user(pool, &identity_repo, TEST_TOFFEE_EMAIL, TEST_TOFFEE_NAME).await?;
+    let tenant_id = ensure_user(pool, &identity_repo, TEST_TENANT_EMAIL, TEST_TENANT_NAME).await?;
 
-    let truffle_id = ensure_user(pool, &identity_repo, TEST_ROOCHOCO_TRUFFLE_EMAIL, TEST_ROOCHOCO_TRUFFLE_NAME).await?;
-    let praline_id = ensure_user(pool, &identity_repo, TEST_ROOCHOCO_PRALINE_EMAIL, TEST_ROOCHOCO_PRALINE_NAME).await?;
-    let ganache_id = ensure_user(pool, &identity_repo, TEST_ROOCHOCO_GANACHE_EMAIL, TEST_ROOCHOCO_GANACHE_NAME).await?;
+    let truffle_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_ROOCHOCO_TRUFFLE_EMAIL,
+        TEST_ROOCHOCO_TRUFFLE_NAME,
+    )
+    .await?;
+    let praline_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_ROOCHOCO_PRALINE_EMAIL,
+        TEST_ROOCHOCO_PRALINE_NAME,
+    )
+    .await?;
+    let ganache_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_ROOCHOCO_GANACHE_EMAIL,
+        TEST_ROOCHOCO_GANACHE_NAME,
+    )
+    .await?;
 
-    let peppermint_id = ensure_user(pool, &identity_repo, TEST_MINTMALLOW_ADMIN_1_EMAIL, TEST_MINTMALLOW_ADMIN_1_NAME).await?;
-    let spearmint_id  = ensure_user(pool, &identity_repo, TEST_MINTMALLOW_ADMIN_2_EMAIL, TEST_MINTMALLOW_ADMIN_2_NAME).await?;
-    let lulu_id       = ensure_user(pool, &identity_repo, TEST_MINTMALLOW_LULU_EMAIL,    TEST_MINTMALLOW_LULU_NAME).await?;
+    let peppermint_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_MINTMALLOW_ADMIN_1_EMAIL,
+        TEST_MINTMALLOW_ADMIN_1_NAME,
+    )
+    .await?;
+    let spearmint_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_MINTMALLOW_ADMIN_2_EMAIL,
+        TEST_MINTMALLOW_ADMIN_2_NAME,
+    )
+    .await?;
+    let lulu_id = ensure_user(
+        pool,
+        &identity_repo,
+        TEST_MINTMALLOW_LULU_EMAIL,
+        TEST_MINTMALLOW_LULU_NAME,
+    )
+    .await?;
 
     // ── Platform roles ────────────────────────────────────────────────────────
     sqlx::query("UPDATE users SET is_platform_owner = false WHERE id != $1")
@@ -168,26 +215,47 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
         .await?;
 
     // ── Platform org: rooiam-test ─────────────────────────────────────────────
-    let platform_org = ensure_org(pool, &org_repo, owner_id, TEST_PLATFORM_ORG_SLUG, "Rooiam Test").await?;
+    let platform_org = ensure_org(
+        pool,
+        &org_repo,
+        owner_id,
+        TEST_PLATFORM_ORG_SLUG,
+        "Rooiam Test",
+    )
+    .await?;
     // Mark as platform org so admin audit-log queries (is_platform_org = true) include its entries
     sqlx::query("UPDATE organizations SET is_platform_org = true WHERE id = $1")
         .bind(platform_org.id)
         .execute(pool)
         .await?;
-    ensure_member_with_role(pool, platform_org.id, admin_id,  "admin").await?;
+    ensure_member_with_role(pool, platform_org.id, admin_id, "admin").await?;
     ensure_member_with_role(pool, platform_org.id, toffee_id, "admin").await?;
 
     // ── Tenant org: roochoco-test ─────────────────────────────────────────────
-    let roochoco_org = ensure_org(pool, &org_repo, tenant_id, TEST_ROOCHOCO_SLUG, "RooChoco Test").await?;
+    let roochoco_org = ensure_org(
+        pool,
+        &org_repo,
+        tenant_id,
+        TEST_ROOCHOCO_SLUG,
+        "RooChoco Test",
+    )
+    .await?;
     ensure_member_with_role(pool, roochoco_org.id, truffle_id, "admin").await?;
     ensure_member_with_role(pool, roochoco_org.id, praline_id, "member").await?;
     ensure_member_with_role(pool, roochoco_org.id, ganache_id, "member").await?;
 
     // ── Tenant org: mintmallow-test (MFA required) ────────────────────────────
-    let mintmallow_org = ensure_org(pool, &org_repo, tenant_id, TEST_MINTMALLOW_SLUG, "MintMallow Test").await?;
+    let mintmallow_org = ensure_org(
+        pool,
+        &org_repo,
+        tenant_id,
+        TEST_MINTMALLOW_SLUG,
+        "MintMallow Test",
+    )
+    .await?;
     ensure_member_with_role(pool, mintmallow_org.id, peppermint_id, "admin").await?;
-    ensure_member_with_role(pool, mintmallow_org.id, spearmint_id,  "admin").await?;
-    ensure_member_with_role(pool, mintmallow_org.id, lulu_id,       "member").await?;
+    ensure_member_with_role(pool, mintmallow_org.id, spearmint_id, "admin").await?;
+    ensure_member_with_role(pool, mintmallow_org.id, lulu_id, "member").await?;
     // Enable MFA requirement for mintmallow-test (mirrors demo mintmallow)
     sqlx::query("UPDATE organizations SET require_mfa = true WHERE id = $1")
         .bind(mintmallow_org.id)
@@ -196,7 +264,7 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
 
     // ── Seed OAuth clients for OIDC tests ─────────────────────────────────────
     for (client_id, org_id) in [
-        ("test-roochoco-portal-spa",  roochoco_org.id),
+        ("test-roochoco-portal-spa", roochoco_org.id),
         ("test-mintmallow-portal-spa", mintmallow_org.id),
     ] {
         let client_row = sqlx::query(
@@ -226,7 +294,10 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
     }
 
     // Mark setup as completed so setup endpoints require platform_owner (not just loopback)
-    for (key, val) in [("setup_completed", "true"), ("superuser_email", TEST_OWNER_EMAIL)] {
+    for (key, val) in [
+        ("setup_completed", "true"),
+        ("superuser_email", TEST_OWNER_EMAIL),
+    ] {
         sqlx::query(
             "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2"
         )
@@ -235,8 +306,11 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
 
     tracing::info!(
         "Test seed complete: owner={} admin={} tenant={} roochoco={} mintmallow={}",
-        TEST_OWNER_EMAIL, TEST_ADMIN_EMAIL, TEST_TENANT_EMAIL,
-        TEST_ROOCHOCO_SLUG, TEST_MINTMALLOW_SLUG,
+        TEST_OWNER_EMAIL,
+        TEST_ADMIN_EMAIL,
+        TEST_TENANT_EMAIL,
+        TEST_ROOCHOCO_SLUG,
+        TEST_MINTMALLOW_SLUG,
     );
 
     Ok(())
@@ -246,15 +320,15 @@ pub async fn seed_test_data(pool: &PgPool) -> Result<(), anyhow::Error> {
 
 async fn seed_rbac_baseline(pool: &PgPool) -> Result<(), anyhow::Error> {
     for (code, description) in [
-        ("org:update",        "Can update organization settings"),
-        ("org:delete",        "Can delete the organization"),
-        ("members:read",      "Can view members"),
-        ("members:invite",    "Can invite new members"),
-        ("members:remove",    "Can remove members"),
-        ("roles:manage",      "Can manage custom roles and assign them"),
-        ("branding:manage",   "Can manage workspace branding"),
-        ("auth_policy:manage","Can manage workspace sign-in policy"),
-        ("activity:read",     "Can view workspace activity"),
+        ("org:update", "Can update organization settings"),
+        ("org:delete", "Can delete the organization"),
+        ("members:read", "Can view members"),
+        ("members:invite", "Can invite new members"),
+        ("members:remove", "Can remove members"),
+        ("roles:manage", "Can manage custom roles and assign them"),
+        ("branding:manage", "Can manage workspace branding"),
+        ("auth_policy:manage", "Can manage workspace sign-in policy"),
+        ("activity:read", "Can view workspace activity"),
     ] {
         sqlx::query(
             "INSERT INTO permissions (code, description) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING",
@@ -263,11 +337,11 @@ async fn seed_rbac_baseline(pool: &PgPool) -> Result<(), anyhow::Error> {
     }
 
     for (id, code, name) in [
-        ("00000000-0000-0000-0000-000000000001", "owner",   "Owner"),
-        ("00000000-0000-0000-0000-000000000002", "admin",   "Admin"),
-        ("00000000-0000-0000-0000-000000000003", "member",  "Member"),
+        ("00000000-0000-0000-0000-000000000001", "owner", "Owner"),
+        ("00000000-0000-0000-0000-000000000002", "admin", "Admin"),
+        ("00000000-0000-0000-0000-000000000003", "member", "Member"),
         ("00000000-0000-0000-0000-000000000004", "manager", "Manager"),
-        ("00000000-0000-0000-0000-000000000005", "viewer",  "Viewer"),
+        ("00000000-0000-0000-0000-000000000005", "viewer", "Viewer"),
     ] {
         sqlx::query(
             "INSERT INTO roles (id, code, name, is_system) VALUES ($1::uuid, $2, $3, true) ON CONFLICT (id) DO NOTHING",
@@ -276,11 +350,42 @@ async fn seed_rbac_baseline(pool: &PgPool) -> Result<(), anyhow::Error> {
     }
 
     for (role_id, codes) in [
-        ("00000000-0000-0000-0000-000000000001", vec!["org:update","org:delete","members:read","members:invite","members:remove","roles:manage","branding:manage","auth_policy:manage","activity:read"]),
-        ("00000000-0000-0000-0000-000000000002", vec!["org:update","members:read","members:invite","members:remove","roles:manage","branding:manage","auth_policy:manage","activity:read"]),
+        (
+            "00000000-0000-0000-0000-000000000001",
+            vec![
+                "org:update",
+                "org:delete",
+                "members:read",
+                "members:invite",
+                "members:remove",
+                "roles:manage",
+                "branding:manage",
+                "auth_policy:manage",
+                "activity:read",
+            ],
+        ),
+        (
+            "00000000-0000-0000-0000-000000000002",
+            vec![
+                "org:update",
+                "members:read",
+                "members:invite",
+                "members:remove",
+                "roles:manage",
+                "branding:manage",
+                "auth_policy:manage",
+                "activity:read",
+            ],
+        ),
         ("00000000-0000-0000-0000-000000000003", vec!["members:read"]),
-        ("00000000-0000-0000-0000-000000000004", vec!["members:read","members:invite","activity:read"]),
-        ("00000000-0000-0000-0000-000000000005", vec!["members:read","activity:read"]),
+        (
+            "00000000-0000-0000-0000-000000000004",
+            vec!["members:read", "members:invite", "activity:read"],
+        ),
+        (
+            "00000000-0000-0000-0000-000000000005",
+            vec!["members:read", "activity:read"],
+        ),
     ] {
         for code in codes {
             sqlx::query(
@@ -288,7 +393,10 @@ async fn seed_rbac_baseline(pool: &PgPool) -> Result<(), anyhow::Error> {
                    SELECT $1::uuid, id FROM permissions WHERE code = $2
                    ON CONFLICT DO NOTHING"#,
             )
-            .bind(role_id).bind(code).execute(pool).await?;
+            .bind(role_id)
+            .bind(code)
+            .execute(pool)
+            .await?;
         }
     }
 
@@ -390,14 +498,14 @@ async fn ensure_member_with_role(
 ///
 /// Format: (email, display_name, default_org_slug)
 pub const TEST_IDENTITIES: &[(&str, &str, &str)] = &[
-    ("pixel@neoncat.test",      "Pixel",   "neoncat"),
-    ("boba@sweetdrop.test",     "Boba",    "sweetdrop"),
-    ("lumi@starjelly.test",     "Lumi",    "starjelly"),
-    ("coco@fizzpop.test",       "Coco",    "fizzpop"),
-    ("nova@moonpetal.test",     "Nova",    "moonpetal"),
-    ("zara@cloudberry.test",    "Zara",    "cloudberry"),
-    ("kiki@tinybubble.test",    "Kiki",    "tinybubble"),
-    ("luna@pastelwave.test",    "Luna",    "pastelwave"),
-    ("remy@sugarbloom.test",    "Remy",    "sugarbloom"),
-    ("ivy@dewdrop.test",        "Ivy",     "dewdrop"),
+    ("pixel@neoncat.test", "Pixel", "neoncat"),
+    ("boba@sweetdrop.test", "Boba", "sweetdrop"),
+    ("lumi@starjelly.test", "Lumi", "starjelly"),
+    ("coco@fizzpop.test", "Coco", "fizzpop"),
+    ("nova@moonpetal.test", "Nova", "moonpetal"),
+    ("zara@cloudberry.test", "Zara", "cloudberry"),
+    ("kiki@tinybubble.test", "Kiki", "tinybubble"),
+    ("luna@pastelwave.test", "Luna", "pastelwave"),
+    ("remy@sugarbloom.test", "Remy", "sugarbloom"),
+    ("ivy@dewdrop.test", "Ivy", "dewdrop"),
 ];

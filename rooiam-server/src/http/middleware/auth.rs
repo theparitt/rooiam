@@ -1,6 +1,7 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    http::header, Error as ActixError, HttpMessage,
+    http::header,
+    Error as ActixError, HttpMessage,
 };
 use std::future::{ready, Future, Ready};
 use std::pin::Pin;
@@ -8,12 +9,17 @@ use std::rc::Rc;
 
 use crate::bootstrap::state::AppState;
 use crate::modules::audit::service::{AuditEvent, AuditService};
-use crate::modules::session::{cookie::ROOIAM_SESSION_COOKIE, repository::SessionRepository, service::SessionService};
 use crate::modules::organization::repository::OrganizationRepository;
+use crate::modules::session::{
+    cookie::ROOIAM_SESSION_COOKIE, repository::SessionRepository, service::SessionService,
+};
 use crate::shared::error::AppError;
+use crate::shared::ip_policy::{
+    access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_user,
+    IpAccessDecision,
+};
 use crate::shared::request_ip::client_ip_from_service_request;
 use crate::shared::request_ip::client_ip_string_from_service_request;
-use crate::shared::ip_policy::{access_denied_message, evaluate_ip_access, resolve_effective_ip_policy_for_user, IpAccessDecision};
 use actix_web::ResponseError;
 
 pub struct RequireAuth;
@@ -91,7 +97,9 @@ where
                 Some(st) => st,
                 None => {
                     return Ok(req.into_response(
-                        AppError::Internal("AppState not found".to_string()).error_response().map_into_right_body()
+                        AppError::Internal("AppState not found".to_string())
+                            .error_response()
+                            .map_into_right_body(),
                     ));
                 }
             };
@@ -102,7 +110,9 @@ where
                 None => {
                     log_cookie_conflict_if_present(&req);
                     return Ok(req.into_response(
-                        AppError::Unauthorized.error_response().map_into_right_body()
+                        AppError::Unauthorized
+                            .error_response()
+                            .map_into_right_body(),
                     ));
                 }
             };
@@ -115,43 +125,49 @@ where
             match session_service.verify_opaque_session(token_string).await {
                 Ok(active_session) => {
                     // Cap User-Agent length to prevent excessive storage in audit logs
-                    let user_agent = req.headers().get("user-agent")
+                    let user_agent = req
+                        .headers()
+                        .get("user-agent")
                         .and_then(|h| h.to_str().ok())
                         .map(|ua| &ua[..ua.len().min(512)]);
                     let ip = client_ip_from_service_request(&req, app_state.config.as_ref());
-                    let ip_string = client_ip_string_from_service_request(&req, app_state.config.as_ref());
+                    let ip_string =
+                        client_ip_string_from_service_request(&req, app_state.config.as_ref());
 
                     match evaluate_ip_access(
                         &resolve_effective_ip_policy_for_user(
                             &app_state.db,
                             active_session.is_superuser,
                             active_session.current_org_id,
-                        ).await?,
+                        )
+                        .await?,
                         ip,
                     )? {
                         IpAccessDecision::Allowed => {}
                         decision => {
-                            AuditService::new(app_state.db.clone()).log(AuditEvent {
-                                actor_user_id: Some(active_session.user_id),
-                                organization_id: active_session.current_org_id,
-                                action: "auth.ip_policy.blocked".into(),
-                                target_type: "ip_policy".into(),
-                                target_id: None,
-                                ip: ip_string,
-                                user_agent: user_agent.map(String::from),
-                                metadata: serde_json::json!({
-                                    "reason": match &decision {
-                                        IpAccessDecision::Blocked { reason, .. } => reason,
-                                        IpAccessDecision::Allowed => "allowed",
-                                    },
-                                    "current_org_id": active_session.current_org_id,
-                                }),
-                            }).await;
+                            AuditService::new(app_state.db.clone())
+                                .log(AuditEvent {
+                                    actor_user_id: Some(active_session.user_id),
+                                    organization_id: active_session.current_org_id,
+                                    action: "auth.ip_policy.blocked".into(),
+                                    target_type: "ip_policy".into(),
+                                    target_id: None,
+                                    ip: ip_string,
+                                    user_agent: user_agent.map(String::from),
+                                    metadata: serde_json::json!({
+                                        "reason": match &decision {
+                                            IpAccessDecision::Blocked { reason, .. } => reason,
+                                            IpAccessDecision::Allowed => "allowed",
+                                        },
+                                        "current_org_id": active_session.current_org_id,
+                                    }),
+                                })
+                                .await;
 
                             return Ok(req.into_response(
                                 AppError::Forbidden(access_denied_message(&decision).into())
                                     .error_response()
-                                    .map_into_right_body()
+                                    .map_into_right_body(),
                             ));
                         }
                     }
@@ -166,14 +182,17 @@ where
                         .unwrap_or_else(|e| { tracing::warn!("Failed to read tenant_idle_timeout_minutes: {e}"); None })
                         .unwrap_or(0);
 
-                            if effective_idle_mins > 0 {
-                                let idle = chrono::Utc::now() - active_session.last_seen_at;
-                                if idle.num_minutes() >= effective_idle_mins {
-                                    let _ = session_repo.revoke_session(active_session.session_id).await;
-                                    log_cookie_conflict_if_present(&req);
-                                    return Ok(req.into_response(
-                                        AppError::Unauthorized.error_response().map_into_right_body()
-                                    ));
+                        if effective_idle_mins > 0 {
+                            let idle = chrono::Utc::now() - active_session.last_seen_at;
+                            if idle.num_minutes() >= effective_idle_mins {
+                                let _ =
+                                    session_repo.revoke_session(active_session.session_id).await;
+                                log_cookie_conflict_if_present(&req);
+                                return Ok(req.into_response(
+                                    AppError::Unauthorized
+                                        .error_response()
+                                        .map_into_right_body(),
+                                ));
                             }
                         }
                     } else if active_session.is_superuser {
@@ -185,14 +204,17 @@ where
                         .unwrap_or_else(|e| { tracing::warn!("Failed to read idle_timeout_minutes: {e}"); None })
                         .unwrap_or(0);
 
-                            if effective_idle_mins > 0 {
-                                let idle = chrono::Utc::now() - active_session.last_seen_at;
-                                if idle.num_minutes() >= effective_idle_mins {
-                                    let _ = session_repo.revoke_session(active_session.session_id).await;
-                                    log_cookie_conflict_if_present(&req);
-                                    return Ok(req.into_response(
-                                        AppError::Unauthorized.error_response().map_into_right_body()
-                                    ));
+                        if effective_idle_mins > 0 {
+                            let idle = chrono::Utc::now() - active_session.last_seen_at;
+                            if idle.num_minutes() >= effective_idle_mins {
+                                let _ =
+                                    session_repo.revoke_session(active_session.session_id).await;
+                                log_cookie_conflict_if_present(&req);
+                                return Ok(req.into_response(
+                                    AppError::Unauthorized
+                                        .error_response()
+                                        .map_into_right_body(),
+                                ));
                             }
                         }
                     } else if let Some(org_id) = active_session.current_org_id {
@@ -206,16 +228,21 @@ where
                             if let Some(max_hours) = org.max_session_age_hours {
                                 let age = now - active_session.created_at;
                                 if age.num_hours() >= i64::from(max_hours) {
-                                    let _ = session_repo.revoke_session(active_session.session_id).await;
+                                    let _ = session_repo
+                                        .revoke_session(active_session.session_id)
+                                        .await;
                                     log_cookie_conflict_if_present(&req);
                                     return Ok(req.into_response(
-                                        AppError::Unauthorized.error_response().map_into_right_body()
+                                        AppError::Unauthorized
+                                            .error_response()
+                                            .map_into_right_body(),
                                     ));
                                 }
                             }
 
                             // Idle timeout — org override first, then platform default
-                            let idle_mins: i64 = org.idle_timeout_minutes
+                            let idle_mins: i64 = org
+                                .idle_timeout_minutes
                                 .map(|v| v as i64)
                                 .unwrap_or_else(|| {
                                     // fallback: read platform setting (fire-and-forget, default 0 = disabled)
@@ -238,10 +265,14 @@ where
                             if effective_idle_mins > 0 {
                                 let idle = now - active_session.last_seen_at;
                                 if idle.num_minutes() >= effective_idle_mins {
-                                    let _ = session_repo.revoke_session(active_session.session_id).await;
+                                    let _ = session_repo
+                                        .revoke_session(active_session.session_id)
+                                        .await;
                                     log_cookie_conflict_if_present(&req);
                                     return Ok(req.into_response(
-                                        AppError::Unauthorized.error_response().map_into_right_body()
+                                        AppError::Unauthorized
+                                            .error_response()
+                                            .map_into_right_body(),
                                     ));
                                 }
                             }
@@ -250,28 +281,33 @@ where
 
                     // Session binding: detect device-class / subnet changes
                     if let Some(stored_fp) = &active_session.session_fingerprint {
-                        let current_fp = crate::shared::session_fingerprint::compute(user_agent, ip);
+                        let current_fp =
+                            crate::shared::session_fingerprint::compute(user_agent, ip);
                         if &current_fp != stored_fp {
-                            AuditService::new(app_state.db.clone()).log(AuditEvent {
-                                actor_user_id: Some(active_session.user_id),
-                                organization_id: active_session.current_org_id,
-                                action: "auth.session.binding_mismatch".into(),
-                                target_type: "session".into(),
-                                target_id: Some(active_session.session_id.to_string()),
-                                ip: ip_string.clone(),
-                                user_agent: user_agent.map(String::from),
-                                metadata: serde_json::json!({
-                                    "session_id": active_session.session_id,
-                                }),
-                            }).await;
+                            AuditService::new(app_state.db.clone())
+                                .log(AuditEvent {
+                                    actor_user_id: Some(active_session.user_id),
+                                    organization_id: active_session.current_org_id,
+                                    action: "auth.session.binding_mismatch".into(),
+                                    target_type: "session".into(),
+                                    target_id: Some(active_session.session_id.to_string()),
+                                    ip: ip_string.clone(),
+                                    user_agent: user_agent.map(String::from),
+                                    metadata: serde_json::json!({
+                                        "session_id": active_session.session_id,
+                                    }),
+                                })
+                                .await;
                         }
                     }
 
-                    let _ = session_repo.touch_session(active_session.session_id, user_agent, ip).await;
+                    let _ = session_repo
+                        .touch_session(active_session.session_id, user_agent, ip)
+                        .await;
 
                     // Inject ActiveSession into request extensions
                     req.extensions_mut().insert(active_session);
-                    
+
                     let res = srv.call(req).await?;
                     Ok(res.map_into_left_body())
                 }
@@ -279,7 +315,9 @@ where
                     // Invalid or expired session
                     log_cookie_conflict_if_present(&req);
                     Ok(req.into_response(
-                        AppError::Unauthorized.error_response().map_into_right_body()
+                        AppError::Unauthorized
+                            .error_response()
+                            .map_into_right_body(),
                     ))
                 }
             }
@@ -288,7 +326,9 @@ where
 }
 
 // Extractor helper to get session in handlers
-pub fn extract_session(req: &actix_web::HttpRequest) -> Result<crate::modules::session::models::ActiveSession, AppError> {
+pub fn extract_session(
+    req: &actix_web::HttpRequest,
+) -> Result<crate::modules::session::models::ActiveSession, AppError> {
     req.extensions()
         .get::<crate::modules::session::models::ActiveSession>()
         .cloned()

@@ -101,7 +101,8 @@ where
             if !headers.contains_key(&csp_header) {
                 headers.insert(
                     csp_header,
-                    HeaderValue::from_str(csp).unwrap_or(HeaderValue::from_static("default-src 'none'")),
+                    HeaderValue::from_str(csp)
+                        .unwrap_or(HeaderValue::from_static("default-src 'none'")),
                 );
             }
 

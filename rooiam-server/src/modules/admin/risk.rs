@@ -190,7 +190,12 @@ pub async fn list_platform_security_alert_reviews(
     )
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load platform security alert reviews: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load platform security alert reviews: {}",
+            e
+        ))
+    })?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
 }
 
@@ -246,10 +251,17 @@ pub async fn reset_platform_security_alert_reviews(
 ) -> Result<HttpResponse, AppError> {
     let actor = extract_session(&req)?;
     ensure_platform_staff(&req, &state).await?;
-    sqlx::query("DELETE FROM security_alert_reviews WHERE scope_type = 'platform' AND scope_id IS NULL")
-        .execute(&state.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to reset platform security alert reviews: {}", e)))?;
+    sqlx::query(
+        "DELETE FROM security_alert_reviews WHERE scope_type = 'platform' AND scope_id IS NULL",
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to reset platform security alert reviews: {}",
+            e
+        ))
+    })?;
 
     AuditService::new(state.db.clone())
         .log(AuditEvent {

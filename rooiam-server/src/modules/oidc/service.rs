@@ -1,31 +1,42 @@
-use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use uuid::Uuid;
-use chrono::{Duration, Utc};
-use serde_json::json;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::{rngs::OsRng, RngCore};
-use sha2::{Digest, Sha256};
+use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use rand::{rngs::OsRng, RngCore};
 use rsa::{pkcs8::DecodePublicKey, traits::PublicKeyParts, RsaPublicKey};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::bootstrap::config::AppConfig;
+use crate::shared::client_policy::{
+    effective_client_policy, is_client_type_allowed, load_platform_client_governance,
+    load_tenant_client_policy,
+};
 use crate::shared::error::AppError;
-use crate::shared::client_policy::{effective_client_policy, is_client_type_allowed, load_platform_client_governance, load_tenant_client_policy};
 
 /// Load the effective access token TTL (minutes) and refresh token TTL (days) for an org.
 /// Uses the org's override if set, falling back to the platform system_settings value.
 async fn effective_token_ttls(db: &PgPool, org_id: Option<Uuid>) -> (i64, i64) {
     let platform_at: i64 = sqlx::query_scalar::<_, i64>(
-        "SELECT value::bigint FROM system_settings WHERE key = 'oidc_access_token_ttl_minutes'"
+        "SELECT value::bigint FROM system_settings WHERE key = 'oidc_access_token_ttl_minutes'",
     )
-    .fetch_optional(db).await.ok().flatten().unwrap_or(60);
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(60);
 
     let platform_rt: i64 = sqlx::query_scalar::<_, i64>(
-        "SELECT value::bigint FROM system_settings WHERE key = 'refresh_token_ttl_days'"
+        "SELECT value::bigint FROM system_settings WHERE key = 'refresh_token_ttl_days'",
     )
-    .fetch_optional(db).await.ok().flatten().unwrap_or(30);
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(30);
 
     let Some(oid) = org_id else {
         return (platform_at, platform_rt);
@@ -37,12 +48,14 @@ async fn effective_token_ttls(db: &PgPool, org_id: Option<Uuid>) -> (i64, i64) {
     )
     .fetch_optional(db).await.ok().flatten();
 
-    let at = row.as_ref()
+    let at = row
+        .as_ref()
         .and_then(|r| r.oidc_access_token_ttl_minutes)
         .map(|v| v as i64)
         .unwrap_or(platform_at);
 
-    let rt = row.as_ref()
+    let rt = row
+        .as_ref()
         .and_then(|r| r.refresh_token_ttl_days)
         .map(|v| v as i64)
         .unwrap_or(platform_rt);
@@ -120,15 +133,23 @@ impl OIDCService {
             let platform = load_platform_client_governance(&self.db).await?;
             let tenant = load_tenant_client_policy(&self.db, org_id).await?;
             let effective = effective_client_policy(&platform, &tenant);
-            if !effective.allow_client_management || !is_client_type_allowed(&effective, &client.app_type) {
-                return Err(AppError::Validation("Client is disabled by workspace or platform policy".into()));
+            if !effective.allow_client_management
+                || !is_client_type_allowed(&effective, &client.app_type)
+            {
+                return Err(AppError::Validation(
+                    "Client is disabled by workspace or platform policy".into(),
+                ));
             }
         }
 
         Ok(client)
     }
 
-    pub async fn validate_redirect_uri(&self, client_id: Uuid, uri: &str) -> Result<bool, AppError> {
+    pub async fn validate_redirect_uri(
+        &self,
+        client_id: Uuid,
+        uri: &str,
+    ) -> Result<bool, AppError> {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM oauth_client_redirect_uris WHERE oauth_client_id = $1 AND redirect_uri = $2)"
         )
@@ -141,13 +162,20 @@ impl OIDCService {
         Ok(exists)
     }
 
-    pub fn validate_client_secret(&self, client: &OAuthClientInternal, secret: &str) -> Result<(), AppError> {
-        let hash = client.client_secret_hash.as_deref().ok_or_else(|| AppError::Validation("Client has no secret configured".into()))?;
+    pub fn validate_client_secret(
+        &self,
+        client: &OAuthClientInternal,
+        secret: &str,
+    ) -> Result<(), AppError> {
+        let hash = client
+            .client_secret_hash
+            .as_deref()
+            .ok_or_else(|| AppError::Validation("Client has no secret configured".into()))?;
 
         // Verify with Argon2id. Argon2 uses constant-time comparison internally.
         // New clients are hashed with Argon2id (PHC string format starting with "$argon2id$").
         // Legacy clients hashed with SHA-256 (hex string) are no longer supported — regenerate.
-        use argon2::{Argon2, PasswordVerifier, password_hash::PasswordHash};
+        use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
         let parsed = PasswordHash::new(hash)
             .map_err(|_| AppError::Validation("Invalid client_secret".into()))?;
         Argon2::default()
@@ -211,11 +239,12 @@ impl OIDCService {
         hasher.update(plain_code.as_bytes());
         let code_hash = hex::encode(hasher.finalize());
 
-        let mut tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to start authorization code exchange transaction: {}", e)))?;
+        let mut tx = self.db.begin().await.map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to start authorization code exchange transaction: {}",
+                e
+            ))
+        })?;
 
         let code_record = sqlx::query!(
             r#"
@@ -240,7 +269,9 @@ impl OIDCService {
         }
 
         if code_record.used_at.is_some() {
-            return Err(AppError::Validation("Authorization code already used".into()));
+            return Err(AppError::Validation(
+                "Authorization code already used".into(),
+            ));
         }
 
         if Utc::now() > code_record.expires_at {
@@ -250,16 +281,18 @@ impl OIDCService {
         // PKCE verification
         if let Some(challenge_method) = code_record.code_challenge_method {
             if challenge_method == "S256" {
-                let verifier = code_verifier.ok_or_else(|| AppError::Validation("Missing 'code_verifier'".into()))?;
+                let verifier = code_verifier
+                    .ok_or_else(|| AppError::Validation("Missing 'code_verifier'".into()))?;
                 let mut pkce_hasher = Sha256::new();
                 pkce_hasher.update(verifier.as_bytes());
                 let computed_challenge = URL_SAFE_NO_PAD.encode(pkce_hasher.finalize());
-                
+
                 if Some(computed_challenge) != code_record.code_challenge {
                     return Err(AppError::Validation("Invalid PKCE code_verifier".into()));
                 }
             } else if challenge_method == "plain" {
-                let verifier = code_verifier.ok_or_else(|| AppError::Validation("Missing 'code_verifier'".into()))?;
+                let verifier = code_verifier
+                    .ok_or_else(|| AppError::Validation("Missing 'code_verifier'".into()))?;
                 if Some(verifier.to_string()) != code_record.code_challenge {
                     return Err(AppError::Validation("Invalid PKCE code_verifier".into()));
                 }
@@ -271,24 +304,30 @@ impl OIDCService {
             .bind(code_record.id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to mark authorization code as used: {}", e)))?;
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to mark authorization code as used: {}", e))
+            })?;
 
         // Generate Access Token (JWT for this example, signed with JWT_SECRET)
         // In a real OIDC server, we'd use RSA keys instead of symmetric, but this works for MVP.
         let now = Utc::now();
-        let (public_client_id, client_org_id): (String, Option<uuid::Uuid>) = sqlx::query_as(
-            "SELECT client_id, org_id FROM oauth_clients WHERE id = $1"
-        )
-        .bind(client_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load OAuth client metadata during token exchange: {}", e)))?;
+        let (public_client_id, client_org_id): (String, Option<uuid::Uuid>) =
+            sqlx::query_as("SELECT client_id, org_id FROM oauth_clients WHERE id = $1")
+                .bind(client_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to load OAuth client metadata during token exchange: {}",
+                        e
+                    ))
+                })?;
 
         let (at_ttl_minutes, rt_ttl_days) = effective_token_ttls(&self.db, client_org_id).await;
         let expiration = now + Duration::minutes(at_ttl_minutes);
 
-        crate::modules::audit::service::AuditService::new(self.db.clone()).log(
-            crate::modules::audit::service::AuditEvent {
+        crate::modules::audit::service::AuditService::new(self.db.clone())
+            .log(crate::modules::audit::service::AuditEvent {
                 actor_user_id: Some(code_record.user_id),
                 organization_id: client_org_id,
                 action: "oauth.token.issued".into(),
@@ -297,8 +336,8 @@ impl OIDCService {
                 ip: None,
                 user_agent: None,
                 metadata: serde_json::json!({ "scopes": code_record.scopes }),
-            }
-        ).await;
+            })
+            .await;
 
         let claims = AccessTokenClaims {
             iss: self.config.server.issuer_url.clone(),
@@ -353,18 +392,28 @@ impl OIDCService {
                     FROM users u
                     LEFT JOIN user_emails e ON e.user_id = u.id AND e.is_primary = true
                     WHERE u.id = $1
-                    "#
+                    "#,
                 )
                 .bind(code_record.user_id)
                 .fetch_optional(&mut *tx)
                 .await
-                .map_err(|e| AppError::Internal(format!("Failed to load user profile for ID token: {}", e)))?;
+                .map_err(|e| {
+                    AppError::Internal(format!("Failed to load user profile for ID token: {}", e))
+                })?;
 
                 match profile {
                     Some(p) => (
                         if include_email { p.email } else { None },
-                        if include_email { Some(p.is_verified.unwrap_or(false)) } else { None },
-                        if include_profile { p.display_name } else { None },
+                        if include_email {
+                            Some(p.is_verified.unwrap_or(false))
+                        } else {
+                            None
+                        },
+                        if include_profile {
+                            p.display_name
+                        } else {
+                            None
+                        },
                         if include_profile { p.avatar_url } else { None },
                     ),
                     None => (None, None, None, None),
@@ -393,7 +442,7 @@ impl OIDCService {
         let mut rt_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut rt_bytes);
         let refresh_token = URL_SAFE_NO_PAD.encode(rt_bytes);
-        
+
         let mut rt_hasher = Sha256::new();
         rt_hasher.update(refresh_token.as_bytes());
         let rt_hash = hex::encode(rt_hasher.finalize());
@@ -416,9 +465,12 @@ impl OIDCService {
         .await
         .map_err(|e| AppError::Internal(format!("Failed to store refresh token during code exchange: {}", e)))?;
 
-        tx.commit()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to commit authorization code exchange: {}", e)))?;
+        tx.commit().await.map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to commit authorization code exchange: {}",
+                e
+            ))
+        })?;
 
         Ok(TokenResponse {
             access_token,
@@ -440,11 +492,12 @@ impl OIDCService {
         rt_hasher.update(plain_refresh_token.as_bytes());
         let token_hash = hex::encode(rt_hasher.finalize());
 
-        let mut tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to start refresh token exchange transaction: {}", e)))?;
+        let mut tx = self.db.begin().await.map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to start refresh token exchange transaction: {}",
+                e
+            ))
+        })?;
 
         #[derive(sqlx::FromRow)]
         struct RefreshTokenRecord {
@@ -480,14 +533,21 @@ impl OIDCService {
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to revoke reused refresh token family: {}", e)))?;
-            tx.commit()
-                .await
-                .map_err(|e| AppError::Internal(format!("Failed to commit refresh token family revocation: {}", e)))?;
-            return Err(AppError::Validation("Refresh token already used — all tokens in this session have been revoked".into()));
+            tx.commit().await.map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to commit refresh token family revocation: {}",
+                    e
+                ))
+            })?;
+            return Err(AppError::Validation(
+                "Refresh token already used — all tokens in this session have been revoked".into(),
+            ));
         }
 
         if record.oauth_client_id != client_id {
-            return Err(AppError::Validation("Refresh token issued to another client".into()));
+            return Err(AppError::Validation(
+                "Refresh token issued to another client".into(),
+            ));
         }
 
         if Utc::now() > record.expires_at {
@@ -499,17 +559,26 @@ impl OIDCService {
             .bind(record.id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to revoke the previous refresh token: {}", e)))?;
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to revoke the previous refresh token: {}",
+                    e
+                ))
+            })?;
 
         // Issue new access token
         let now = Utc::now();
-        let (public_client_id, client_org_id): (String, Option<uuid::Uuid>) = sqlx::query_as(
-            "SELECT client_id, org_id FROM oauth_clients WHERE id = $1"
-        )
-        .bind(client_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load OAuth client metadata during refresh token exchange: {}", e)))?;
+        let (public_client_id, client_org_id): (String, Option<uuid::Uuid>) =
+            sqlx::query_as("SELECT client_id, org_id FROM oauth_clients WHERE id = $1")
+                .bind(client_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to load OAuth client metadata during refresh token exchange: {}",
+                        e
+                    ))
+                })?;
 
         let (at_ttl_minutes, rt_ttl_days) = effective_token_ttls(&self.db, client_org_id).await;
         let expiration = now + Duration::minutes(at_ttl_minutes);
@@ -553,8 +622,8 @@ impl OIDCService {
         .await
         .map_err(|e| AppError::Internal(format!("Failed to store rotated refresh token: {}", e)))?;
 
-        crate::modules::audit::service::AuditService::new(self.db.clone()).log(
-            crate::modules::audit::service::AuditEvent {
+        crate::modules::audit::service::AuditService::new(self.db.clone())
+            .log(crate::modules::audit::service::AuditEvent {
                 actor_user_id: Some(record.user_id),
                 organization_id: client_org_id,
                 action: "oauth.token.refreshed".into(),
@@ -563,12 +632,12 @@ impl OIDCService {
                 ip: None,
                 user_agent: None,
                 metadata: serde_json::json!({ "scopes": record.scopes }),
-            }
-        ).await;
+            })
+            .await;
 
-        tx.commit()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to commit refresh token exchange: {}", e)))?;
+        tx.commit().await.map_err(|e| {
+            AppError::Internal(format!("Failed to commit refresh token exchange: {}", e))
+        })?;
 
         Ok(TokenResponse {
             access_token,
@@ -590,11 +659,12 @@ impl OIDCService {
         rt_hasher.update(plain_refresh_token.as_bytes());
         let token_hash = hex::encode(rt_hasher.finalize());
 
-        let mut tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to start refresh token revocation transaction: {}", e)))?;
+        let mut tx = self.db.begin().await.map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to start refresh token revocation transaction: {}",
+                e
+            ))
+        })?;
 
         #[derive(sqlx::FromRow)]
         struct RefreshTokenRecord {
@@ -608,24 +678,35 @@ impl OIDCService {
             SELECT id, oauth_client_id, revoked_at
             FROM oauth_refresh_tokens
             WHERE token_hash = $1
-            "#
+            "#,
         )
         .bind(&token_hash)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to load refresh token for revocation: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to load refresh token for revocation: {}",
+                e
+            ))
+        })?;
 
         let Some(record) = record else {
-            tx.commit()
-                .await
-                .map_err(|e| AppError::Internal(format!("Failed to commit empty refresh token revocation: {}", e)))?;
+            tx.commit().await.map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to commit empty refresh token revocation: {}",
+                    e
+                ))
+            })?;
             return Ok(());
         };
 
         if record.oauth_client_id != client_id {
-            tx.commit()
-                .await
-                .map_err(|e| AppError::Internal(format!("Failed to commit foreign-client refresh token revocation: {}", e)))?;
+            tx.commit().await.map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to commit foreign-client refresh token revocation: {}",
+                    e
+                ))
+            })?;
             return Ok(());
         }
 
@@ -634,12 +715,14 @@ impl OIDCService {
                 .bind(record.id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| AppError::Internal(format!("Failed to revoke refresh token: {}", e)))?;
+                .map_err(|e| {
+                    AppError::Internal(format!("Failed to revoke refresh token: {}", e))
+                })?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to commit refresh token revocation: {}", e)))?;
+        tx.commit().await.map_err(|e| {
+            AppError::Internal(format!("Failed to commit refresh token revocation: {}", e))
+        })?;
         Ok(())
     }
 
@@ -667,28 +750,40 @@ impl OIDCService {
             SELECT oauth_client_id, user_id, session_id, scopes, expires_at, revoked_at
             FROM oauth_refresh_tokens
             WHERE token_hash = $1
-            "#
+            "#,
         )
         .bind(&token_hash)
         .fetch_optional(&self.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to load refresh token for introspection: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to load refresh token for introspection: {}",
+                e
+            ))
+        })?;
 
         let Some(record) = record else {
             return Ok(json!({ "active": false }));
         };
 
-        if record.oauth_client_id != client_id || record.revoked_at.is_some() || Utc::now() > record.expires_at {
+        if record.oauth_client_id != client_id
+            || record.revoked_at.is_some()
+            || Utc::now() > record.expires_at
+        {
             return Ok(json!({ "active": false }));
         }
 
-        let (public_client_id,): (String,) = sqlx::query_as(
-            "SELECT client_id FROM oauth_clients WHERE id = $1"
-        )
-        .bind(client_id)
-        .fetch_one(&self.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load OAuth client during token introspection: {}", e)))?;
+        let (public_client_id,): (String,) =
+            sqlx::query_as("SELECT client_id FROM oauth_clients WHERE id = $1")
+                .bind(client_id)
+                .fetch_one(&self.db)
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to load OAuth client during token introspection: {}",
+                        e
+                    ))
+                })?;
 
         Ok(json!({
             "active": true,
@@ -736,8 +831,10 @@ impl OIDCService {
 
         let claims = match oidc_signing_material(&self.config)? {
             SigningMaterial::Rsa { public_key_pem, .. } => {
-                let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
-                    .map_err(|e| AppError::Internal(format!("Invalid OIDC public key PEM: {}", e)))?;
+                let decoding_key =
+                    DecodingKey::from_rsa_pem(public_key_pem.as_bytes()).map_err(|e| {
+                        AppError::Internal(format!("Invalid OIDC public key PEM: {}", e))
+                    })?;
                 decode::<AccessTokenClaims>(token, &decoding_key, &validation)
                     .map_err(|_| AppError::Unauthorized)?
                     .claims
@@ -782,7 +879,10 @@ impl OIDCService {
         let include_profile = claims.scopes.iter().any(|scope| scope == "profile");
 
         let mut payload = serde_json::Map::new();
-        payload.insert("sub".into(), serde_json::Value::String(record.id.to_string()));
+        payload.insert(
+            "sub".into(),
+            serde_json::Value::String(record.id.to_string()),
+        );
 
         if include_email {
             if let Some(email) = record.email {
@@ -839,9 +939,12 @@ pub fn oidc_jwks(config: &AppConfig) -> Result<Vec<serde_json::Value>, AppError>
 
 /// Build JWKS from DB-managed signing keys (active + not-yet-expired retired keys).
 /// Falls back to `oidc_jwks` (config-based) when no DB keys exist.
-pub async fn oidc_jwks_from_db(db: &sqlx::PgPool, config: &AppConfig) -> Result<Vec<serde_json::Value>, AppError> {
+pub async fn oidc_jwks_from_db(
+    db: &sqlx::PgPool,
+    config: &AppConfig,
+) -> Result<Vec<serde_json::Value>, AppError> {
     let rollover_hours: i64 = sqlx::query_scalar(
-        "SELECT value::bigint FROM system_settings WHERE key = 'signing_key_rollover_hours'"
+        "SELECT value::bigint FROM system_settings WHERE key = 'signing_key_rollover_hours'",
     )
     .fetch_optional(db)
     .await
@@ -862,12 +965,17 @@ pub async fn oidc_jwks_from_db(db: &sqlx::PgPool, config: &AppConfig) -> Result<
         WHERE is_active = true
            OR (retired_at IS NOT NULL AND retired_at > NOW() - ($1 || ' hours')::interval)
         ORDER BY is_active DESC, created_at DESC
-        "#
+        "#,
     )
     .bind(rollover_hours)
     .fetch_all(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load OIDC signing keys from the database: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load OIDC signing keys from the database: {}",
+            e
+        ))
+    })?;
 
     if rows.is_empty() {
         // No DB keys — fall back to config-based keys
@@ -940,7 +1048,11 @@ fn oidc_signing_material(config: &AppConfig) -> Result<SigningMaterial, AppError
             })
         }
         _ => {
-            if config.oidc.signing_secret.starts_with("dev-oidc-signing-secret-") {
+            if config
+                .oidc
+                .signing_secret
+                .starts_with("dev-oidc-signing-secret-")
+            {
                 tracing::warn!("ROOIAM_OIDC_PRIVATE_KEY_* is not set; falling back to HS256 development signing");
             }
             Ok(SigningMaterial::Hmac {

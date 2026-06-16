@@ -122,13 +122,12 @@ fn is_safe_webhook_url(url: &str) -> bool {
 
 async fn dispatch_webhook(pool: &PgPool, payload: serde_json::Value) {
     // Read webhook URL from settings
-    let url: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM system_settings WHERE key = 'siem_webhook_url'"
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let url: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'siem_webhook_url'")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
 
     let url = match url {
         Some(u) if !u.trim().is_empty() => u.trim().to_string(),
@@ -141,13 +140,12 @@ async fn dispatch_webhook(pool: &PgPool, payload: serde_json::Value) {
         return;
     }
 
-    let secret: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM system_settings WHERE key = 'siem_webhook_secret'"
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let secret: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'siem_webhook_secret'")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
 
     let body = match serde_json::to_string(&payload) {
         Ok(b) => b,
@@ -171,7 +169,12 @@ async fn dispatch_webhook(pool: &PgPool, payload: serde_json::Value) {
         }
     }
 
-    match req.body(body).timeout(std::time::Duration::from_secs(5)).send().await {
+    match req
+        .body(body)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+    {
         Ok(resp) if resp.status().is_success() => {
             tracing::debug!("siem_webhook: delivered (status={})", resp.status());
         }

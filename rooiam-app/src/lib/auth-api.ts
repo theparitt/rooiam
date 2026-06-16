@@ -1,4 +1,4 @@
-import { getApiBase } from './api-base'
+import { apiFetch, getApiBase } from './api-base'
 import { RooiamBrowser, RooiamError } from '@rooiam/sdk-browser'
 
 // --- SDK transport ----------------------------------------------------------
@@ -75,8 +75,38 @@ export type TenantProfile = {
 export const tenantAuthApi = {
     updateProfile: (payload: { display_name?: string | null; avatar_url?: string | null }) =>
         viaSdk((s) => s.updateProfile(payload) as Promise<TenantProfile>),
-    uploadAvatar: (file: File) =>
-        viaSdk((s) => s.account.uploadAvatar(file) as Promise<{ url: string; user: TenantProfile }>),
+    uploadAvatar: async (file: File): Promise<{ url: string; user: TenantProfile }> => {
+        const formData = new FormData()
+        formData.append('file', file, file.name)
+
+        try {
+            const res = await apiFetch(`${getApiBase()}/identity/me/avatar/upload`, {
+                method: 'POST',
+                body: formData,
+            })
+
+            const data = await res.json().catch(() => ({})) as
+                | { url?: string; user?: TenantProfile; error?: { message?: string } }
+                | undefined
+
+            if (res.status === 401) {
+                throw new Error('UNAUTHORIZED')
+            }
+            if (res.status === 429) {
+                throw new Error('RATE_LIMITED')
+            }
+            if (!res.ok || !data?.url || !data.user) {
+                throw new Error(data?.error?.message || 'Could not upload avatar.')
+            }
+
+            return { url: data.url, user: data.user }
+        } catch (err) {
+            if (err instanceof TypeError) {
+                throw new Error(`Could not reach ${getApiBase()}. Check that the Rooiam API is running.`)
+            }
+            throw err
+        }
+    },
     passkeys: () => viaSdk((s) => s.passkeys.list() as Promise<TenantPasskey[]>),
     startPasskeyRegistration: () =>
         viaSdk((s) => s.passkeys.registerStart() as Promise<{ challenge_id: string; creation_options: { publicKey: unknown } }>),

@@ -94,7 +94,9 @@ impl PlatformWorkspaceGovernance {
     }
 }
 
-pub async fn load_platform_workspace_governance(db: &PgPool) -> Result<PlatformWorkspaceGovernance, AppError> {
+pub async fn load_platform_workspace_governance(
+    db: &PgPool,
+) -> Result<PlatformWorkspaceGovernance, AppError> {
     if crate::shared::demo_seed::demo_seed_enabled() {
         return Ok(PlatformWorkspaceGovernance {
             max_workspaces_per_user: Some(DEMO_MAX_WORKSPACES_PER_USER),
@@ -102,7 +104,9 @@ pub async fn load_platform_workspace_governance(db: &PgPool) -> Result<PlatformW
             max_redirect_uris_per_app_default: Some(DEMO_MAX_REDIRECT_URIS_PER_APP),
             max_redirect_uris_per_app_limit: Some(DEMO_MAX_REDIRECT_URIS_PER_APP_LIMIT),
             max_allowed_embed_origins_per_app_default: Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP),
-            max_allowed_embed_origins_per_app_limit: Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP_LIMIT),
+            max_allowed_embed_origins_per_app_limit: Some(
+                DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP_LIMIT,
+            ),
             hard_cap_workspaces_per_user: HARD_CAP_WORKSPACES_PER_USER,
             hard_cap_apps_per_workspace: HARD_CAP_APPS_PER_WORKSPACE,
             hard_cap_redirect_uris_per_app: HARD_CAP_REDIRECT_URIS_PER_APP,
@@ -113,10 +117,20 @@ pub async fn load_platform_workspace_governance(db: &PgPool) -> Result<PlatformW
     Ok(PlatformWorkspaceGovernance {
         max_workspaces_per_user: get_system_i32(db, "max_workspaces_per_user").await?,
         max_apps_per_workspace: get_system_i32(db, "max_apps_per_workspace").await?,
-        max_redirect_uris_per_app_default: get_system_i32(db, "max_redirect_uris_per_app_default").await?,
-        max_redirect_uris_per_app_limit: get_system_i32(db, "max_redirect_uris_per_app_limit").await?,
-        max_allowed_embed_origins_per_app_default: get_system_i32(db, "max_allowed_embed_origins_per_app_default").await?,
-        max_allowed_embed_origins_per_app_limit: get_system_i32(db, "max_allowed_embed_origins_per_app_limit").await?,
+        max_redirect_uris_per_app_default: get_system_i32(db, "max_redirect_uris_per_app_default")
+            .await?,
+        max_redirect_uris_per_app_limit: get_system_i32(db, "max_redirect_uris_per_app_limit")
+            .await?,
+        max_allowed_embed_origins_per_app_default: get_system_i32(
+            db,
+            "max_allowed_embed_origins_per_app_default",
+        )
+        .await?,
+        max_allowed_embed_origins_per_app_limit: get_system_i32(
+            db,
+            "max_allowed_embed_origins_per_app_limit",
+        )
+        .await?,
         hard_cap_workspaces_per_user: HARD_CAP_WORKSPACES_PER_USER,
         hard_cap_apps_per_workspace: HARD_CAP_APPS_PER_WORKSPACE,
         hard_cap_redirect_uris_per_app: HARD_CAP_REDIRECT_URIS_PER_APP,
@@ -129,18 +143,50 @@ pub async fn save_platform_workspace_governance(
     policy: &PlatformWorkspaceGovernance,
 ) -> Result<PlatformWorkspaceGovernance, AppError> {
     if crate::shared::demo_seed::demo_seed_enabled() {
-        set_system_optional_i32(db, "max_workspaces_per_user", Some(DEMO_MAX_WORKSPACES_PER_USER)).await?;
-        set_system_optional_i32(db, "max_apps_per_workspace", Some(DEMO_MAX_APPS_PER_WORKSPACE)).await?;
-        set_system_optional_i32(db, "max_redirect_uris_per_app_default", Some(DEMO_MAX_REDIRECT_URIS_PER_APP)).await?;
-        set_system_optional_i32(db, "max_redirect_uris_per_app_limit", Some(DEMO_MAX_REDIRECT_URIS_PER_APP_LIMIT)).await?;
-        set_system_optional_i32(db, "max_allowed_embed_origins_per_app_default", Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP)).await?;
-        set_system_optional_i32(db, "max_allowed_embed_origins_per_app_limit", Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP_LIMIT)).await?;
+        set_system_optional_i32(
+            db,
+            "max_workspaces_per_user",
+            Some(DEMO_MAX_WORKSPACES_PER_USER),
+        )
+        .await?;
+        set_system_optional_i32(
+            db,
+            "max_apps_per_workspace",
+            Some(DEMO_MAX_APPS_PER_WORKSPACE),
+        )
+        .await?;
+        set_system_optional_i32(
+            db,
+            "max_redirect_uris_per_app_default",
+            Some(DEMO_MAX_REDIRECT_URIS_PER_APP),
+        )
+        .await?;
+        set_system_optional_i32(
+            db,
+            "max_redirect_uris_per_app_limit",
+            Some(DEMO_MAX_REDIRECT_URIS_PER_APP_LIMIT),
+        )
+        .await?;
+        set_system_optional_i32(
+            db,
+            "max_allowed_embed_origins_per_app_default",
+            Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP),
+        )
+        .await?;
+        set_system_optional_i32(
+            db,
+            "max_allowed_embed_origins_per_app_limit",
+            Some(DEMO_MAX_ALLOWED_EMBED_ORIGINS_PER_APP_LIMIT),
+        )
+        .await?;
         return load_platform_workspace_governance(db).await;
     }
 
     if let Some(limit) = policy.max_workspaces_per_user {
         if limit < 1 {
-            return Err(AppError::Validation("Workspace limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "Workspace limit must be at least 1 when set.".into(),
+            ));
         }
         if limit > HARD_CAP_WORKSPACES_PER_USER {
             return Err(AppError::Validation(format!(
@@ -151,7 +197,9 @@ pub async fn save_platform_workspace_governance(
     }
     if let Some(limit) = policy.max_apps_per_workspace {
         if limit < 1 {
-            return Err(AppError::Validation("App limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "App limit must be at least 1 when set.".into(),
+            ));
         }
         if limit > HARD_CAP_APPS_PER_WORKSPACE {
             return Err(AppError::Validation(format!(
@@ -162,7 +210,9 @@ pub async fn save_platform_workspace_governance(
     }
     if let Some(limit) = policy.max_redirect_uris_per_app_limit {
         if limit < 1 {
-            return Err(AppError::Validation("App redirect URI max limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "App redirect URI max limit must be at least 1 when set.".into(),
+            ));
         }
         if limit > HARD_CAP_REDIRECT_URIS_PER_APP {
             return Err(AppError::Validation(format!(
@@ -173,7 +223,9 @@ pub async fn save_platform_workspace_governance(
     }
     if let Some(default_value) = policy.max_redirect_uris_per_app_default {
         if default_value < 1 {
-            return Err(AppError::Validation("Default app redirect URI limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "Default app redirect URI limit must be at least 1 when set.".into(),
+            ));
         }
         let max_limit = policy
             .max_redirect_uris_per_app_limit
@@ -188,7 +240,9 @@ pub async fn save_platform_workspace_governance(
     }
     if let Some(limit) = policy.max_allowed_embed_origins_per_app_limit {
         if limit < 1 {
-            return Err(AppError::Validation("App embed origin max limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "App embed origin max limit must be at least 1 when set.".into(),
+            ));
         }
         if limit > HARD_CAP_ALLOWED_EMBED_ORIGINS_PER_APP {
             return Err(AppError::Validation(format!(
@@ -199,7 +253,9 @@ pub async fn save_platform_workspace_governance(
     }
     if let Some(default_value) = policy.max_allowed_embed_origins_per_app_default {
         if default_value < 1 {
-            return Err(AppError::Validation("Default app embed origin limit must be at least 1 when set.".into()));
+            return Err(AppError::Validation(
+                "Default app embed origin limit must be at least 1 when set.".into(),
+            ));
         }
         let max_limit = policy
             .max_allowed_embed_origins_per_app_limit
@@ -213,12 +269,37 @@ pub async fn save_platform_workspace_governance(
         }
     }
 
-    set_system_optional_i32(db, "max_workspaces_per_user", policy.max_workspaces_per_user).await?;
+    set_system_optional_i32(
+        db,
+        "max_workspaces_per_user",
+        policy.max_workspaces_per_user,
+    )
+    .await?;
     set_system_optional_i32(db, "max_apps_per_workspace", policy.max_apps_per_workspace).await?;
-    set_system_optional_i32(db, "max_redirect_uris_per_app_default", policy.max_redirect_uris_per_app_default).await?;
-    set_system_optional_i32(db, "max_redirect_uris_per_app_limit", policy.max_redirect_uris_per_app_limit).await?;
-    set_system_optional_i32(db, "max_allowed_embed_origins_per_app_default", policy.max_allowed_embed_origins_per_app_default).await?;
-    set_system_optional_i32(db, "max_allowed_embed_origins_per_app_limit", policy.max_allowed_embed_origins_per_app_limit).await?;
+    set_system_optional_i32(
+        db,
+        "max_redirect_uris_per_app_default",
+        policy.max_redirect_uris_per_app_default,
+    )
+    .await?;
+    set_system_optional_i32(
+        db,
+        "max_redirect_uris_per_app_limit",
+        policy.max_redirect_uris_per_app_limit,
+    )
+    .await?;
+    set_system_optional_i32(
+        db,
+        "max_allowed_embed_origins_per_app_default",
+        policy.max_allowed_embed_origins_per_app_default,
+    )
+    .await?;
+    set_system_optional_i32(
+        db,
+        "max_allowed_embed_origins_per_app_limit",
+        policy.max_allowed_embed_origins_per_app_limit,
+    )
+    .await?;
     load_platform_workspace_governance(db).await
 }
 
@@ -227,8 +308,16 @@ pub async fn load_tenant_workspace_app_registration_governance(
     org_id: Uuid,
 ) -> Result<TenantWorkspaceAppRegistrationGovernance, AppError> {
     Ok(TenantWorkspaceAppRegistrationGovernance {
-        max_redirect_uris_per_app: get_system_i32(db, &format!("org:{}:max_redirect_uris_per_app", org_id)).await?,
-        max_allowed_embed_origins_per_app: get_system_i32(db, &format!("org:{}:max_allowed_embed_origins_per_app", org_id)).await?,
+        max_redirect_uris_per_app: get_system_i32(
+            db,
+            &format!("org:{}:max_redirect_uris_per_app", org_id),
+        )
+        .await?,
+        max_allowed_embed_origins_per_app: get_system_i32(
+            db,
+            &format!("org:{}:max_allowed_embed_origins_per_app", org_id),
+        )
+        .await?,
     })
 }
 
@@ -258,7 +347,12 @@ pub async fn save_tenant_workspace_app_registration_governance(
         }
     }
 
-    set_system_optional_i32(db, &format!("org:{}:max_redirect_uris_per_app", org_id), policy.max_redirect_uris_per_app).await?;
+    set_system_optional_i32(
+        db,
+        &format!("org:{}:max_redirect_uris_per_app", org_id),
+        policy.max_redirect_uris_per_app,
+    )
+    .await?;
     set_system_optional_i32(
         db,
         &format!("org:{}:max_allowed_embed_origins_per_app", org_id),
@@ -284,18 +378,30 @@ pub async fn load_effective_workspace_app_registration_governance(
         max_allowed_embed_origins_per_app: tenant
             .max_allowed_embed_origins_per_app
             .unwrap_or(platform.effective_default_max_allowed_embed_origins_per_app())
-            .clamp(1, platform.effective_max_allowed_embed_origins_per_app_limit()),
+            .clamp(
+                1,
+                platform.effective_max_allowed_embed_origins_per_app_limit(),
+            ),
     })
 }
 
 async fn get_system_i32(db: &PgPool, key: &str) -> Result<Option<i32>, AppError> {
-    let value: Option<String> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
-        .bind(key)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to load workspace governance setting '{}': {}", key, e)))?;
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to load workspace governance setting '{}': {}",
+                    key, e
+                ))
+            })?;
 
-    let Some(value) = value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) else {
+    let Some(value) = value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(None);
     };
 
@@ -306,19 +412,28 @@ async fn get_system_i32(db: &PgPool, key: &str) -> Result<Option<i32>, AppError>
     Ok(Some(parsed))
 }
 
-async fn set_system_optional_i32(db: &PgPool, key: &str, value: Option<i32>) -> Result<(), AppError> {
+async fn set_system_optional_i32(
+    db: &PgPool,
+    key: &str,
+    value: Option<i32>,
+) -> Result<(), AppError> {
     sqlx::query(
         r#"
         INSERT INTO system_settings (key, value, updated_at)
         VALUES ($1, $2, NOW())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        "#
+        "#,
     )
     .bind(key)
     .bind(value.map(|value| value.to_string()).unwrap_or_default())
     .execute(db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to save workspace governance setting '{}': {}", key, e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to save workspace governance setting '{}': {}",
+            key, e
+        ))
+    })?;
 
     Ok(())
 }

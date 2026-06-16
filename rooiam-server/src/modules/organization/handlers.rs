@@ -7,16 +7,32 @@ use std::path::Path;
 use url::Url;
 use uuid::Uuid;
 
+use super::{
+    models::OrganizationActivityItem, repository::OrganizationRepository,
+    service::OrganizationService,
+};
 use crate::bootstrap::state::AppState;
-use crate::shared::error::AppError;
 use crate::http::middleware::auth::{extract_session, RequireAuth};
+use crate::modules::audit::service::{AuditEvent, AuditService};
+use crate::modules::organization::integration::{
+    get_workspace_integration_auth_config, get_workspace_integration_branding,
+    get_workspace_integration_client_detail, get_workspace_integration_client_secret_metadata,
+    get_workspace_integration_info, list_workspace_integration_clients,
+    normalize_workspace_api_key_permission_preset, require_workspace_api_key_permission,
+    resolve_workspace_api_key_context, workspace_api_key_permissions_for_preset,
+    WORKSPACE_KEY_PRESET_WORKSPACE_OWNER,
+};
+use crate::modules::rbac::{models::Role, repository::RbacRepository, service::RbacService};
 use crate::shared::client_policy::{
     effective_client_policy, is_client_type_allowed, load_platform_client_governance,
     load_tenant_client_policy, EffectiveClientPolicy, PlatformClientGovernance, TenantClientPolicy,
 };
+use crate::shared::demo_seed::{demo_seed_enabled, is_seeded_demo_org_slug};
+use crate::shared::error::AppError;
 use crate::shared::ip_policy::{
-    EffectiveIpPolicy, PlatformIpPolicy, TenantIpPolicy, access_denied_message, evaluate_ip_access,
-    load_platform_ip_policy, load_tenant_ip_policy, resolve_effective_ip_policy, save_tenant_ip_policy,
+    access_denied_message, evaluate_ip_access, load_platform_ip_policy, load_tenant_ip_policy,
+    resolve_effective_ip_policy, save_tenant_ip_policy, EffectiveIpPolicy, PlatformIpPolicy,
+    TenantIpPolicy,
 };
 use crate::shared::oauth_client::{
     generate_client_id, generate_confidential_client_secret,
@@ -27,23 +43,6 @@ use crate::shared::storage_config::store_public_asset;
 use crate::shared::workspace_governance::{
     load_effective_workspace_app_registration_governance, load_platform_workspace_governance,
 };
-use crate::shared::demo_seed::{demo_seed_enabled, is_seeded_demo_org_slug};
-use crate::modules::audit::service::{AuditEvent, AuditService};
-use crate::modules::organization::integration::{
-    get_workspace_integration_branding,
-    get_workspace_integration_auth_config,
-    get_workspace_integration_client_detail,
-    get_workspace_integration_client_secret_metadata,
-    list_workspace_integration_clients,
-    get_workspace_integration_info,
-    normalize_workspace_api_key_permission_preset,
-    require_workspace_api_key_permission,
-    resolve_workspace_api_key_context,
-    workspace_api_key_permissions_for_preset,
-    WORKSPACE_KEY_PRESET_WORKSPACE_OWNER,
-};
-use super::{models::OrganizationActivityItem, repository::OrganizationRepository, service::OrganizationService};
-use crate::modules::rbac::{models::Role, repository::RbacRepository, service::RbacService};
 
 async fn resolve_workspace_api_owner_user_id(
     org_id: Uuid,
@@ -64,7 +63,12 @@ async fn resolve_workspace_api_owner_user_id(
     .bind(org_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to resolve workspace owner for API-key management: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to resolve workspace owner for API-key management: {}",
+            e
+        ))
+    })?
     .ok_or_else(|| AppError::Validation("Workspace owner not found for API-key management.".into()))
 }
 
@@ -93,20 +97,44 @@ pub async fn list_workspace_integration_members(
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search = query.q.as_deref().unwrap_or("").trim().to_lowercase();
     if search.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let role_filter = query.role.as_deref().unwrap_or("all").trim().to_lowercase();
-    let status_filter = query.status.as_deref().unwrap_or("all").trim().to_lowercase();
+    let status_filter = query
+        .status
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
 
     members.retain(|member| {
         (status_filter == "all" || member.status.eq_ignore_ascii_case(&status_filter))
-            && (role_filter == "all" || member.role_codes.iter().any(|role| role.eq_ignore_ascii_case(&role_filter)))
+            && (role_filter == "all"
+                || member
+                    .role_codes
+                    .iter()
+                    .any(|role| role.eq_ignore_ascii_case(&role_filter)))
             && (search.is_empty()
-                || member.display_name.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || member.email.as_deref().unwrap_or("").to_lowercase().contains(&search)
-                || member.role_codes.iter().any(|role| role.to_lowercase().contains(&search)))
+                || member
+                    .display_name
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || member
+                    .email
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&search)
+                || member
+                    .role_codes
+                    .iter()
+                    .any(|role| role.to_lowercase().contains(&search)))
     });
 
     match sort_by {
@@ -125,8 +153,17 @@ pub async fn list_workspace_integration_members(
     let total = members.len() as i64;
     let start = ((page - 1) * page_size) as usize;
     let end = (start + page_size as usize).min(members.len());
-    let items = if start >= members.len() { vec![] } else { members[start..end].to_vec() };
-    Ok(HttpResponse::Ok().json(PaginatedActivityResponse { items, total, page, page_size }))
+    let items = if start >= members.len() {
+        vec![]
+    } else {
+        members[start..end].to_vec()
+    };
+    Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
+        items,
+        total,
+        page,
+        page_size,
+    }))
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -301,7 +338,7 @@ pub async fn update_workspace_integration_member_profile(
         .filter(|value| !value.is_empty());
 
     let target_user_id: Uuid = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(ctx.org_id)
@@ -310,28 +347,36 @@ pub async fn update_workspace_integration_member_profile(
     .map_err(|e| AppError::Internal(format!("Failed to resolve workspace member user ID: {}", e)))?
     .ok_or_else(|| AppError::Validation("Member not found in this workspace.".into()))?;
 
-    sqlx::query("UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3")
-        .bind(display_name.clone())
-        .bind(avatar_url.clone())
-        .bind(target_user_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to update workspace member profile: {}", e)))?;
+    sqlx::query(
+        "UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3",
+    )
+    .bind(display_name.clone())
+    .bind(avatar_url.clone())
+    .bind(target_user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to update workspace member profile: {}", e)))?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "api_key.workspace.member.profile_updated".into(),
-        target_type: "member".into(),
-        target_id: Some(member_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "display_name": display_name,
-            "avatar_url": avatar_url,
-            "key_prefix": ctx.key_prefix,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "api_key.workspace.member.profile_updated".into(),
+            target_type: "member".into(),
+            target_id: Some(member_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "display_name": display_name,
+                "avatar_url": avatar_url,
+                "key_prefix": ctx.key_prefix,
+            }),
+        })
+        .await;
 
     get_workspace_integration_member_detail(req, state, web::Path::from(member_id)).await
 }
@@ -354,13 +399,18 @@ pub async fn list_workspace_integration_member_sessions(
     let member_id = path.into_inner();
 
     let target_user_id: Uuid = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(ctx.org_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to resolve workspace member for session listing: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to resolve workspace member for session listing: {}",
+            e
+        ))
+    })?
     .ok_or_else(|| AppError::Validation("Member not found in this workspace.".into()))?;
 
     let rows = sqlx::query(
@@ -414,13 +464,18 @@ pub async fn revoke_workspace_integration_member_sessions(
     let member_id = path.into_inner();
 
     let target_user_id: Uuid = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(ctx.org_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to resolve workspace member for session revocation: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to resolve workspace member for session revocation: {}",
+            e
+        ))
+    })?
     .ok_or_else(|| AppError::Validation("Member not found in this workspace.".into()))?;
 
     let revoked_count = sqlx::query(
@@ -433,19 +488,25 @@ pub async fn revoke_workspace_integration_member_sessions(
     .map_err(|e| AppError::Internal(format!("Failed to revoke workspace member sessions: {}", e)))?
     .rows_affected();
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "api_key.workspace.member.sessions_revoked".into(),
-        target_type: "member".into(),
-        target_id: Some(member_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "revoked_count": revoked_count,
-            "key_prefix": ctx.key_prefix,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "api_key.workspace.member.sessions_revoked".into(),
+            target_type: "member".into(),
+            target_id: Some(member_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "revoked_count": revoked_count,
+                "key_prefix": ctx.key_prefix,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -479,7 +540,9 @@ pub async fn list_workspace_integration_invites(
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search = query.q.as_deref().unwrap_or("").trim().to_lowercase();
     if search.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
@@ -487,14 +550,23 @@ pub async fn list_workspace_integration_invites(
     invites.retain(|invite| {
         search.is_empty()
             || invite.email.to_lowercase().contains(&search)
-            || invite.inviter_display_name.as_deref().unwrap_or("").to_lowercase().contains(&search)
+            || invite
+                .inviter_display_name
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(&search)
     });
 
     match sort_by {
         "email" => invites.sort_by(|a, b| a.email.to_lowercase().cmp(&b.email.to_lowercase())),
         "created_at" => invites.sort_by_key(|invite| invite.created_at),
         "expires_at" => invites.sort_by_key(|invite| invite.expires_at),
-        _ => return Err(AppError::Validation("sort_by must be one of email, created_at, or expires_at.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "sort_by must be one of email, created_at, or expires_at.".into(),
+            ))
+        }
     }
     if sort_order == "desc" {
         invites.reverse();
@@ -503,8 +575,17 @@ pub async fn list_workspace_integration_invites(
     let total = invites.len() as i64;
     let start = ((page - 1) * page_size) as usize;
     let end = (start + page_size as usize).min(invites.len());
-    let items = if start >= invites.len() { vec![] } else { invites[start..end].to_vec() };
-    Ok(HttpResponse::Ok().json(PaginatedActivityResponse { items, total, page, page_size }))
+    let items = if start >= invites.len() {
+        vec![]
+    } else {
+        invites[start..end].to_vec()
+    };
+    Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
+        items,
+        total,
+        page,
+        page_size,
+    }))
 }
 
 #[utoipa::path(
@@ -527,7 +608,9 @@ pub async fn get_workspace_integration_invite_detail(
 ) -> Result<HttpResponse, AppError> {
     let ctx = resolve_workspace_api_key_context(&req, &state).await?;
     require_workspace_api_key_permission(&ctx, "invites.read")?;
-    let invite = load_workspace_integration_invite_detail(&state, ctx.org_id, path.into_inner().invite_id).await?;
+    let invite =
+        load_workspace_integration_invite_detail(&state, ctx.org_id, path.into_inner().invite_id)
+            .await?;
     Ok(HttpResponse::Ok().json(invite))
 }
 
@@ -548,14 +631,34 @@ pub async fn list_workspace_integration_activity(
     require_workspace_api_key_permission(&ctx, "activity.read")?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
-    let search_raw = query.q.as_deref().or(query.search.as_deref()).unwrap_or("").trim();
+    let search_raw = query
+        .q
+        .as_deref()
+        .or(query.search.as_deref())
+        .unwrap_or("")
+        .trim();
     if search_raw.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let search = search_raw.to_lowercase();
-    let action_filter = query.action.as_deref().unwrap_or("all").trim().to_lowercase();
-    let date_from = query.date_from.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let date_to = query.date_to.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let action_filter = query
+        .action
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
+    let date_from = query
+        .date_from
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let date_to = query
+        .date_to
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let repo = OrganizationRepository::new(state.db.clone());
     let (items, total) = repo
@@ -598,7 +701,11 @@ pub async fn list_workspace_integration_activity(
                 .to_lowercase()
                 .cmp(&b.actor_display_name.as_deref().unwrap_or("").to_lowercase())
         }),
-        _ => return Err(AppError::Validation("sort_by must be one of created_at, action, or actor.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "sort_by must be one of created_at, action, or actor.".into(),
+            ))
+        }
     }
     if sort_order == "desc" {
         items.reverse();
@@ -631,13 +738,18 @@ pub async fn list_workspace_integration_member_activity(
     let member_id = path.into_inner();
 
     let target_user_id: Uuid = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(ctx.org_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to resolve workspace member for activity lookup: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to resolve workspace member for activity lookup: {}",
+            e
+        ))
+    })?
     .ok_or_else(|| AppError::Validation("Member not found in this workspace.".into()))?;
 
     let page = query.page.unwrap_or(1).max(1);
@@ -655,7 +767,7 @@ pub async fn list_workspace_integration_member_activity(
             OR metadata->>'member_id' = $3
             OR metadata->>'user_id' = $4
           )
-        "#
+        "#,
     )
     .bind(ctx.org_id)
     .bind(target_user_id)
@@ -663,7 +775,12 @@ pub async fn list_workspace_integration_member_activity(
     .bind(target_user_id.to_string())
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to count workspace member activity entries: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to count workspace member activity entries: {}",
+            e
+        ))
+    })?;
 
     let mut items = sqlx::query_as::<_, OrganizationActivityItem>(
         r#"
@@ -691,7 +808,7 @@ pub async fn list_workspace_integration_member_activity(
           )
         ORDER BY al.created_at DESC
         LIMIT $5 OFFSET $6
-        "#
+        "#,
     )
     .bind(ctx.org_id)
     .bind(target_user_id)
@@ -701,14 +818,23 @@ pub async fn list_workspace_integration_member_activity(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace member activity entries: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace member activity entries: {}",
+            e
+        ))
+    })?;
 
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
     match sort_by {
         "created_at" => items.sort_by_key(|item| item.created_at),
         "action" => items.sort_by(|a, b| a.action.cmp(&b.action)),
-        _ => return Err(AppError::Validation("sort_by must be one of created_at or action.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "sort_by must be one of created_at or action.".into(),
+            ))
+        }
     }
     if sort_order == "desc" {
         items.reverse();
@@ -784,7 +910,7 @@ pub async fn get_workspace_integration_effective_policy(
             max_concurrent_sessions,
             status, platform_locked
         FROM organizations WHERE id = $1
-        "#
+        "#,
     )
     .bind(ctx.org_id)
     .fetch_one(&state.db)
@@ -792,24 +918,28 @@ pub async fn get_workspace_integration_effective_policy(
     .map_err(|e| AppError::Internal(format!("Failed to load workspace effective policy: {}", e)))?;
 
     async fn session_setting(db: &sqlx::PgPool, key: &str, default: i64) -> i64 {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT value::bigint FROM system_settings WHERE key = $1"
-        )
-        .bind(key)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(default)
+        sqlx::query_scalar::<_, i64>("SELECT value::bigint FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(default)
     }
 
-    let platform_session_duration_days = session_setting(&state.db, "session_duration_days", 7).await;
-    let platform_magic_link_expiry_minutes = session_setting(&state.db, "magic_link_expiry_minutes", 15).await as i32;
-    let platform_oidc_access_token_ttl_minutes = session_setting(&state.db, "oidc_access_token_ttl_minutes", 60).await as i32;
-    let platform_refresh_token_ttl_days = session_setting(&state.db, "refresh_token_ttl_days", 30).await as i32;
-    let platform_idle_timeout_minutes = session_setting(&state.db, "idle_timeout_minutes", 0).await as i32;
-    let effective_max_session_age_hours =
-        org.max_session_age_hours.unwrap_or((platform_session_duration_days as i32) * 24);
+    let platform_session_duration_days =
+        session_setting(&state.db, "session_duration_days", 7).await;
+    let platform_magic_link_expiry_minutes =
+        session_setting(&state.db, "magic_link_expiry_minutes", 15).await as i32;
+    let platform_oidc_access_token_ttl_minutes =
+        session_setting(&state.db, "oidc_access_token_ttl_minutes", 60).await as i32;
+    let platform_refresh_token_ttl_days =
+        session_setting(&state.db, "refresh_token_ttl_days", 30).await as i32;
+    let platform_idle_timeout_minutes =
+        session_setting(&state.db, "idle_timeout_minutes", 0).await as i32;
+    let effective_max_session_age_hours = org
+        .max_session_age_hours
+        .unwrap_or((platform_session_duration_days as i32) * 24);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "organization_id": ctx.org_id,
@@ -883,30 +1013,69 @@ pub async fn get_workspace_integration_policy_summary(
     .map_err(|e| AppError::Internal(format!("Failed to load workspace policy summary: {}", e)))?;
 
     let mut login_methods = Vec::new();
-    if org.try_get::<bool, _>("allow_magic_link").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing allow_magic_link: {}", e)))? { login_methods.push("magic_link".to_string()); }
-    if org.try_get::<bool, _>("allow_google").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing allow_google: {}", e)))? { login_methods.push("google".to_string()); }
-    if org.try_get::<bool, _>("allow_microsoft").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing allow_microsoft: {}", e)))? { login_methods.push("microsoft".to_string()); }
-    if org.try_get::<bool, _>("allow_passkey").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing allow_passkey: {}", e)))? { login_methods.push("passkey".to_string()); }
+    if org.try_get::<bool, _>("allow_magic_link").map_err(|e| {
+        AppError::Internal(format!(
+            "Workspace policy summary is missing allow_magic_link: {}",
+            e
+        ))
+    })? {
+        login_methods.push("magic_link".to_string());
+    }
+    if org.try_get::<bool, _>("allow_google").map_err(|e| {
+        AppError::Internal(format!(
+            "Workspace policy summary is missing allow_google: {}",
+            e
+        ))
+    })? {
+        login_methods.push("google".to_string());
+    }
+    if org.try_get::<bool, _>("allow_microsoft").map_err(|e| {
+        AppError::Internal(format!(
+            "Workspace policy summary is missing allow_microsoft: {}",
+            e
+        ))
+    })? {
+        login_methods.push("microsoft".to_string());
+    }
+    if org.try_get::<bool, _>("allow_passkey").map_err(|e| {
+        AppError::Internal(format!(
+            "Workspace policy summary is missing allow_passkey: {}",
+            e
+        ))
+    })? {
+        login_methods.push("passkey".to_string());
+    }
 
     let ip_policy = load_tenant_ip_policy(&state.db, ctx.org_id).await.ok();
     let client_policy = load_tenant_client_policy(&state.db, ctx.org_id).await.ok();
     async fn session_setting(db: &sqlx::PgPool, key: &str, default: i64) -> i64 {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT value::bigint FROM system_settings WHERE key = $1"
-        )
-        .bind(key)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(default)
+        sqlx::query_scalar::<_, i64>("SELECT value::bigint FROM system_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(default)
     }
 
-    let platform_session_duration_days = session_setting(&state.db, "session_duration_days", 7).await;
-    let raw_max_session_age_hours =
-        org.try_get::<Option<i32>, _>("max_session_age_hours").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing max_session_age_hours: {}", e)))?;
-    let raw_max_concurrent_sessions =
-        org.try_get::<Option<i32>, _>("max_concurrent_sessions").map_err(|e| AppError::Internal(format!("Workspace policy summary is missing max_concurrent_sessions: {}", e)))?;
+    let platform_session_duration_days =
+        session_setting(&state.db, "session_duration_days", 7).await;
+    let raw_max_session_age_hours = org
+        .try_get::<Option<i32>, _>("max_session_age_hours")
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Workspace policy summary is missing max_session_age_hours: {}",
+                e
+            ))
+        })?;
+    let raw_max_concurrent_sessions = org
+        .try_get::<Option<i32>, _>("max_concurrent_sessions")
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Workspace policy summary is missing max_concurrent_sessions: {}",
+                e
+            ))
+        })?;
     let effective_max_session_age_hours =
         raw_max_session_age_hours.unwrap_or((platform_session_duration_days as i32) * 24);
 
@@ -962,15 +1131,17 @@ pub async fn get_workspace_integration_api_key_me(
     let permission_preset = ctx.permission_preset.clone();
     let allowed_permissions = workspace_api_key_permissions_for_preset(&permission_preset);
 
-    Ok(HttpResponse::Ok().json(WorkspaceIntegrationApiKeyMeResponse {
-        workspace_id: ctx.org_id,
-        workspace_slug: ctx.org_slug,
-        workspace_name: ctx.org_name,
-        key_label: ctx.label,
-        key_prefix: ctx.key_prefix,
-        permission_preset,
-        allowed_permissions,
-    }))
+    Ok(
+        HttpResponse::Ok().json(WorkspaceIntegrationApiKeyMeResponse {
+            workspace_id: ctx.org_id,
+            workspace_slug: ctx.org_slug,
+            workspace_name: ctx.org_name,
+            key_label: ctx.label,
+            key_prefix: ctx.key_prefix,
+            permission_preset,
+            allowed_permissions,
+        }),
+    )
 }
 
 #[utoipa::path(
@@ -1023,7 +1194,9 @@ pub async fn list_workspace_integration_permissions(
     let ctx = resolve_workspace_api_key_context(&req, &state).await?;
     require_workspace_api_key_permission(&ctx, "workspace.read")?;
 
-    let perms = RbacRepository::new(state.db.clone()).list_permissions().await?;
+    let perms = RbacRepository::new(state.db.clone())
+        .list_permissions()
+        .await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "permissions": perms })))
 }
 
@@ -1046,12 +1219,14 @@ pub async fn list_workspace_integration_audit_actions(
     require_workspace_api_key_permission(&ctx, "activity.read")?;
 
     let actions = sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT action FROM audit_logs WHERE organization_id = $1 ORDER BY action"
+        "SELECT DISTINCT action FROM audit_logs WHERE organization_id = $1 ORDER BY action",
     )
     .bind(ctx.org_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace audit action list: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to load workspace audit action list: {}", e))
+    })?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "actions": actions })))
 }
@@ -1108,33 +1283,35 @@ pub async fn get_workspace_integration_widget_preview_config(
         .cloned()
         .collect::<Vec<_>>();
 
-    Ok(HttpResponse::Ok().json(WorkspaceIntegrationWidgetPreviewConfigResponse {
-        workspace_id: org.id,
-        workspace_slug: org.slug,
-        login_display_name: org.login_display_name,
-        login_title: org.login_title,
-        login_subtitle: org.login_subtitle,
-        icon_url: org.icon_url,
-        login_logo_url: org.login_logo_url,
-        brand_color: org.brand_color,
-        show_login_logo: org.show_login_logo,
-        show_login_title: org.show_login_title,
-        show_login_subtitle: org.show_login_subtitle,
-        show_powered_by: org.show_powered_by,
-        widget_radius: org.widget_radius,
-        widget_shadow: org.widget_shadow,
-        icon_container: org.icon_container,
-        login_logo_container: org.login_logo_container,
-        login_logo_size: org.login_logo_size,
-        card_radius: org.card_radius,
-        button_style: org.button_style,
-        card_bg_style: org.card_bg_style,
-        card_bg_color2: org.card_bg_color2,
-        card_border_width: org.card_border_width,
-        card_border_color: org.card_border_color,
-        login_method_order: org.login_method_order,
-        enabled_login_methods,
-    }))
+    Ok(
+        HttpResponse::Ok().json(WorkspaceIntegrationWidgetPreviewConfigResponse {
+            workspace_id: org.id,
+            workspace_slug: org.slug,
+            login_display_name: org.login_display_name,
+            login_title: org.login_title,
+            login_subtitle: org.login_subtitle,
+            icon_url: org.icon_url,
+            login_logo_url: org.login_logo_url,
+            brand_color: org.brand_color,
+            show_login_logo: org.show_login_logo,
+            show_login_title: org.show_login_title,
+            show_login_subtitle: org.show_login_subtitle,
+            show_powered_by: org.show_powered_by,
+            widget_radius: org.widget_radius,
+            widget_shadow: org.widget_shadow,
+            icon_container: org.icon_container,
+            login_logo_container: org.login_logo_container,
+            login_logo_size: org.login_logo_size,
+            card_radius: org.card_radius,
+            button_style: org.button_style,
+            card_bg_style: org.card_bg_style,
+            card_bg_color2: org.card_bg_color2,
+            card_border_width: org.card_border_width,
+            card_border_color: org.card_border_color,
+            login_method_order: org.login_method_order,
+            enabled_login_methods,
+        }),
+    )
 }
 
 #[utoipa::path(
@@ -1161,17 +1338,23 @@ pub async fn update_workspace_integration_branding(
 
     if let Some(ref v) = body.login_display_name {
         if v.len() > 100 {
-            return Err(AppError::Validation("Login display name must be 100 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Login display name must be 100 characters or fewer.".into(),
+            ));
         }
     }
     if let Some(ref v) = body.login_title {
         if v.len() > 200 {
-            return Err(AppError::Validation("Login title must be 200 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Login title must be 200 characters or fewer.".into(),
+            ));
         }
     }
     if let Some(ref v) = body.login_subtitle {
         if v.len() > 200 {
-            return Err(AppError::Validation("Login subtitle must be 200 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Login subtitle must be 200 characters or fewer.".into(),
+            ));
         }
     }
     if let Some(ref v) = body.icon_url {
@@ -1203,7 +1386,9 @@ pub async fn update_workspace_integration_branding(
     if let Some(ref new_name) = body.name {
         let trimmed = new_name.trim();
         if trimmed.is_empty() {
-            return Err(AppError::Validation("Workspace name cannot be empty.".into()));
+            return Err(AppError::Validation(
+                "Workspace name cannot be empty.".into(),
+            ));
         }
         sqlx::query("UPDATE organizations SET name = $1, login_display_name = NULL, updated_at = NOW() WHERE id = $2")
             .bind(trimmed)
@@ -1220,12 +1405,30 @@ pub async fn update_workspace_integration_branding(
         .update_branding(
             ctx.org_id,
             owner_user_id,
-            body.login_display_name.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_title.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_subtitle.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.icon_url.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_logo_url.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.brand_color.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.login_display_name
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_title
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_subtitle
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.icon_url
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_logo_url
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.brand_color
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.show_login_logo,
             body.show_login_title,
             body.show_login_subtitle,
@@ -1238,23 +1441,35 @@ pub async fn update_workspace_integration_branding(
             body.card_radius.clone(),
             body.button_style.clone(),
             body.card_bg_style.clone(),
-            body.card_bg_color2.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.card_bg_color2
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.card_border_width.clone(),
-            body.card_border_color.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.card_border_color
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.login_method_order.clone(),
         )
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "workspace.branding.updated_via_api_key".into(),
-        target_type: "organization".into(),
-        target_id: Some(ctx.org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "workspace.branding.updated_via_api_key".into(),
+            target_type: "organization".into(),
+            target_id: Some(ctx.org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
+        })
+        .await;
 
     get_workspace_integration_branding(req, state).await
 }
@@ -1281,11 +1496,15 @@ pub async fn update_workspace_integration_auth_config(
     require_workspace_api_key_permission(&ctx, "auth_config.write")?;
     ensure_demo_workspace_allowed(&state, ctx.org_id).await?;
 
-    sqlx::query("INSERT INTO tenant_auth_config (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING")
-        .bind(ctx.org_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to initialize workspace auth config: {}", e)))?;
+    sqlx::query(
+        "INSERT INTO tenant_auth_config (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING",
+    )
+    .bind(ctx.org_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to initialize workspace auth config: {}", e))
+    })?;
 
     if body.clear_google.unwrap_or(false) {
         sqlx::query("UPDATE tenant_auth_config SET google_client_id = NULL, google_client_secret = NULL, updated_at = NOW() WHERE org_id = $1")
@@ -1321,10 +1540,16 @@ pub async fn update_workspace_integration_auth_config(
             .execute(&state.db)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to clear workspace Microsoft auth config: {}", e)))?;
-    } else if let (Some(id), Some(secret)) = (&body.microsoft_client_id, &body.microsoft_client_secret) {
+    } else if let (Some(id), Some(secret)) =
+        (&body.microsoft_client_id, &body.microsoft_client_secret)
+    {
         if !id.trim().is_empty() && !secret.trim().is_empty() {
             let enc = encrypt_secret(secret.trim(), &state.config)?;
-            let tenant_id = body.microsoft_tenant_id.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("common");
+            let tenant_id = body
+                .microsoft_tenant_id
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("common");
             sqlx::query("UPDATE tenant_auth_config SET microsoft_client_id = $1, microsoft_client_secret = $2, microsoft_tenant_id = $3, updated_at = NOW() WHERE org_id = $4")
                 .bind(id.trim())
                 .bind(&enc)
@@ -1381,16 +1606,22 @@ pub async fn update_workspace_integration_auth_config(
         }
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "tenant_auth_config.updated_via_api_key".into(),
-        target_type: "organization".into(),
-        target_id: Some(ctx.org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "tenant_auth_config.updated_via_api_key".into(),
+            target_type: "organization".into(),
+            target_id: Some(ctx.org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
+        })
+        .await;
 
     get_workspace_integration_auth_config(req, state).await
 }
@@ -1432,7 +1663,9 @@ pub async fn create_workspace_integration_client(
         return Err(AppError::Validation("App name is required.".into()));
     }
     if !["web", "spa", "native"].contains(&body.app_type.as_str()) {
-        return Err(AppError::Validation("app_type must be web, spa, or native.".into()));
+        return Err(AppError::Validation(
+            "app_type must be web, spa, or native.".into(),
+        ));
     }
     if !is_client_type_allowed(&effective_policy, &body.app_type) {
         return Err(AppError::Forbidden(format!(
@@ -1441,7 +1674,8 @@ pub async fn create_workspace_integration_client(
         )));
     }
 
-    let app_registration_governance = load_effective_workspace_app_registration_governance(&state.db, ctx.org_id).await?;
+    let app_registration_governance =
+        load_effective_workspace_app_registration_governance(&state.db, ctx.org_id).await?;
     let redirect_uris = normalize_client_redirect_uris_with_limit(
         &body.app_type,
         &body.redirect_uris,
@@ -1452,11 +1686,14 @@ pub async fn create_workspace_integration_client(
         app_registration_governance.max_allowed_embed_origins_per_app as usize,
     )?;
     let app_limit = workspace_governance.effective_max_apps();
-    let existing_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM oauth_clients WHERE org_id = $1")
-        .bind(ctx.org_id)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to count existing workspace apps: {}", e)))?;
+    let existing_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM oauth_clients WHERE org_id = $1")
+            .bind(ctx.org_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to count existing workspace apps: {}", e))
+            })?;
     if existing_count >= i64::from(app_limit) {
         return Err(AppError::Validation(format!(
             "Workspace app limit reached. This workspace can create up to {} apps.",
@@ -1473,11 +1710,12 @@ pub async fn create_workspace_integration_client(
         client_secret_hash = Some(hash);
     }
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to start workspace app creation transaction: {}", e)))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to start workspace app creation transaction: {}",
+            e
+        ))
+    })?;
     let client = sqlx::query_as::<_, OrgOAuthClient>(
         r#"
         INSERT INTO oauth_clients (client_id, client_secret_hash, app_name, app_type, status, owner_user_id, org_id, is_first_party)
@@ -1512,9 +1750,9 @@ pub async fn create_workspace_integration_client(
             .map_err(|e| AppError::Internal(format!("Failed to save workspace app allowed embed origin: {}", e)))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to commit workspace app creation: {}", e)))?;
+    tx.commit().await.map_err(|e| {
+        AppError::Internal(format!("Failed to commit workspace app creation: {}", e))
+    })?;
 
     AuditService::new(state.db.clone()).log(AuditEvent {
         actor_user_id: None,
@@ -1575,7 +1813,8 @@ pub async fn update_workspace_integration_client(
     .map_err(|e| AppError::Internal(format!("Failed to load workspace app for update: {}", e)))?
     .ok_or_else(|| AppError::NotFound("Client not found in your workspace.".into()))?;
 
-    let app_registration_governance = load_effective_workspace_app_registration_governance(&state.db, ctx.org_id).await?;
+    let app_registration_governance =
+        load_effective_workspace_app_registration_governance(&state.db, ctx.org_id).await?;
     let redirect_uris = normalize_client_redirect_uris_with_limit(
         &existing.app_type,
         &body.redirect_uris,
@@ -1585,11 +1824,12 @@ pub async fn update_workspace_integration_client(
         &body.allowed_embed_origins,
         app_registration_governance.max_allowed_embed_origins_per_app as usize,
     )?;
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to start workspace app update transaction: {}", e)))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to start workspace app update transaction: {}",
+            e
+        ))
+    })?;
 
     let updated_client = sqlx::query_as::<_, OrgOAuthClient>(
         r#"
@@ -1610,12 +1850,22 @@ pub async fn update_workspace_integration_client(
         .bind(client_id_param)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear workspace app redirect URIs: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear workspace app redirect URIs: {}",
+                e
+            ))
+        })?;
     sqlx::query("DELETE FROM oauth_client_allowed_embed_origins WHERE oauth_client_id = $1")
         .bind(client_id_param)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear workspace app allowed embed origins: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear workspace app allowed embed origins: {}",
+                e
+            ))
+        })?;
 
     for uri in &redirect_uris {
         sqlx::query("INSERT INTO oauth_client_redirect_uris (oauth_client_id, redirect_uri) VALUES ($1, $2)")
@@ -1638,20 +1888,26 @@ pub async fn update_workspace_integration_client(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to commit workspace app update: {}", e)))?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "oauth_client.updated_via_api_key".into(),
-        target_type: "oauth_client".into(),
-        target_id: Some(updated_client.id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "app_name": updated_client.app_name,
-            "redirect_uri_count": redirect_uris.len(),
-            "key_prefix": ctx.key_prefix,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "oauth_client.updated_via_api_key".into(),
+            target_type: "oauth_client".into(),
+            target_id: Some(updated_client.id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "app_name": updated_client.app_name,
+                "redirect_uri_count": redirect_uris.len(),
+                "key_prefix": ctx.key_prefix,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(OrgClientResponse {
         client: updated_client,
@@ -1689,7 +1945,9 @@ pub async fn update_workspace_integration_client_status(
     let normalized_status = body.status.trim().to_lowercase();
 
     if normalized_status != "active" && normalized_status != "suspended" {
-        return Err(AppError::Validation("Status must be either 'active' or 'suspended'.".into()));
+        return Err(AppError::Validation(
+            "Status must be either 'active' or 'suspended'.".into(),
+        ));
     }
 
     let client = sqlx::query_as::<_, OrgOAuthClient>(
@@ -1764,10 +2022,14 @@ pub async fn rotate_workspace_integration_client_secret(
     .ok_or_else(|| AppError::NotFound("Client not found in your workspace.".into()))?;
 
     if client.app_type != "web" {
-        return Err(AppError::Validation("Only confidential web clients can rotate a client secret.".into()));
+        return Err(AppError::Validation(
+            "Only confidential web clients can rotate a client secret.".into(),
+        ));
     }
     if client.status != "active" {
-        return Err(AppError::Validation("Paused clients cannot rotate a client secret until resumed.".into()));
+        return Err(AppError::Validation(
+            "Paused clients cannot rotate a client secret until resumed.".into(),
+        ));
     }
 
     let (client_secret, client_secret_hash) = generate_confidential_client_secret()?;
@@ -1777,7 +2039,12 @@ pub async fn rotate_workspace_integration_client_secret(
         .bind(ctx.org_id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to rotate workspace app client secret: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to rotate workspace app client secret: {}",
+                e
+            ))
+        })?;
 
     AuditService::new(state.db.clone()).log(AuditEvent {
         actor_user_id: None,
@@ -1828,19 +2095,27 @@ pub async fn delete_workspace_integration_client(
         .rows_affected();
 
     if rows == 0 {
-        return Err(AppError::NotFound("Client not found in your workspace.".into()));
+        return Err(AppError::NotFound(
+            "Client not found in your workspace.".into(),
+        ));
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "oauth_client.deleted_via_api_key".into(),
-        target_type: "oauth_client".into(),
-        target_id: Some(client_id_param.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "oauth_client.deleted_via_api_key".into(),
+            target_type: "oauth_client".into(),
+            target_id: Some(client_id_param.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "key_prefix": ctx.key_prefix }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
@@ -1879,13 +2154,23 @@ pub async fn send_workspace_integration_invite(
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
 
     let repo = OrganizationRepository::new(state.db.clone());
-    repo.create_invite(ctx.org_id, &body.email, &token_hash, owner_user_id, expires_at)
-        .await?;
+    repo.create_invite(
+        ctx.org_id,
+        &body.email,
+        &token_hash,
+        owner_user_id,
+        expires_at,
+    )
+    .await?;
 
     let app_url = crate::shared::runtime_config::effective_app_url(&state.db)
         .await
         .unwrap_or_else(|_| "http://localhost:5172".to_string());
-    let accept_url = format!("{}/accept-invite?token={}", app_url.trim_end_matches('/'), raw_token);
+    let accept_url = format!(
+        "{}/accept-invite?token={}",
+        app_url.trim_end_matches('/'),
+        raw_token
+    );
     if let Err(err) = crate::infra::email::send_action_email(
         &state.db,
         &body.email,
@@ -1940,7 +2225,9 @@ pub async fn revoke_workspace_integration_invite(
     ensure_demo_workspace_allowed(&state, ctx.org_id).await?;
 
     let repo = OrganizationRepository::new(state.db.clone());
-    let invite = repo.revoke_invite(path.into_inner().invite_id, ctx.org_id).await?;
+    let invite = repo
+        .revoke_invite(path.into_inner().invite_id, ctx.org_id)
+        .await?;
 
     AuditService::new(state.db.clone()).log(AuditEvent {
         actor_user_id: None,
@@ -1999,7 +2286,7 @@ pub async fn update_workspace_integration_member_role(
     let service = OrganizationService::new(repo, state.db.clone());
 
     let target_user_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(ctx.org_id)
@@ -2007,13 +2294,15 @@ pub async fn update_workspace_integration_member_role(
     .await
     .unwrap_or(None);
 
-    service.update_member_role(ctx.org_id, owner_user_id, member_id, &new_role).await?;
+    service
+        .update_member_role(ctx.org_id, owner_user_id, member_id, &new_role)
+        .await?;
 
     if let Some(uid) = target_user_id {
         let _ = sqlx::query(
             "UPDATE sessions SET revoked_at = NOW() \
              WHERE user_id = $1 AND current_org_id = $2 \
-             AND revoked_at IS NULL AND expires_at > NOW()"
+             AND revoked_at IS NULL AND expires_at > NOW()",
         )
         .bind(uid)
         .bind(ctx.org_id)
@@ -2021,20 +2310,26 @@ pub async fn update_workspace_integration_member_role(
         .await;
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "workspace.member.role_changed_via_api_key".into(),
-        target_type: "member".into(),
-        target_id: Some(member_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "before_roles": before_roles,
-            "after_role": new_role,
-            "key_prefix": ctx.key_prefix,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "workspace.member.role_changed_via_api_key".into(),
+            target_type: "member".into(),
+            target_id: Some(member_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "before_roles": before_roles,
+                "after_role": new_role,
+                "key_prefix": ctx.key_prefix,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -2066,7 +2361,7 @@ pub async fn remove_workspace_integration_member(
     sqlx::query(
         "UPDATE sessions SET revoked_at = NOW() \
          WHERE user_id = $1 AND current_org_id = $2 \
-         AND revoked_at IS NULL AND expires_at > NOW()"
+         AND revoked_at IS NULL AND expires_at > NOW()",
     )
     .bind(removed_user_id)
     .bind(ctx.org_id)
@@ -2076,23 +2371,29 @@ pub async fn remove_workspace_integration_member(
     sqlx::query(
         "UPDATE oauth_refresh_tokens SET revoked_at = NOW() \
          WHERE user_id = $1 AND revoked_at IS NULL \
-         AND session_id IN (SELECT id FROM sessions WHERE user_id = $1 AND current_org_id = $2)"
+         AND session_id IN (SELECT id FROM sessions WHERE user_id = $1 AND current_org_id = $2)",
     )
     .bind(removed_user_id)
     .bind(ctx.org_id)
     .execute(&state.db)
     .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: None,
-        organization_id: Some(ctx.org_id),
-        action: "workspace.member.removed_via_api_key".into(),
-        target_type: "member".into(),
-        target_id: Some(removed_user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "member_id": member_id, "key_prefix": ctx.key_prefix }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: Some(ctx.org_id),
+            action: "workspace.member.removed_via_api_key".into(),
+            target_type: "member".into(),
+            target_id: Some(removed_user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "member_id": member_id, "key_prefix": ctx.key_prefix }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -2186,7 +2487,9 @@ pub fn sort_order_or_error(value: Option<&str>) -> Result<&'static str, AppError
     match value.unwrap_or("desc").trim().to_ascii_lowercase().as_str() {
         "asc" => Ok("asc"),
         "desc" => Ok("desc"),
-        _ => Err(AppError::Validation("sort_order must be asc or desc.".into())),
+        _ => Err(AppError::Validation(
+            "sort_order must be asc or desc.".into(),
+        )),
     }
 }
 
@@ -2383,7 +2686,10 @@ pub struct MarkSecurityAlertReviewRequest {
     pub alert_key: String,
 }
 
-async fn ensure_demo_workspace_allowed(state: &web::Data<AppState>, org_id: Uuid) -> Result<(), AppError> {
+async fn ensure_demo_workspace_allowed(
+    state: &web::Data<AppState>,
+    org_id: Uuid,
+) -> Result<(), AppError> {
     if !demo_seed_enabled() {
         return Ok(());
     }
@@ -2422,7 +2728,9 @@ async fn create_org(
     body: web::Json<CreateOrganizationRequest>,
 ) -> Result<HttpResponse, AppError> {
     if demo_seed_enabled() {
-        return Err(AppError::Forbidden("Workspace creation is disabled in demo mode.".into()));
+        return Err(AppError::Forbidden(
+            "Workspace creation is disabled in demo mode.".into(),
+        ));
     }
     let session = extract_session(&req)?;
 
@@ -2430,21 +2738,21 @@ async fn create_org(
     let membership_count = repo.count_user_organizations(session.user_id).await?;
     if membership_count > 0 && !repo.has_any_org_owner_role(session.user_id).await? {
         return Err(AppError::Forbidden(
-            "Only workspace owners can create additional workspaces from this operator portal.".into(),
+            "Only workspace owners can create additional workspaces from this operator portal."
+                .into(),
         ));
     }
     let service = OrganizationService::new(repo, state.db.clone());
 
-    let org = service.create_tenant(session.user_id, &body.name, &body.slug).await?;
+    let org = service
+        .create_tenant(session.user_id, &body.name, &body.slug)
+        .await?;
 
     Ok(HttpResponse::Created().json(org))
 }
 
 /// List organizations the current user belongs to
-async fn list_orgs(
-    req: HttpRequest,
-    state: web::Data<AppState>,
-) -> Result<HttpResponse, AppError> {
+async fn list_orgs(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
 
     let repo = OrganizationRepository::new(state.db.clone());
@@ -2476,21 +2784,26 @@ async fn current_portal(
 
     if organizations.is_empty() && total_membership_count > 0 {
         return Err(AppError::Forbidden(
-            "This workspace operator area is only for workspace owners and workspace admins.".into(),
+            "This workspace operator area is only for workspace owners and workspace admins."
+                .into(),
         ));
     }
 
     let current_org = match session.current_org_id {
         Some(org_id) => {
             if repo.is_org_admin_or_owner(org_id, session.user_id).await? {
-                service.get_organization_if_member(org_id, session.user_id).await.ok()
+                service
+                    .get_organization_if_member(org_id, session.user_id)
+                    .await
+                    .ok()
             } else {
                 None
             }
         }
         None => None,
     };
-    let current_org = current_org.filter(|org| !demo_seed_enabled() || is_seeded_demo_org_slug(&org.slug));
+    let current_org =
+        current_org.filter(|org| !demo_seed_enabled() || is_seeded_demo_org_slug(&org.slug));
 
     let permissions = if let Some(ref org) = current_org {
         RbacService::new(RbacRepository::new(state.db.clone()))
@@ -2525,8 +2838,10 @@ async fn current_portal(
         load_effective_workspace_app_registration_governance(&state.db, org.id).await?
     } else {
         crate::shared::workspace_governance::EffectiveWorkspaceAppRegistrationGovernance {
-            max_redirect_uris_per_app: workspace_governance.effective_default_max_redirect_uris_per_app(),
-            max_allowed_embed_origins_per_app: workspace_governance.effective_default_max_allowed_embed_origins_per_app(),
+            max_redirect_uris_per_app: workspace_governance
+                .effective_default_max_redirect_uris_per_app(),
+            max_allowed_embed_origins_per_app: workspace_governance
+                .effective_default_max_allowed_embed_origins_per_app(),
         }
     };
 
@@ -2541,7 +2856,8 @@ async fn current_portal(
         max_workspaces_allowed: workspace_governance.effective_max_workspaces(),
         max_apps_per_workspace: workspace_governance.effective_max_apps(),
         max_redirect_uris_per_app: effective_app_registration_governance.max_redirect_uris_per_app,
-        max_allowed_embed_origins_per_app: effective_app_registration_governance.max_allowed_embed_origins_per_app,
+        max_allowed_embed_origins_per_app: effective_app_registration_governance
+            .max_allowed_embed_origins_per_app,
     }))
 }
 
@@ -2553,13 +2869,20 @@ pub async fn public_branding_handler(
     let repo = OrganizationRepository::new(state.db.clone());
     let org = if let Some(workspace_id) = query.workspace_id {
         repo.get_organization_by_id(workspace_id).await?
-    } else if let Some(slug) = query.slug.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    } else if let Some(slug) = query
+        .slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         if demo_seed_enabled() && !is_seeded_demo_org_slug(slug) {
             return Err(AppError::NotFound("Workspace not found".into()));
         }
         repo.get_organization_by_slug(slug).await?
     } else {
-        return Err(AppError::Validation("Workspace ID or slug is required.".into()));
+        return Err(AppError::Validation(
+            "Workspace ID or slug is required.".into(),
+        ));
     }
     .ok_or_else(|| AppError::NotFound("Workspace not found".into()))?;
 
@@ -2602,14 +2925,19 @@ async fn switch_org(
     ensure_demo_workspace_allowed(&state, body.organization_id).await?;
 
     let repo = OrganizationRepository::new(state.db.clone());
-    if !repo.is_org_admin_or_owner(body.organization_id, session.user_id).await? {
+    if !repo
+        .is_org_admin_or_owner(body.organization_id, session.user_id)
+        .await?
+    {
         return Err(AppError::Forbidden(
-            "Only workspace owners and workspace admins can open this workspace operator area.".into(),
+            "Only workspace owners and workspace admins can open this workspace operator area."
+                .into(),
         ));
     }
     let service = OrganizationService::new(repo, state.db.clone());
 
-    let effective_ip_policy = resolve_effective_ip_policy(&state.db, Some(body.organization_id)).await?;
+    let effective_ip_policy =
+        resolve_effective_ip_policy(&state.db, Some(body.organization_id)).await?;
     let decision = evaluate_ip_access(
         &effective_ip_policy,
         crate::shared::request_ip::client_ip_from_http_request(&req, state.config.as_ref()),
@@ -2618,7 +2946,9 @@ async fn switch_org(
         return Err(AppError::Forbidden(access_denied_message(&decision).into()));
     }
 
-    service.switch_organization_context(session.session_id, session.user_id, body.organization_id).await?;
+    service
+        .switch_organization_context(session.session_id, session.user_id, body.organization_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -2634,7 +2964,9 @@ fn validate_hex_color(value: &str, field: &str) -> Result<(), AppError> {
         && s.starts_with('#')
         && s[1..].chars().all(|c| c.is_ascii_hexdigit());
     if !valid {
-        return Err(AppError::Validation(format!("{field} must be a hex color (#RRGGBB or #RRGGBBAA).")));
+        return Err(AppError::Validation(format!(
+            "{field} must be a hex color (#RRGGBB or #RRGGBBAA)."
+        )));
     }
     Ok(())
 }
@@ -2652,38 +2984,62 @@ fn validate_allowed_email_domains(raw: &str) -> Result<(), AppError> {
         return Ok(());
     }
 
-    let domains: Vec<&str> = raw.split(',').map(|d| d.trim()).filter(|d| !d.is_empty()).collect();
+    let domains: Vec<&str> = raw
+        .split(',')
+        .map(|d| d.trim())
+        .filter(|d| !d.is_empty())
+        .collect();
 
     if domains.len() > 20 {
-        return Err(AppError::Validation("allowed_email_domains may contain at most 20 domains.".into()));
+        return Err(AppError::Validation(
+            "allowed_email_domains may contain at most 20 domains.".into(),
+        ));
     }
 
     let mut seen = std::collections::HashSet::new();
     for domain in &domains {
         let d = domain.to_lowercase();
         if d.len() > 253 {
-            return Err(AppError::Validation(format!("Domain '{}' exceeds 253 characters.", domain)));
+            return Err(AppError::Validation(format!(
+                "Domain '{}' exceeds 253 characters.",
+                domain
+            )));
         }
         // Must have at least one dot (e.g. "example.com"), not just a bare label
         if !d.contains('.') {
-            return Err(AppError::Validation(format!("'{}' is not a valid domain (must contain at least one dot, e.g. example.com).", domain)));
+            return Err(AppError::Validation(format!(
+                "'{}' is not a valid domain (must contain at least one dot, e.g. example.com).",
+                domain
+            )));
         }
         for label in d.split('.') {
             if label.is_empty() {
-                return Err(AppError::Validation(format!("'{}' contains an empty label (double dot or leading/trailing dot).", domain)));
+                return Err(AppError::Validation(format!(
+                    "'{}' contains an empty label (double dot or leading/trailing dot).",
+                    domain
+                )));
             }
             if label.len() > 63 {
-                return Err(AppError::Validation(format!("'{}' label '{}' exceeds 63 characters.", domain, label)));
+                return Err(AppError::Validation(format!(
+                    "'{}' label '{}' exceeds 63 characters.",
+                    domain, label
+                )));
             }
             if label.starts_with('-') || label.ends_with('-') {
-                return Err(AppError::Validation(format!("'{}' label '{}' must not start or end with a hyphen.", domain, label)));
+                return Err(AppError::Validation(format!(
+                    "'{}' label '{}' must not start or end with a hyphen.",
+                    domain, label
+                )));
             }
             if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
                 return Err(AppError::Validation(format!("'{}' label '{}' contains invalid characters (only letters, digits, hyphens allowed).", domain, label)));
             }
         }
         if !seen.insert(d.clone()) {
-            return Err(AppError::Validation(format!("Duplicate domain: '{}'.", domain)));
+            return Err(AppError::Validation(format!(
+                "Duplicate domain: '{}'.",
+                domain
+            )));
         }
     }
 
@@ -2692,7 +3048,9 @@ fn validate_allowed_email_domains(raw: &str) -> Result<(), AppError> {
 
 fn validate_branding_url(value: &str, field: &str) -> Result<(), AppError> {
     if value.len() > 2048 {
-        return Err(AppError::Validation(format!("{field} must be 2048 characters or fewer.")));
+        return Err(AppError::Validation(format!(
+            "{field} must be 2048 characters or fewer."
+        )));
     }
     if !value.starts_with('/') {
         let parsed = url::Url::parse(value)
@@ -2714,7 +3072,9 @@ fn validate_branding_url(value: &str, field: &str) -> Result<(), AppError> {
             false
         };
         if scheme != "https" && !allow_dev_http {
-            return Err(AppError::Validation(format!("{field} must use HTTPS (or HTTP on a local development host).")));
+            return Err(AppError::Validation(format!(
+                "{field} must use HTTPS (or HTTP on a local development host)."
+            )));
         }
     }
     Ok(())
@@ -2726,50 +3086,79 @@ async fn update_current_org_branding(
     body: web::Json<UpdateCurrentOrganizationBrandingRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating branding.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating branding.".into())
+    })?;
 
     // Validate text field lengths
     if let Some(ref v) = body.login_display_name {
-        if v.len() > 100 { return Err(AppError::Validation("Login display name must be 100 characters or fewer.".into())); }
+        if v.len() > 100 {
+            return Err(AppError::Validation(
+                "Login display name must be 100 characters or fewer.".into(),
+            ));
+        }
     }
     if let Some(ref v) = body.login_title {
-        if v.len() > 200 { return Err(AppError::Validation("Login title must be 200 characters or fewer.".into())); }
+        if v.len() > 200 {
+            return Err(AppError::Validation(
+                "Login title must be 200 characters or fewer.".into(),
+            ));
+        }
     }
     if let Some(ref v) = body.login_subtitle {
-        if v.len() > 200 { return Err(AppError::Validation("Login subtitle must be 200 characters or fewer.".into())); }
+        if v.len() > 200 {
+            return Err(AppError::Validation(
+                "Login subtitle must be 200 characters or fewer.".into(),
+            ));
+        }
     }
     // Validate URL fields
     if let Some(ref v) = body.icon_url {
-        if !v.is_empty() { validate_branding_url(v, "Icon URL")?; }
+        if !v.is_empty() {
+            validate_branding_url(v, "Icon URL")?;
+        }
     }
     if let Some(ref v) = body.login_logo_url {
-        if !v.is_empty() { validate_branding_url(v, "Login logo URL")?; }
+        if !v.is_empty() {
+            validate_branding_url(v, "Login logo URL")?;
+        }
     }
     // Validate color fields
     if let Some(ref v) = body.brand_color {
-        if !v.is_empty() { validate_hex_color(v, "Brand color")?; }
+        if !v.is_empty() {
+            validate_hex_color(v, "Brand color")?;
+        }
     }
     if let Some(ref v) = body.card_bg_color2 {
-        if !v.is_empty() { validate_hex_color(v, "Card background color")?; }
+        if !v.is_empty() {
+            validate_hex_color(v, "Card background color")?;
+        }
     }
     if let Some(ref v) = body.card_border_color {
-        if !v.is_empty() { validate_hex_color(v, "Card border color")?; }
+        if !v.is_empty() {
+            validate_hex_color(v, "Card border color")?;
+        }
     }
 
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "branding:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to update workspace branding.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "branding:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update workspace branding.".into(),
+        ));
     }
 
     // Rename workspace if name provided
     if let Some(ref new_name) = body.name {
         let trimmed = new_name.trim();
         if trimmed.is_empty() {
-            return Err(AppError::Validation("Workspace name cannot be empty.".into()));
+            return Err(AppError::Validation(
+                "Workspace name cannot be empty.".into(),
+            ));
         }
         sqlx::query("UPDATE organizations SET name = $1, login_display_name = NULL, updated_at = NOW() WHERE id = $2")
             .bind(trimmed)
@@ -2785,52 +3174,106 @@ async fn update_current_org_branding(
         .update_branding(
             org_id,
             session.user_id,
-            body.login_display_name.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_title.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_subtitle.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.icon_url.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_logo_url.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.brand_color.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.login_display_name
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_title
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_subtitle
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.icon_url
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_logo_url
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.brand_color
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.show_login_logo,
             body.show_login_title,
             body.show_login_subtitle,
             body.show_powered_by,
-            body.widget_radius.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.widget_shadow.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.icon_container.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_logo_container.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.login_logo_size.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.card_radius.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.button_style.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-            body.card_bg_style.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.widget_radius
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.widget_shadow
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.icon_container
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_logo_container
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.login_logo_size
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.card_radius
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.button_style
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
+            body.card_bg_style
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.card_bg_color2.clone().map(|v| v.trim().to_string()),
-            body.card_border_width.clone().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            body.card_border_width
+                .clone()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             body.card_border_color.clone().map(|v| v.trim().to_string()),
             body.login_method_order.clone(),
         )
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.branding.updated".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "name_changed": body.name.is_some(),
-            "login_display_name_changed": body.login_display_name.is_some(),
-            "icon_url_changed": body.icon_url.is_some(),
-            "login_logo_url_changed": body.login_logo_url.is_some(),
-            "brand_color_changed": body.brand_color.is_some(),
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.branding.updated".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "name_changed": body.name.is_some(),
+                "login_display_name_changed": body.login_display_name.is_some(),
+                "icon_url_changed": body.icon_url.is_some(),
+                "login_logo_url_changed": body.login_logo_url.is_some(),
+                "brand_color_changed": body.brand_color.is_some(),
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(org))
 }
 
-fn branding_asset_filename_ext(filename: Option<&str>, content_type: Option<&mime::Mime>) -> &'static str {
+fn branding_asset_filename_ext(
+    filename: Option<&str>,
+    content_type: Option<&mime::Mime>,
+) -> &'static str {
     let from_name = filename
         .and_then(|value| Path::new(value).extension().and_then(|ext| ext.to_str()))
         .map(|value| value.trim().to_ascii_lowercase());
@@ -2858,21 +3301,31 @@ fn validate_branding_upload_part(
     content_type: Option<&mime::Mime>,
 ) -> Result<&'static str, AppError> {
     if field_name != Some("file") {
-        return Err(AppError::Validation("Branding upload must contain exactly one multipart field named 'file'.".into()));
+        return Err(AppError::Validation(
+            "Branding upload must contain exactly one multipart field named 'file'.".into(),
+        ));
     }
 
     let content_type_value = content_type
         .map(|value| value.essence_str())
-        .ok_or_else(|| AppError::Validation("Branding upload must include an image Content-Type.".into()))?;
+        .ok_or_else(|| {
+            AppError::Validation("Branding upload must include an image Content-Type.".into())
+        })?;
 
     match content_type_value {
         "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/svg+xml" => {}
-        _ => return Err(AppError::Validation("Unsupported image Content-Type. Use PNG, JPG, WEBP, GIF, or SVG.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "Unsupported image Content-Type. Use PNG, JPG, WEBP, GIF, or SVG.".into(),
+            ))
+        }
     }
 
     let ext = branding_asset_filename_ext(file_name, content_type);
     if ext == "bin" {
-        return Err(AppError::Validation("Unsupported image format. Use PNG, JPG, WEBP, GIF, or SVG.".into()));
+        return Err(AppError::Validation(
+            "Unsupported image format. Use PNG, JPG, WEBP, GIF, or SVG.".into(),
+        ));
     }
 
     Ok(ext)
@@ -2885,20 +3338,29 @@ async fn upload_current_org_branding_asset(
     mut payload: Multipart,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before uploading branding assets.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before uploading branding assets.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "branding:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to upload workspace branding assets.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "branding:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to upload workspace branding assets.".into(),
+        ));
     }
 
     let asset_dir = match query.kind.trim() {
         "icon" => "icon",
         "login-logo" => "login-logo",
-        _ => return Err(AppError::Validation("Upload kind must be 'icon' or 'login-logo'.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "Upload kind must be 'icon' or 'login-logo'.".into(),
+            ))
+        }
     };
 
     let max_bytes = state.config.server.max_logo_bytes;
@@ -2910,7 +3372,9 @@ async fn upload_current_org_branding_asset(
         .map_err(|e| AppError::Validation(format!("Invalid upload payload: {}", e)))?
     {
         if image.is_some() {
-            return Err(AppError::Validation("Branding upload must contain exactly one image file.".into()));
+            return Err(AppError::Validation(
+                "Branding upload must contain exactly one image file.".into(),
+            ));
         }
 
         let field_name = field
@@ -2922,7 +3386,11 @@ async fn upload_current_org_branding_asset(
             .content_disposition()
             .and_then(|value| value.get_filename())
             .map(str::to_string);
-        let ext = validate_branding_upload_part(field_name.as_deref(), file_name.as_deref(), content_type.as_ref())?;
+        let ext = validate_branding_upload_part(
+            field_name.as_deref(),
+            file_name.as_deref(),
+            content_type.as_ref(),
+        )?;
 
         let mut bytes = Vec::new();
         while let Some(chunk) = field
@@ -2932,7 +3400,10 @@ async fn upload_current_org_branding_asset(
         {
             if bytes.len() + chunk.len() > max_bytes {
                 let mb = (max_bytes / (1024 * 1024)).max(1);
-                return Err(AppError::Validation(format!("Image is too large. Maximum size is {}MB.", mb)));
+                return Err(AppError::Validation(format!(
+                    "Image is too large. Maximum size is {}MB.",
+                    mb
+                )));
             }
             bytes.extend_from_slice(&chunk);
         }
@@ -2944,8 +3415,8 @@ async fn upload_current_org_branding_asset(
         image = Some((bytes, content_type, ext));
     }
 
-    let (bytes, content_type, ext) = image
-        .ok_or_else(|| AppError::Validation("No image file was uploaded.".into()))?;
+    let (bytes, content_type, ext) =
+        image.ok_or_else(|| AppError::Validation("No image file was uploaded.".into()))?;
 
     let relative_path = format!(
         "uploads/orgs/{}/{}/{}.{}",
@@ -2963,16 +3434,22 @@ async fn upload_current_org_branding_asset(
     )
     .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.branding_asset.uploaded".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "kind": asset_dir }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.branding_asset.uploaded".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "kind": asset_dir }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(UploadBrandingAssetResponse {
         url,
@@ -2987,14 +3464,19 @@ async fn update_current_org_auth_policy(
     body: web::Json<UpdateCurrentOrganizationAuthPolicyRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating company sign-in policy.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating company sign-in policy.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to update company sign-in policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update company sign-in policy.".into(),
+        ));
     }
 
     // Capture before state for audit log and snapshot
@@ -3034,7 +3516,7 @@ async fn update_current_org_auth_policy(
                 ORDER BY created_at DESC
                 OFFSET 10
             )
-            "#
+            "#,
         )
         .bind(org_id)
         .execute(&state.db)
@@ -3064,41 +3546,47 @@ async fn update_current_org_auth_policy(
 
     // Audit: record before/after for all policy fields
     if let Some(before) = before {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(session.user_id),
-            organization_id: Some(org_id),
-            action: "workspace.auth_policy.updated".into(),
-            target_type: "organization".into(),
-            target_id: Some(org_id.to_string()),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({
-                "before": {
-                    "allow_magic_link": before.allow_magic_link,
-                    "allow_google": before.allow_google,
-                    "allow_microsoft": before.allow_microsoft,
-                    "allow_passkey": before.allow_passkey,
-                    "require_mfa": before.require_mfa,
-                    "require_mfa_for_admins": before.require_mfa_for_admins,
-                    "tenant_portal_require_mfa": before.tenant_portal_require_mfa,
-                    "allowed_email_domains": before.allowed_email_domains,
-                    "max_session_age_hours": before.max_session_age_hours,
-                    "max_concurrent_sessions": before.max_concurrent_sessions,
-                },
-                "after": {
-                    "allow_magic_link": org.allow_magic_link,
-                    "allow_google": org.allow_google,
-                    "allow_microsoft": org.allow_microsoft,
-                    "allow_passkey": org.allow_passkey,
-                    "require_mfa": org.require_mfa,
-                    "require_mfa_for_admins": org.require_mfa_for_admins,
-                    "tenant_portal_require_mfa": org.tenant_portal_require_mfa,
-                    "allowed_email_domains": org.allowed_email_domains,
-                    "max_session_age_hours": org.max_session_age_hours,
-                    "max_concurrent_sessions": org.max_concurrent_sessions,
-                },
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(session.user_id),
+                organization_id: Some(org_id),
+                action: "workspace.auth_policy.updated".into(),
+                target_type: "organization".into(),
+                target_id: Some(org_id.to_string()),
+                ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::json!({
+                    "before": {
+                        "allow_magic_link": before.allow_magic_link,
+                        "allow_google": before.allow_google,
+                        "allow_microsoft": before.allow_microsoft,
+                        "allow_passkey": before.allow_passkey,
+                        "require_mfa": before.require_mfa,
+                        "require_mfa_for_admins": before.require_mfa_for_admins,
+                        "tenant_portal_require_mfa": before.tenant_portal_require_mfa,
+                        "allowed_email_domains": before.allowed_email_domains,
+                        "max_session_age_hours": before.max_session_age_hours,
+                        "max_concurrent_sessions": before.max_concurrent_sessions,
+                    },
+                    "after": {
+                        "allow_magic_link": org.allow_magic_link,
+                        "allow_google": org.allow_google,
+                        "allow_microsoft": org.allow_microsoft,
+                        "allow_passkey": org.allow_passkey,
+                        "require_mfa": org.require_mfa,
+                        "require_mfa_for_admins": org.require_mfa_for_admins,
+                        "tenant_portal_require_mfa": org.tenant_portal_require_mfa,
+                        "allowed_email_domains": org.allowed_email_domains,
+                        "max_session_age_hours": org.max_session_age_hours,
+                        "max_concurrent_sessions": org.max_concurrent_sessions,
+                    },
+                }),
+            })
+            .await;
     }
 
     Ok(HttpResponse::Ok().json(org))
@@ -3109,14 +3597,19 @@ async fn get_current_org_client_policy(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing client policy.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing client policy.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to view workspace client policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view workspace client policy.".into(),
+        ));
     }
 
     let platform = load_platform_client_governance(&state.db).await?;
@@ -3136,14 +3629,19 @@ async fn update_current_org_client_policy(
     body: web::Json<UpdateCurrentOrganizationClientPolicyRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating client policy.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating client policy.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update workspace client policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update workspace client policy.".into(),
+        ));
     }
 
     let platform = load_platform_client_governance(&state.db).await?;
@@ -3153,13 +3651,19 @@ async fn update_current_org_client_policy(
         ));
     }
     if body.allow_web_clients && !platform.tenant_web_clients_enabled {
-        return Err(AppError::Validation("Platform policy does not allow workspace web clients.".into()));
+        return Err(AppError::Validation(
+            "Platform policy does not allow workspace web clients.".into(),
+        ));
     }
     if body.allow_spa_clients && !platform.tenant_spa_clients_enabled {
-        return Err(AppError::Validation("Platform policy does not allow workspace SPA clients.".into()));
+        return Err(AppError::Validation(
+            "Platform policy does not allow workspace SPA clients.".into(),
+        ));
     }
     if body.allow_native_clients && !platform.tenant_native_clients_enabled {
-        return Err(AppError::Validation("Platform policy does not allow workspace native clients.".into()));
+        return Err(AppError::Validation(
+            "Platform policy does not allow workspace native clients.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
@@ -3178,21 +3682,27 @@ async fn update_current_org_client_policy(
     let tenant = load_tenant_client_policy(&state.db, org_id).await?;
     let effective = effective_client_policy(&platform, &tenant);
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.client_policy.updated".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "allow_client_management": body.allow_client_management,
-            "allow_web_clients": body.allow_web_clients,
-            "allow_spa_clients": body.allow_spa_clients,
-            "allow_native_clients": body.allow_native_clients,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.client_policy.updated".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "allow_client_management": body.allow_client_management,
+                "allow_web_clients": body.allow_web_clients,
+                "allow_spa_clients": body.allow_spa_clients,
+                "allow_native_clients": body.allow_native_clients,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(OrganizationClientPolicyResponse {
         platform,
@@ -3206,14 +3716,19 @@ async fn get_current_org_ip_policy(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing IP policy.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing IP policy.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to view workspace IP policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view workspace IP policy.".into(),
+        ));
     }
 
     let platform = load_platform_ip_policy(&state.db).await?;
@@ -3233,14 +3748,19 @@ async fn update_current_org_ip_policy(
     body: web::Json<UpdateCurrentOrganizationIpPolicyRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating IP policy.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating IP policy.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update workspace IP policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update workspace IP policy.".into(),
+        ));
     }
 
     let platform = load_platform_ip_policy(&state.db).await?;
@@ -3258,20 +3778,26 @@ async fn update_current_org_ip_policy(
 
     save_tenant_ip_policy(&state.db, org_id, &tenant).await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.ip_policy.updated".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "use_custom_ip_policy": tenant.use_custom_ip_policy,
-            "allowlist_count": tenant.allowlist.len(),
-            "blocklist_count": tenant.blocklist.len(),
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.ip_policy.updated".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "use_custom_ip_policy": tenant.use_custom_ip_policy,
+                "allowlist_count": tenant.allowlist.len(),
+                "blocklist_count": tenant.blocklist.len(),
+            }),
+        })
+        .await;
 
     let effective = resolve_effective_ip_policy(&state.db, Some(org_id)).await?;
     Ok(HttpResponse::Ok().json(OrganizationIpPolicyResponse {
@@ -3287,19 +3813,26 @@ async fn list_current_org_members(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing company members.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing company members.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "members:read").await? {
-        return Err(AppError::Forbidden("You do not have permission to view company members.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "members:read")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view company members.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    let members = service.get_organization_member_views(org_id, session.user_id).await?;
+    let members = service
+        .get_organization_member_views(org_id, session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(members))
 }
@@ -3311,30 +3844,61 @@ async fn list_current_org_activity(
     query: web::Query<ActivityQuery>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing company activity.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing company activity.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "activity:read").await? {
-        return Err(AppError::Forbidden("You do not have permission to view company activity.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "activity:read")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view company activity.".into(),
+        ));
     }
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search_raw = query.search.as_deref().unwrap_or("").trim();
     if search_raw.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let search = search_raw.to_lowercase();
-    let action_filter = query.action.as_deref().unwrap_or("all").trim().to_lowercase();
-    let date_from = query.date_from.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let date_to = query.date_to.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let action_filter = query
+        .action
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
+    let date_from = query
+        .date_from
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let date_to = query
+        .date_to
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    let (items, total) = service.get_organization_activity(org_id, session.user_id, page, page_size, &search, &action_filter, date_from.as_deref(), date_to.as_deref()).await?;
+    let (items, total) = service
+        .get_organization_activity(
+            org_id,
+            session.user_id,
+            page,
+            page_size,
+            &search,
+            &action_filter,
+            date_from.as_deref(),
+            date_to.as_deref(),
+        )
+        .await?;
 
     Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
         items: items
@@ -3363,13 +3927,15 @@ async fn list_current_org_security_alert_reviews(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing suspicious-auth reviews.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing suspicious-auth reviews.".into())
+    })?;
 
     let repo = OrganizationRepository::new(state.db.clone());
     if !repo.is_org_admin_or_owner(org_id, session.user_id).await? {
-        return Err(AppError::Forbidden("You do not have permission to view suspicious-auth reviews.".into()));
+        return Err(AppError::Forbidden(
+            "You do not have permission to view suspicious-auth reviews.".into(),
+        ));
     }
 
     let items = sqlx::query_as::<_, SecurityAlertReviewItem>(
@@ -3385,12 +3951,16 @@ async fn list_current_org_security_alert_reviews(
         LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
         WHERE sar.scope_type = 'organization' AND sar.scope_id = $1
         ORDER BY sar.reviewed_at DESC
-        "#
+        "#,
     )
     .bind(org_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace security alert reviews: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace security alert reviews: {e}"
+        ))
+    })?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
 }
@@ -3401,13 +3971,15 @@ async fn mark_current_org_security_alert_reviewed(
     body: web::Json<MarkSecurityAlertReviewRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before reviewing suspicious-auth alerts.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before reviewing suspicious-auth alerts.".into())
+    })?;
 
     let repo = OrganizationRepository::new(state.db.clone());
     if !repo.is_org_admin_or_owner(org_id, session.user_id).await? {
-        return Err(AppError::Forbidden("You do not have permission to review suspicious-auth alerts.".into()));
+        return Err(AppError::Forbidden(
+            "You do not have permission to review suspicious-auth alerts.".into(),
+        ));
     }
 
     let alert_key = body.alert_key.trim();
@@ -3430,16 +4002,22 @@ async fn mark_current_org_security_alert_reviewed(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to save workspace security alert review: {e}")))?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.security_alert.reviewed".into(),
-        target_type: "security_alert".into(),
-        target_id: Some(alert_key.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "alert_key": alert_key }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.security_alert.reviewed".into(),
+            target_type: "security_alert".into(),
+            target_id: Some(alert_key.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "alert_key": alert_key }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
@@ -3449,31 +4027,45 @@ async fn reset_current_org_security_alert_reviews(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before resetting suspicious-auth reviews.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before resetting suspicious-auth reviews.".into())
+    })?;
 
     let repo = OrganizationRepository::new(state.db.clone());
     if !repo.is_org_admin_or_owner(org_id, session.user_id).await? {
-        return Err(AppError::Forbidden("You do not have permission to reset suspicious-auth reviews.".into()));
+        return Err(AppError::Forbidden(
+            "You do not have permission to reset suspicious-auth reviews.".into(),
+        ));
     }
 
-    sqlx::query("DELETE FROM security_alert_reviews WHERE scope_type = 'organization' AND scope_id = $1")
-        .bind(org_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to reset workspace security alert reviews: {e}")))?;
+    sqlx::query(
+        "DELETE FROM security_alert_reviews WHERE scope_type = 'organization' AND scope_id = $1",
+    )
+    .bind(org_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to reset workspace security alert reviews: {e}"
+        ))
+    })?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.security_alert.reviews_reset".into(),
-        target_type: "security_alert".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.security_alert.reviews_reset".into(),
+            target_type: "security_alert".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
@@ -3485,47 +4077,86 @@ async fn export_current_org_activity(
     query: web::Query<ActivityExportQuery>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before exporting activity.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before exporting activity.".into())
+    })?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "activity:read").await? {
-        return Err(AppError::Forbidden("You do not have permission to export workspace activity.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "activity:read")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to export workspace activity.".into(),
+        ));
     }
 
     let search_raw = query.search.as_deref().unwrap_or("").trim();
     if search_raw.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let search = search_raw.to_lowercase();
-    let action_filter = query.action.as_deref().unwrap_or("all").trim().to_lowercase();
+    let action_filter = query
+        .action
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
     let format = query.format.as_deref().unwrap_or("csv").to_lowercase();
-    let date_from = query.date_from.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let date_to = query.date_to.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let date_from = query
+        .date_from
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let date_to = query
+        .date_to
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     // Fetch up to 10 000 rows (page 1, page_size 10 000)
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    let (items, _) = service.get_organization_activity(org_id, session.user_id, 1, 10_000, &search, &action_filter, date_from.as_deref(), date_to.as_deref()).await?;
+    let (items, _) = service
+        .get_organization_activity(
+            org_id,
+            session.user_id,
+            1,
+            10_000,
+            &search,
+            &action_filter,
+            date_from.as_deref(),
+            date_to.as_deref(),
+        )
+        .await?;
 
     if format == "json" {
-        let json_items: Vec<serde_json::Value> = items.iter().map(|item| serde_json::json!({
-            "id": item.id,
-            "actor_user_id": item.actor_user_id,
-            "actor_display_name": item.actor_display_name,
-            "actor_email": item.actor_email,
-            "action": item.action,
-            "target_type": item.target_type,
-            "target_id": item.target_id,
-            "ip": item.ip,
-            "metadata": item.metadata,
-            "created_at": item.created_at.to_rfc3339(),
-        })).collect();
+        let json_items: Vec<serde_json::Value> = items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "id": item.id,
+                    "actor_user_id": item.actor_user_id,
+                    "actor_display_name": item.actor_display_name,
+                    "actor_email": item.actor_email,
+                    "action": item.action,
+                    "target_type": item.target_type,
+                    "target_id": item.target_id,
+                    "ip": item.ip,
+                    "metadata": item.metadata,
+                    "created_at": item.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
 
         return Ok(HttpResponse::Ok()
             .insert_header(("Content-Type", "application/json"))
-            .insert_header(("Content-Disposition", "attachment; filename=\"activity.json\""))
+            .insert_header((
+                "Content-Disposition",
+                "attachment; filename=\"activity.json\"",
+            ))
             .json(json_items));
     }
 
@@ -3546,7 +4177,9 @@ async fn export_current_org_activity(
         csv.push_str(&format!(
             "{},{},{},{},{},{},{},{},{},{}\n",
             item.id,
-            item.actor_user_id.map(|u| u.to_string()).unwrap_or_default(),
+            item.actor_user_id
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
             escape(item.actor_email.as_deref().unwrap_or("")),
             escape(item.actor_display_name.as_deref().unwrap_or("")),
             escape(&item.action),
@@ -3560,7 +4193,10 @@ async fn export_current_org_activity(
 
     Ok(HttpResponse::Ok()
         .insert_header(("Content-Type", "text/csv; charset=utf-8"))
-        .insert_header(("Content-Disposition", "attachment; filename=\"activity.csv\""))
+        .insert_header((
+            "Content-Disposition",
+            "attachment; filename=\"activity.csv\"",
+        ))
         .body(csv))
 }
 
@@ -3578,12 +4214,27 @@ async fn list_my_orgs_activity(
     let offset = (page - 1) * page_size;
     let search_raw = query.search.as_deref().unwrap_or("").trim();
     if search_raw.len() > 256 {
-        return Err(AppError::Validation("Search query is too long (max 256 characters).".into()));
+        return Err(AppError::Validation(
+            "Search query is too long (max 256 characters).".into(),
+        ));
     }
     let search = search_raw.to_lowercase();
-    let action_filter = query.action.as_deref().unwrap_or("all").trim().to_lowercase();
-    let date_from = query.date_from.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let date_to = query.date_to.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let action_filter = query
+        .action
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_lowercase();
+    let date_from = query
+        .date_from
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let date_to = query
+        .date_to
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     // Org IDs where the user is owner or admin (has a role with 'owner' or 'admin' code).
     let org_ids: Vec<Uuid> = sqlx::query_scalar(
@@ -3595,15 +4246,26 @@ async fn list_my_orgs_activity(
         WHERE om.user_id = $1
           AND r.code IN ('owner', 'admin')
           AND om.status = 'active'
-        "#
+        "#,
     )
     .bind(user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace ids for cross-workspace activity: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace ids for cross-workspace activity: {e}"
+        ))
+    })?;
 
     if org_ids.is_empty() {
-        return Ok(HttpResponse::Ok().json(PaginatedActivityResponse::<TenantActivityResponse> { items: vec![], total: 0, page, page_size }));
+        return Ok(
+            HttpResponse::Ok().json(PaginatedActivityResponse::<TenantActivityResponse> {
+                items: vec![],
+                total: 0,
+                page,
+                page_size,
+            }),
+        );
     }
 
     let total: i64 = sqlx::query_scalar(
@@ -3626,7 +4288,7 @@ async fn list_my_orgs_activity(
                OR ($4 = 'suspicious' AND al.action LIKE '%suspicious%'))
           AND ($5::date IS NULL OR al.created_at >= $5::date)
           AND ($6::date IS NULL OR al.created_at < ($6::date + interval '1 day'))
-        "#
+        "#,
     )
     .bind(&org_ids)
     .bind(user_id)
@@ -3636,7 +4298,11 @@ async fn list_my_orgs_activity(
     .bind(&date_to)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to count cross-workspace activity entries: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to count cross-workspace activity entries: {e}"
+        ))
+    })?;
 
     let items = sqlx::query_as::<_, OrganizationActivityItem>(
         r#"
@@ -3671,7 +4337,7 @@ async fn list_my_orgs_activity(
           AND ($6::date IS NULL OR al.created_at < ($6::date + interval '1 day'))
         ORDER BY al.created_at DESC
         LIMIT $7 OFFSET $8
-        "#
+        "#,
     )
     .bind(&org_ids)
     .bind(user_id)
@@ -3683,7 +4349,11 @@ async fn list_my_orgs_activity(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load cross-workspace activity entries: {e}")))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load cross-workspace activity entries: {e}"
+        ))
+    })?;
 
     Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
         items: items
@@ -3719,7 +4389,9 @@ async fn list_org_members(
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
 
-    let members = service.get_organization_members(target_org_id, session.user_id).await?;
+    let members = service
+        .get_organization_members(target_org_id, session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(members))
 }
@@ -3759,25 +4431,38 @@ async fn send_invite(
     let target_org_id = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, target_org_id, "members:invite").await? {
-        return Err(AppError::Forbidden("You do not have permission to invite members to this workspace.".into()));
+    if !rbac
+        .has_permission(session.user_id, target_org_id, "members:invite")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to invite members to this workspace.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
 
-    service.send_invite(target_org_id, session.user_id, &body.email).await?;
+    service
+        .send_invite(target_org_id, session.user_id, &body.email)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(target_org_id),
-        action: "workspace.invite.sent".into(),
-        target_type: "invite".into(),
-        target_id: None,
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "invited_email": body.email }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(target_org_id),
+            action: "workspace.invite.sent".into(),
+            target_type: "invite".into(),
+            target_id: None,
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "invited_email": body.email }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -3792,30 +4477,43 @@ async fn send_current_org_invite(
     body: web::Json<SendInviteRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before inviting a company member.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before inviting a company member.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "members:invite").await? {
-        return Err(AppError::Forbidden("You do not have permission to invite company members.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "members:invite")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to invite company members.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    service.send_invite(org_id, session.user_id, &body.email).await?;
+    service
+        .send_invite(org_id, session.user_id, &body.email)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.invite.sent".into(),
-        target_type: "invite".into(),
-        target_id: None,
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "invited_email": body.email }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.invite.sent".into(),
+            target_type: "invite".into(),
+            target_id: None,
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "invited_email": body.email }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -3828,19 +4526,26 @@ async fn list_current_org_invites(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing invitations.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing invitations.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "members:invite").await? {
-        return Err(AppError::Forbidden("You do not have permission to view workspace invitations.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "members:invite")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view workspace invitations.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    let invites = service.list_pending_invites(org_id, session.user_id).await?;
+    let invites = service
+        .list_pending_invites(org_id, session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(invites))
 }
@@ -3851,30 +4556,43 @@ async fn revoke_current_org_invite(
     path: web::Path<InvitePath>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before revoking invitations.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before revoking invitations.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "members:invite").await? {
-        return Err(AppError::Forbidden("You do not have permission to revoke workspace invitations.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "members:invite")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to revoke workspace invitations.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
     let service = OrganizationService::new(repo, state.db.clone());
-    let invite = service.revoke_invite(org_id, session.user_id, path.into_inner().invite_id).await?;
+    let invite = service
+        .revoke_invite(org_id, session.user_id, path.into_inner().invite_id)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.invite.revoked".into(),
-        target_type: "invite".into(),
-        target_id: Some(invite.id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "invited_email": invite.email }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.invite.revoked".into(),
+            target_type: "invite".into(),
+            target_id: Some(invite.id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "invited_email": invite.email }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -3890,14 +4608,19 @@ async fn update_current_org_member_role(
     body: web::Json<UpdateMemberRoleRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating company member roles.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating company member roles.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage company roles.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage company roles.".into(),
+        ));
     }
 
     let member_id = path.into_inner();
@@ -3910,7 +4633,7 @@ async fn update_current_org_member_role(
         JOIN member_roles mr ON mr.role_id = r.id
         JOIN organization_members om ON om.id = mr.member_id
         WHERE om.id = $1 AND om.organization_id = $2
-        "#
+        "#,
     )
     .bind(member_id)
     .bind(org_id)
@@ -3923,7 +4646,7 @@ async fn update_current_org_member_role(
 
     // Resolve user_id for this member before the role change
     let target_user_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2"
+        "SELECT user_id FROM organization_members WHERE id = $1 AND organization_id = $2",
     )
     .bind(member_id)
     .bind(org_id)
@@ -3941,7 +4664,7 @@ async fn update_current_org_member_role(
         let _ = sqlx::query(
             "UPDATE sessions SET revoked_at = NOW() \
              WHERE user_id = $1 AND current_org_id = $2 \
-             AND revoked_at IS NULL AND expires_at > NOW()"
+             AND revoked_at IS NULL AND expires_at > NOW()",
         )
         .bind(uid)
         .bind(org_id)
@@ -3949,19 +4672,25 @@ async fn update_current_org_member_role(
         .await;
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.member.role_changed".into(),
-        target_type: "member".into(),
-        target_id: Some(member_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "before_roles": before_roles,
-            "after_role": new_role,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.member.role_changed".into(),
+            target_type: "member".into(),
+            target_id: Some(member_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "before_roles": before_roles,
+                "after_role": new_role,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -3976,21 +4705,26 @@ async fn remove_current_org_member(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before removing a member.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before removing a member.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "members:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to remove workspace members.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "members:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to remove workspace members.".into(),
+        ));
     }
 
     let member_id = path.into_inner();
 
     // Prevent self-removal via this endpoint
     let is_self: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM organization_members WHERE id = $1 AND user_id = $2)"
+        "SELECT EXISTS(SELECT 1 FROM organization_members WHERE id = $1 AND user_id = $2)",
     )
     .bind(member_id)
     .bind(session.user_id)
@@ -3999,7 +4733,9 @@ async fn remove_current_org_member(
     .unwrap_or(false);
 
     if is_self {
-        return Err(AppError::Validation("You cannot remove yourself. Transfer ownership first.".into()));
+        return Err(AppError::Validation(
+            "You cannot remove yourself. Transfer ownership first.".into(),
+        ));
     }
 
     let repo = OrganizationRepository::new(state.db.clone());
@@ -4009,7 +4745,7 @@ async fn remove_current_org_member(
     sqlx::query(
         "UPDATE sessions SET revoked_at = NOW() \
          WHERE user_id = $1 AND current_org_id = $2 \
-         AND revoked_at IS NULL AND expires_at > NOW()"
+         AND revoked_at IS NULL AND expires_at > NOW()",
     )
     .bind(removed_user_id)
     .bind(org_id)
@@ -4020,23 +4756,29 @@ async fn remove_current_org_member(
     sqlx::query(
         "UPDATE oauth_refresh_tokens SET revoked_at = NOW() \
          WHERE user_id = $1 AND revoked_at IS NULL \
-         AND session_id IN (SELECT id FROM sessions WHERE user_id = $1 AND current_org_id = $2)"
+         AND session_id IN (SELECT id FROM sessions WHERE user_id = $1 AND current_org_id = $2)",
     )
     .bind(removed_user_id)
     .bind(org_id)
     .execute(&state.db)
     .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.member.removed".into(),
-        target_type: "member".into(),
-        target_id: Some(removed_user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "member_id": member_id }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.member.removed".into(),
+            target_type: "member".into(),
+            target_id: Some(removed_user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "member_id": member_id }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -4057,23 +4799,30 @@ async fn accept_invite(
 
     let org_id = service.accept_invite(session.user_id, &body.token).await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.invite.accepted".into(),
-        target_type: "member".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.invite.accepted".into(),
+            target_type: "member".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
-    let org_slug: Option<String> = sqlx::query_scalar("SELECT slug FROM organizations WHERE id = $1")
-        .bind(org_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let org_slug: Option<String> =
+        sqlx::query_scalar("SELECT slug FROM organizations WHERE id = $1")
+            .bind(org_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -4217,8 +4966,13 @@ async fn list_current_org_clients(
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to view company clients.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view company clients.".into(),
+        ));
     }
 
     let client_rows = sqlx::query!(
@@ -4255,7 +5009,12 @@ async fn list_current_org_clients(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to load workspace client redirect URIs: {e}")))?;
         let allowed_embed_origins = load_client_allowed_embed_origins(&state.db, client.id).await?;
-        responses.push(OrgClientResponse { client, redirect_uris, allowed_embed_origins, client_secret: None });
+        responses.push(OrgClientResponse {
+            client,
+            redirect_uris,
+            allowed_embed_origins,
+            client_secret: None,
+        });
     }
 
     Ok(HttpResponse::Ok().json(responses))
@@ -4268,14 +5027,19 @@ async fn create_current_org_client(
     body: web::Json<CreateOrgClientRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before creating a client.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before creating a client.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to create company clients.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to create company clients.".into(),
+        ));
     }
 
     let platform_policy = load_platform_client_governance(&state.db).await?;
@@ -4292,7 +5056,9 @@ async fn create_current_org_client(
         return Err(AppError::Validation("App name is required.".into()));
     }
     if !["web", "spa", "native"].contains(&body.app_type.as_str()) {
-        return Err(AppError::Validation("app_type must be web, spa, or native.".into()));
+        return Err(AppError::Validation(
+            "app_type must be web, spa, or native.".into(),
+        ));
     }
     if !is_client_type_allowed(&effective_policy, &body.app_type) {
         return Err(AppError::Forbidden(format!(
@@ -4300,7 +5066,8 @@ async fn create_current_org_client(
             body.app_type.to_uppercase()
         )));
     }
-    let app_registration_governance = load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
+    let app_registration_governance =
+        load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
     let redirect_uris = normalize_client_redirect_uris_with_limit(
         &body.app_type,
         &body.redirect_uris,
@@ -4310,19 +5077,22 @@ async fn create_current_org_client(
         &body.allowed_embed_origins,
         app_registration_governance.max_allowed_embed_origins_per_app as usize,
     )?;
-    if requires_multi_origin_confirmation(&redirect_uris, &allowed_embed_origins) && !body.confirm_multi_origin {
+    if requires_multi_origin_confirmation(&redirect_uris, &allowed_embed_origins)
+        && !body.confirm_multi_origin
+    {
         return Err(AppError::Validation(
             "This app spans multiple site origins. Confirm the multi-origin app setup or create separate apps per site/environment.".into(),
         ));
     }
     let app_limit = workspace_governance.effective_max_apps();
-    let existing_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM oauth_clients WHERE org_id = $1"
-    )
-    .bind(org_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to count workspace OAuth clients: {e}")))?;
+    let existing_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM oauth_clients WHERE org_id = $1")
+            .bind(org_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to count workspace OAuth clients: {e}"))
+            })?;
 
     if existing_count >= i64::from(app_limit) {
         return Err(AppError::Validation(format!(
@@ -4341,11 +5111,11 @@ async fn create_current_org_client(
         client_secret_hash = Some(hash);
     }
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to begin workspace client creation transaction: {e}")))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to begin workspace client creation transaction: {e}"
+        ))
+    })?;
 
     let client = sqlx::query_as::<_, OrgOAuthClient>(
         r#"
@@ -4381,22 +5151,28 @@ async fn create_current_org_client(
             .map_err(|e| AppError::Internal(format!("Failed to save workspace client allowed embed origin: {e}")))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to commit workspace client creation transaction: {e}")))?;
+    tx.commit().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to commit workspace client creation transaction: {e}"
+        ))
+    })?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: "oauth_client.created".into(),
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": client.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Created().json(OrgClientResponse {
         client,
@@ -4413,15 +5189,20 @@ async fn rotate_current_org_client_secret(
     path: web::Path<uuid::Uuid>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before rotating a client secret.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before rotating a client secret.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
     let client_id_param = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to rotate company client secrets.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to rotate company client secrets.".into(),
+        ));
     }
 
     let client = sqlx::query_as::<_, OrgOAuthClient>(
@@ -4435,10 +5216,14 @@ async fn rotate_current_org_client_secret(
     .ok_or_else(|| AppError::NotFound("Client not found in your workspace.".into()))?;
 
     if client.app_type != "web" {
-        return Err(AppError::Validation("Only confidential web clients can rotate a client secret.".into()));
+        return Err(AppError::Validation(
+            "Only confidential web clients can rotate a client secret.".into(),
+        ));
     }
     if client.status != "active" {
-        return Err(AppError::Validation("Paused clients cannot rotate a client secret until resumed.".into()));
+        return Err(AppError::Validation(
+            "Paused clients cannot rotate a client secret until resumed.".into(),
+        ));
     }
 
     let (client_secret, client_secret_hash) = generate_confidential_client_secret()?;
@@ -4449,20 +5234,26 @@ async fn rotate_current_org_client_secret(
         .bind(org_id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to rotate workspace client secret: {e}")))?;
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to rotate workspace client secret: {e}"))
+        })?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: "oauth_client.secret_rotated".into(),
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": client.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(RotateOrgClientSecretResponse {
         client_id: client.client_id,
@@ -4477,15 +5268,20 @@ async fn update_current_org_client(
     body: web::Json<UpdateOrgClientRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating a client.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating a client.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
     let client_id_param = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update company clients.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update company clients.".into(),
+        ));
     }
 
     if body.app_name.trim().is_empty() {
@@ -4502,7 +5298,8 @@ async fn update_current_org_client(
     .map_err(|e| AppError::Internal(format!("Failed to load workspace OAuth client for update: {e}")))?
     .ok_or_else(|| AppError::NotFound("Client not found in your workspace.".into()))?;
 
-    let app_registration_governance = load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
+    let app_registration_governance =
+        load_effective_workspace_app_registration_governance(&state.db, org_id).await?;
     let redirect_uris = normalize_client_redirect_uris_with_limit(
         &existing.app_type,
         &body.redirect_uris,
@@ -4512,17 +5309,19 @@ async fn update_current_org_client(
         &body.allowed_embed_origins,
         app_registration_governance.max_allowed_embed_origins_per_app as usize,
     )?;
-    if requires_multi_origin_confirmation(&redirect_uris, &allowed_embed_origins) && !body.confirm_multi_origin {
+    if requires_multi_origin_confirmation(&redirect_uris, &allowed_embed_origins)
+        && !body.confirm_multi_origin
+    {
         return Err(AppError::Validation(
             "This app spans multiple site origins. Confirm the multi-origin app setup or create separate apps per site/environment.".into(),
         ));
     }
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to begin workspace client update transaction: {e}")))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to begin workspace client update transaction: {e}"
+        ))
+    })?;
 
     let updated_client = sqlx::query_as::<_, OrgOAuthClient>(
         r#"
@@ -4543,12 +5342,20 @@ async fn update_current_org_client(
         .bind(client_id_param)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear workspace client redirect URIs: {e}")))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear workspace client redirect URIs: {e}"
+            ))
+        })?;
     sqlx::query("DELETE FROM oauth_client_allowed_embed_origins WHERE oauth_client_id = $1")
         .bind(client_id_param)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear workspace client allowed embed origins: {e}")))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear workspace client allowed embed origins: {e}"
+            ))
+        })?;
 
     for uri in &redirect_uris {
         sqlx::query("INSERT INTO oauth_client_redirect_uris (oauth_client_id, redirect_uri) VALUES ($1, $2)")
@@ -4567,25 +5374,31 @@ async fn update_current_org_client(
             .map_err(|e| AppError::Internal(format!("Failed to save updated workspace client allowed embed origin: {e}")))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to commit workspace client update transaction: {e}")))?;
+    tx.commit().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to commit workspace client update transaction: {e}"
+        ))
+    })?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: "oauth_client.updated".into(),
             target_type: "oauth_client".into(),
             target_id: Some(updated_client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({
                 "app_name": updated_client.app_name,
                 "redirect_uri_count": redirect_uris.len(),
             }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(OrgClientResponse {
         client: updated_client,
@@ -4602,20 +5415,27 @@ async fn update_current_org_client_status(
     body: web::Json<UpdateOrgClientStatusRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before updating a client.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before updating a client.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
     let client_id_param = path.into_inner();
     let normalized_status = body.status.trim().to_lowercase();
 
     if normalized_status != "active" && normalized_status != "suspended" {
-        return Err(AppError::Validation("Status must be either 'active' or 'suspended'.".into()));
+        return Err(AppError::Validation(
+            "Status must be either 'active' or 'suspended'.".into(),
+        ));
     }
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update company clients.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update company clients.".into(),
+        ));
     }
 
     let client = sqlx::query_as::<_, OrgOAuthClient>(
@@ -4638,8 +5458,8 @@ async fn update_current_org_client_status(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to update workspace OAuth client status: {e}")))?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: if normalized_status == "active" {
@@ -4650,10 +5470,14 @@ async fn update_current_org_client_status(
             target_type: "oauth_client".into(),
             target_id: Some(client.id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({ "app_name": updated.app_name }),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(updated))
 }
@@ -4665,43 +5489,52 @@ async fn delete_current_org_client(
     path: web::Path<uuid::Uuid>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
-    let org_id = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before deleting a client.".into()))?;
+    let org_id = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before deleting a client.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
     let client_id_param = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to delete company clients.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to delete company clients.".into(),
+        ));
     }
 
-    let rows = sqlx::query(
-        "DELETE FROM oauth_clients WHERE id = $1 AND org_id = $2"
-    )
-    .bind(client_id_param)
-    .bind(org_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to delete workspace OAuth client: {e}")))?
-    .rows_affected();
+    let rows = sqlx::query("DELETE FROM oauth_clients WHERE id = $1 AND org_id = $2")
+        .bind(client_id_param)
+        .bind(org_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to delete workspace OAuth client: {e}")))?
+        .rows_affected();
 
     if rows == 0 {
-        return Err(AppError::NotFound("Client not found in your workspace.".into()));
+        return Err(AppError::NotFound(
+            "Client not found in your workspace.".into(),
+        ));
     }
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: "oauth_client.deleted".into(),
             target_type: "oauth_client".into(),
             target_id: Some(client_id_param.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({}),
-        }
-    ).await;
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
@@ -4757,11 +5590,17 @@ pub struct PrepareTenantOAuthVerificationRequest {
     pub redirect_uri: String,
 }
 
-pub(crate) fn encrypt_secret(secret: &str, config: &std::sync::Arc<crate::bootstrap::config::AppConfig>) -> Result<String, AppError> {
-    use aes_gcm_siv::{aead::{Aead, KeyInit}, Aes256GcmSiv, Nonce};
+pub(crate) fn encrypt_secret(
+    secret: &str,
+    config: &std::sync::Arc<crate::bootstrap::config::AppConfig>,
+) -> Result<String, AppError> {
+    use aes_gcm_siv::{
+        aead::{Aead, KeyInit},
+        Aes256GcmSiv, Nonce,
+    };
+    use base64::Engine as _;
     use rand::{rngs::OsRng, RngCore};
     use sha2::{Digest, Sha256};
-    use base64::Engine as _;
 
     let key_material = Sha256::digest(config.oidc.signing_secret.as_bytes());
     let cipher = Aes256GcmSiv::new_from_slice(&key_material)
@@ -4789,8 +5628,13 @@ async fn get_current_org_auth_config(
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to view auth config.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view auth config.".into(),
+        ));
     }
 
     let row = sqlx::query!(
@@ -4849,18 +5693,25 @@ async fn update_current_org_auth_config(
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update auth config.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update auth config.".into(),
+        ));
     }
 
     // Ensure the row exists
     sqlx::query(
-        "INSERT INTO tenant_auth_config (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING"
+        "INSERT INTO tenant_auth_config (org_id) VALUES ($1) ON CONFLICT (org_id) DO NOTHING",
     )
     .bind(org_id)
     .execute(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to initialize workspace auth config: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to initialize workspace auth config: {}", e))
+    })?;
 
     // Google
     if body.clear_google.unwrap_or(false) {
@@ -4886,10 +5737,16 @@ async fn update_current_org_auth_config(
     if body.clear_microsoft.unwrap_or(false) {
         sqlx::query("UPDATE tenant_auth_config SET microsoft_client_id = NULL, microsoft_client_secret = NULL, microsoft_tenant_id = NULL, updated_at = NOW() WHERE org_id = $1")
             .bind(org_id).execute(&state.db).await.map_err(|e| AppError::Internal(format!("Failed to clear workspace Microsoft auth config: {}", e)))?;
-    } else if let (Some(id), Some(secret)) = (&body.microsoft_client_id, &body.microsoft_client_secret) {
+    } else if let (Some(id), Some(secret)) =
+        (&body.microsoft_client_id, &body.microsoft_client_secret)
+    {
         if !id.trim().is_empty() && !secret.trim().is_empty() {
             let enc = encrypt_secret(secret.trim(), &state.config)?;
-            let ms_tid = body.microsoft_tenant_id.as_deref().filter(|v| !v.trim().is_empty()).unwrap_or("common");
+            let ms_tid = body
+                .microsoft_tenant_id
+                .as_deref()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or("common");
             sqlx::query("UPDATE tenant_auth_config SET microsoft_client_id = $1, microsoft_client_secret = $2, microsoft_tenant_id = $3, updated_at = NOW() WHERE org_id = $4")
                 .bind(id.trim()).bind(&enc).bind(ms_tid).bind(org_id)
                 .execute(&state.db).await.map_err(|e| AppError::Internal(format!("Failed to save workspace Microsoft auth config: {}", e)))?;
@@ -4903,8 +5760,14 @@ async fn update_current_org_auth_config(
     } else if let Some(host) = &body.smtp_host {
         if !host.trim().is_empty() {
             let enc_pass = if let Some(p) = &body.smtp_password {
-                if !p.trim().is_empty() { Some(encrypt_secret(p.trim(), &state.config)?) } else { None }
-            } else { None };
+                if !p.trim().is_empty() {
+                    Some(encrypt_secret(p.trim(), &state.config)?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             if let Some(ep) = enc_pass {
                 sqlx::query("UPDATE tenant_auth_config SET smtp_host = $1, smtp_port = $2, smtp_user = $3, smtp_password = $4, smtp_from = $5, smtp_security = $6, updated_at = NOW() WHERE org_id = $7")
@@ -4929,18 +5792,22 @@ async fn update_current_org_auth_config(
         }
     }
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
+    crate::modules::audit::service::AuditService::new(state.db.clone())
+        .log(crate::modules::audit::service::AuditEvent {
             actor_user_id: Some(session.user_id),
             organization_id: Some(org_id),
             action: "tenant_auth_config.updated".into(),
             target_type: "organization".into(),
             target_id: Some(org_id.to_string()),
             ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
             metadata: serde_json::json!({}),
-        }
-    ).await;
+        })
+        .await;
 
     // Return updated config
     get_current_org_auth_config(req, state).await
@@ -4961,13 +5828,20 @@ async fn prepare_current_org_oauth_verification(
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to update auth config.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to update auth config.".into(),
+        ));
     }
 
     let provider = body.provider.trim().to_lowercase();
     if provider != "google" && provider != "microsoft" {
-        return Err(AppError::Validation("Provider must be google or microsoft.".into()));
+        return Err(AppError::Validation(
+            "Provider must be google or microsoft.".into(),
+        ));
     }
     if body.client_id.trim().is_empty() {
         return Err(AppError::Validation("Client ID is required.".into()));
@@ -4999,7 +5873,11 @@ async fn prepare_current_org_oauth_verification(
         .map_err(|e| AppError::Internal(format!("Redis auth state failure: {}", e)))?;
 
     let initiated_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let initiated_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let initiated_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let auth_url = crate::modules::oauth::handlers::start_oauth_flow(
         &state,
         &provider,
@@ -5010,7 +5888,8 @@ async fn prepare_current_org_oauth_verification(
         initiated_ip,
         initiated_ua,
         Some(draft_key),
-    ).await?;
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -5055,14 +5934,19 @@ async fn list_current_org_api_keys(
 ) -> Result<HttpResponse, AppError> {
     use uuid::Uuid;
     let session = extract_session(&req)?;
-    let org_id: Uuid = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before viewing API keys.".into()))?;
+    let org_id: Uuid = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before viewing API keys.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to view API keys.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view API keys.".into(),
+        ));
     }
 
     let keys = sqlx::query_as::<_, TenantApiKeyRow>(
@@ -5095,14 +5979,19 @@ async fn create_current_org_api_key(
     use uuid::Uuid;
 
     let session = extract_session(&req)?;
-    let org_id: Uuid = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before creating an API key.".into()))?;
+    let org_id: Uuid = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before creating an API key.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to create API keys.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to create API keys.".into(),
+        ));
     }
 
     if body.label.trim().is_empty() {
@@ -5111,7 +6000,8 @@ async fn create_current_org_api_key(
 
     let repo = OrganizationRepository::new(state.db.clone());
     let is_owner = repo.is_org_owner(org_id, session.user_id).await?;
-    let permission_preset = normalize_workspace_api_key_permission_preset(body.permission_preset.as_deref());
+    let permission_preset =
+        normalize_workspace_api_key_permission_preset(body.permission_preset.as_deref());
     if permission_preset == WORKSPACE_KEY_PRESET_WORKSPACE_OWNER && !is_owner {
         return Err(AppError::Forbidden(
             "Only the workspace owner can create a full-access workspace API key.".into(),
@@ -5198,15 +6088,20 @@ async fn revoke_current_org_api_key(
     use uuid::Uuid;
 
     let session = extract_session(&req)?;
-    let org_id: Uuid = session
-        .current_org_id
-        .ok_or_else(|| AppError::Validation("Select a workspace before revoking an API key.".into()))?;
+    let org_id: Uuid = session.current_org_id.ok_or_else(|| {
+        AppError::Validation("Select a workspace before revoking an API key.".into())
+    })?;
     ensure_demo_workspace_allowed(&state, org_id).await?;
     let key_id = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "org:update").await? {
-        return Err(AppError::Forbidden("You do not have permission to revoke API keys.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "org:update")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to revoke API keys.".into(),
+        ));
     }
 
     let revoked_key = sqlx::query_as::<_, TenantApiKeyRow>(
@@ -5261,18 +6156,24 @@ async fn update_current_org_status(
 
     let normalized = body.status.trim().to_lowercase();
     if normalized != "active" && normalized != "suspended" {
-        return Err(AppError::Validation("Status must be 'active' or 'suspended'.".into()));
+        return Err(AppError::Validation(
+            "Status must be 'active' or 'suspended'.".into(),
+        ));
     }
 
     // Check platform_locked — if platform admin locked this workspace as suspended,
     // tenant admin cannot set it back to active.
-    let platform_locked: bool = sqlx::query_scalar(
-        "SELECT platform_locked FROM organizations WHERE id = $1"
-    )
-    .bind(org_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace platform_locked status: {}", e)))?;
+    let platform_locked: bool =
+        sqlx::query_scalar("SELECT platform_locked FROM organizations WHERE id = $1")
+            .bind(org_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to load workspace platform_locked status: {}",
+                    e
+                ))
+            })?;
 
     if platform_locked && normalized == "active" {
         return Err(AppError::Forbidden(
@@ -5280,37 +6181,45 @@ async fn update_current_org_status(
         ));
     }
 
-    let before_status: String = sqlx::query_scalar(
-        "SELECT status FROM organizations WHERE id = $1"
-    )
-    .bind(org_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace status before update: {}", e)))?;
+    let before_status: String =
+        sqlx::query_scalar("SELECT status FROM organizations WHERE id = $1")
+            .bind(org_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to load workspace status before update: {}",
+                    e
+                ))
+            })?;
 
-    sqlx::query(
-        "UPDATE organizations SET status = $2, updated_at = NOW() WHERE id = $1"
-    )
-    .bind(org_id)
-    .bind(&normalized)
-    .execute(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to update workspace status: {}", e)))?;
+    sqlx::query("UPDATE organizations SET status = $2, updated_at = NOW() WHERE id = $1")
+        .bind(org_id)
+        .bind(&normalized)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to update workspace status: {}", e)))?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.status.updated".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "before": { "status": before_status },
-            "after": { "status": normalized },
-            "platform_locked": platform_locked,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.status.updated".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "before": { "status": before_status },
+                "after": { "status": normalized },
+                "platform_locked": platform_locked,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "id": org_id, "status": normalized })))
 }
@@ -5329,8 +6238,13 @@ async fn get_effective_policy(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to view policy.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view policy.".into(),
+        ));
     }
 
     #[derive(sqlx::FromRow)]
@@ -5357,7 +6271,7 @@ async fn get_effective_policy(
             allowed_email_domains, max_session_age_hours, max_concurrent_sessions,
             status, platform_locked
         FROM organizations WHERE id = $1
-        "#
+        "#,
     )
     .bind(org_id)
     .fetch_one(&state.db)
@@ -5411,8 +6325,13 @@ async fn preview_auth_policy_change(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to preview policy changes.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to preview policy changes.".into(),
+        ));
     }
 
     let mut warnings: Vec<String> = Vec::new();
@@ -5433,7 +6352,7 @@ async fn preview_auth_policy_change(
               AND NOT EXISTS (
                   SELECT 1 FROM webauthn_credentials wc WHERE wc.user_id = om.user_id
               )
-            "#
+            "#,
         )
         .bind(org_id)
         .fetch_one(&state.db)
@@ -5501,8 +6420,13 @@ async fn list_policy_snapshots(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to view policy snapshots.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to view policy snapshots.".into(),
+        ));
     }
 
     #[derive(serde::Serialize, sqlx::FromRow)]
@@ -5537,12 +6461,17 @@ async fn restore_policy_snapshot(
     let snapshot_id = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to restore policy snapshots.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to restore policy snapshots.".into(),
+        ));
     }
 
     let snapshot: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT snapshot FROM org_policy_snapshots WHERE id = $1 AND organization_id = $2"
+        "SELECT snapshot FROM org_policy_snapshots WHERE id = $1 AND organization_id = $2",
     )
     .bind(snapshot_id)
     .bind(org_id)
@@ -5561,9 +6490,19 @@ async fn restore_policy_snapshot(
     let require_mfa = get_bool("require_mfa");
     let require_mfa_for_admins = get_bool("require_mfa_for_admins");
     let tenant_portal_require_mfa = get_bool("tenant_portal_require_mfa");
-    let allowed_email_domains = snapshot.get("allowed_email_domains").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let max_session_age_hours: Option<i32> = snapshot.get("max_session_age_hours").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let max_concurrent_sessions: Option<i32> = snapshot.get("max_concurrent_sessions").and_then(|v| v.as_i64()).map(|v| v as i32);
+    let allowed_email_domains = snapshot
+        .get("allowed_email_domains")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let max_session_age_hours: Option<i32> = snapshot
+        .get("max_session_age_hours")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+    let max_concurrent_sessions: Option<i32> = snapshot
+        .get("max_concurrent_sessions")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
 
     sqlx::query(
         r#"
@@ -5573,28 +6512,47 @@ async fn restore_policy_snapshot(
             allowed_email_domains = $9, max_session_age_hours = $10, max_concurrent_sessions = $11,
             updated_at = NOW()
         WHERE id = $1
-        "#
+        "#,
     )
     .bind(org_id)
-    .bind(allow_magic_link).bind(allow_google).bind(allow_microsoft).bind(allow_passkey)
-    .bind(require_mfa).bind(require_mfa_for_admins).bind(tenant_portal_require_mfa)
-    .bind(&allowed_email_domains).bind(max_session_age_hours).bind(max_concurrent_sessions)
+    .bind(allow_magic_link)
+    .bind(allow_google)
+    .bind(allow_microsoft)
+    .bind(allow_passkey)
+    .bind(require_mfa)
+    .bind(require_mfa_for_admins)
+    .bind(tenant_portal_require_mfa)
+    .bind(&allowed_email_domains)
+    .bind(max_session_age_hours)
+    .bind(max_concurrent_sessions)
     .execute(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to restore workspace policy snapshot: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to restore workspace policy snapshot: {}",
+            e
+        ))
+    })?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.auth_policy.snapshot_restored".into(),
-        target_type: "organization".into(),
-        target_id: Some(org_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "snapshot_id": snapshot_id }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.auth_policy.snapshot_restored".into(),
+            target_type: "organization".into(),
+            target_id: Some(org_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "snapshot_id": snapshot_id }),
+        })
+        .await;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": "Policy restored from snapshot." })))
+    Ok(HttpResponse::Ok()
+        .json(serde_json::json!({ "ok": true, "message": "Policy restored from snapshot." })))
 }
 
 // ── Phase 6: Role templates ───────────────────────────────────────────────────
@@ -5663,8 +6621,13 @@ async fn diff_roles(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac_svc = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac_svc.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage roles.".into()));
+    if !rbac_svc
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage roles.".into(),
+        ));
     }
 
     let repo = crate::modules::rbac::repository::RbacRepository::new(state.db.clone());
@@ -5699,28 +6662,46 @@ async fn check_self_lockout(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "auth_policy:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to check policy changes.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "auth_policy:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to check policy changes.".into(),
+        ));
     }
 
-    let identity_repo = crate::modules::identity::repository::IdentityRepository::new(state.db.clone());
-    let has_email = identity_repo.get_primary_email_by_user_id(session.user_id).await?.is_some();
-    let ext_ids = identity_repo.list_external_identities_by_user_id(session.user_id).await?;
+    let identity_repo =
+        crate::modules::identity::repository::IdentityRepository::new(state.db.clone());
+    let has_email = identity_repo
+        .get_primary_email_by_user_id(session.user_id)
+        .await?
+        .is_some();
+    let ext_ids = identity_repo
+        .list_external_identities_by_user_id(session.user_id)
+        .await?;
     let has_google = ext_ids.iter().any(|e| e.provider == "google");
     let has_microsoft = ext_ids.iter().any(|e| e.provider == "microsoft");
-    let passkeys_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1"
-    )
-    .bind(session.user_id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    let passkeys_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1")
+            .bind(session.user_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
 
     let mut can_still_login = false;
-    if body.allow_magic_link && has_email { can_still_login = true; }
-    if body.allow_google && has_google { can_still_login = true; }
-    if body.allow_microsoft && has_microsoft { can_still_login = true; }
-    if body.allow_passkey && passkeys_count > 0 { can_still_login = true; }
+    if body.allow_magic_link && has_email {
+        can_still_login = true;
+    }
+    if body.allow_google && has_google {
+        can_still_login = true;
+    }
+    if body.allow_microsoft && has_microsoft {
+        can_still_login = true;
+    }
+    if body.allow_passkey && passkeys_count > 0 {
+        can_still_login = true;
+    }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "would_lock_out_self": !can_still_login,
@@ -5764,14 +6745,21 @@ async fn initiate_owner_transfer(
 
     // Simpler check via rbac membership
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    let is_owner2 = rbac.has_permission(session.user_id, org_id, "org:transfer_ownership").await.unwrap_or(false);
+    let is_owner2 = rbac
+        .has_permission(session.user_id, org_id, "org:transfer_ownership")
+        .await
+        .unwrap_or(false);
 
     if !is_owner && !is_owner2 {
-        return Err(AppError::Forbidden("Only the workspace owner can transfer ownership.".into()));
+        return Err(AppError::Forbidden(
+            "Only the workspace owner can transfer ownership.".into(),
+        ));
     }
 
     if body.to_user_id == session.user_id {
-        return Err(AppError::Validation("Cannot transfer ownership to yourself.".into()));
+        return Err(AppError::Validation(
+            "Cannot transfer ownership to yourself.".into(),
+        ));
     }
 
     // Verify the target user is an active member
@@ -5785,14 +6773,19 @@ async fn initiate_owner_transfer(
     .unwrap_or(false);
 
     if !target_is_member {
-        return Err(AppError::Validation("The target user must be an active member of this workspace.".into()));
+        return Err(AppError::Validation(
+            "The target user must be an active member of this workspace.".into(),
+        ));
     }
 
     // Generate transfer token
     let mut bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut bytes);
-    let raw_token = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes);
-    let token_hash = hex::encode(sha2::Digest::finalize(sha2::Sha256::new_with_prefix(raw_token.as_bytes())));
+    let raw_token =
+        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes);
+    let token_hash = hex::encode(sha2::Digest::finalize(sha2::Sha256::new_with_prefix(
+        raw_token.as_bytes(),
+    )));
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
 
     // Cancel any pending transfers for this org
@@ -5816,16 +6809,22 @@ async fn initiate_owner_transfer(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to create workspace owner transfer request: {}", e)))?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.owner_transfer.initiated".into(),
-        target_type: "user".into(),
-        target_id: Some(body.to_user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "to_user_id": body.to_user_id }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.owner_transfer.initiated".into(),
+            target_type: "user".into(),
+            target_id: Some(body.to_user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "to_user_id": body.to_user_id }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -5852,7 +6851,9 @@ async fn accept_owner_transfer(
         .current_org_id
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
-    let token_hash = hex::encode(sha2::Digest::finalize(sha2::Sha256::new_with_prefix(body.token.as_bytes())));
+    let token_hash = hex::encode(sha2::Digest::finalize(sha2::Sha256::new_with_prefix(
+        body.token.as_bytes(),
+    )));
 
     #[derive(sqlx::FromRow)]
     struct TransferRecord {
@@ -5870,28 +6871,43 @@ async fn accept_owner_transfer(
         SELECT id, organization_id, from_user_id, to_user_id, expires_at, accepted_at, cancelled_at
         FROM owner_transfer_requests
         WHERE token_hash = $1
-        "#
+        "#,
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace owner transfer request: {}", e)))?
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to load workspace owner transfer request: {}",
+            e
+        ))
+    })?
     .ok_or_else(|| AppError::NotFound("Invalid or expired transfer token.".into()))?;
 
     if record.organization_id != org_id {
-        return Err(AppError::Forbidden("This token is for a different workspace.".into()));
+        return Err(AppError::Forbidden(
+            "This token is for a different workspace.".into(),
+        ));
     }
     if record.to_user_id != session.user_id {
-        return Err(AppError::Forbidden("This transfer is addressed to a different user.".into()));
+        return Err(AppError::Forbidden(
+            "This transfer is addressed to a different user.".into(),
+        ));
     }
     if record.accepted_at.is_some() {
-        return Err(AppError::Validation("This transfer has already been accepted.".into()));
+        return Err(AppError::Validation(
+            "This transfer has already been accepted.".into(),
+        ));
     }
     if record.cancelled_at.is_some() {
-        return Err(AppError::Validation("This transfer has been cancelled.".into()));
+        return Err(AppError::Validation(
+            "This transfer has been cancelled.".into(),
+        ));
     }
     if chrono::Utc::now() > record.expires_at {
-        return Err(AppError::Validation("This transfer token has expired.".into()));
+        return Err(AppError::Validation(
+            "This transfer token has expired.".into(),
+        ));
     }
 
     // Look up the owner role ID
@@ -5907,11 +6923,12 @@ async fn accept_owner_transfer(
         return Err(AppError::Internal("Owner role not found.".into()));
     };
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to start workspace owner transfer transaction: {}", e)))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to start workspace owner transfer transaction: {}",
+            e
+        ))
+    })?;
 
     // Demote previous owner to admin
     let admin_role_id: Option<Uuid> = sqlx::query_scalar(
@@ -5951,22 +6968,33 @@ async fn accept_owner_transfer(
         .bind(record.id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to mark workspace owner transfer as accepted: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to mark workspace owner transfer as accepted: {}",
+                e
+            ))
+        })?;
 
-    tx.commit()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to commit workspace owner transfer: {}", e)))?;
+    tx.commit().await.map_err(|e| {
+        AppError::Internal(format!("Failed to commit workspace owner transfer: {}", e))
+    })?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.owner_transfer.accepted".into(),
-        target_type: "user".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "from_user_id": record.from_user_id }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.owner_transfer.accepted".into(),
+            target_type: "user".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "from_user_id": record.from_user_id }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -5976,39 +7004,138 @@ async fn accept_owner_transfer(
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/public/branding", web::get().to(public_branding_handler));
-    cfg.route("/integrations/workspace", web::get().to(get_workspace_integration_info));
-    cfg.route("/integrations/branding", web::get().to(get_workspace_integration_branding));
-    cfg.route("/integrations/branding", web::patch().to(update_workspace_integration_branding));
-    cfg.route("/integrations/auth-config", web::get().to(get_workspace_integration_auth_config));
-    cfg.route("/integrations/auth-config", web::patch().to(update_workspace_integration_auth_config));
-    cfg.route("/integrations/clients", web::get().to(list_workspace_integration_clients));
-    cfg.route("/integrations/clients", web::post().to(create_workspace_integration_client));
-    cfg.route("/integrations/clients/{client_id}", web::get().to(get_workspace_integration_client_detail));
-    cfg.route("/integrations/clients/{client_id}", web::patch().to(update_workspace_integration_client));
-    cfg.route("/integrations/clients/{client_id}", web::delete().to(delete_workspace_integration_client));
-    cfg.route("/integrations/clients/{client_id}/status", web::patch().to(update_workspace_integration_client_status));
-    cfg.route("/integrations/clients/{client_id}/secret-metadata", web::get().to(get_workspace_integration_client_secret_metadata));
-    cfg.route("/integrations/clients/{client_id}/rotate-secret", web::post().to(rotate_workspace_integration_client_secret));
-    cfg.route("/integrations/members", web::get().to(list_workspace_integration_members));
-    cfg.route("/integrations/members/{member_id}", web::get().to(get_workspace_integration_member_detail));
-    cfg.route("/integrations/members/{member_id}/activity", web::get().to(list_workspace_integration_member_activity));
-    cfg.route("/integrations/members/{member_id}/profile", web::patch().to(update_workspace_integration_member_profile));
-    cfg.route("/integrations/members/{member_id}/sessions", web::get().to(list_workspace_integration_member_sessions));
-    cfg.route("/integrations/members/{member_id}/sessions", web::delete().to(revoke_workspace_integration_member_sessions));
-    cfg.route("/integrations/members/{member_id}/role", web::patch().to(update_workspace_integration_member_role));
-    cfg.route("/integrations/members/{member_id}", web::delete().to(remove_workspace_integration_member));
-    cfg.route("/integrations/invites", web::get().to(list_workspace_integration_invites));
-    cfg.route("/integrations/invites", web::post().to(send_workspace_integration_invite));
-    cfg.route("/integrations/invites/{invite_id}", web::get().to(get_workspace_integration_invite_detail));
-    cfg.route("/integrations/invites/{invite_id}", web::delete().to(revoke_workspace_integration_invite));
-    cfg.route("/integrations/activity", web::get().to(list_workspace_integration_activity));
-    cfg.route("/integrations/audit/actions", web::get().to(list_workspace_integration_audit_actions));
-    cfg.route("/integrations/effective-policy", web::get().to(get_workspace_integration_effective_policy));
-    cfg.route("/integrations/policy-summary", web::get().to(get_workspace_integration_policy_summary));
-    cfg.route("/integrations/roles", web::get().to(list_workspace_integration_roles));
-    cfg.route("/integrations/permissions", web::get().to(list_workspace_integration_permissions));
-    cfg.route("/integrations/api-keys/me", web::get().to(get_workspace_integration_api_key_me));
-    cfg.route("/integrations/widget-preview-config", web::get().to(get_workspace_integration_widget_preview_config));
+    cfg.route(
+        "/integrations/workspace",
+        web::get().to(get_workspace_integration_info),
+    );
+    cfg.route(
+        "/integrations/branding",
+        web::get().to(get_workspace_integration_branding),
+    );
+    cfg.route(
+        "/integrations/branding",
+        web::patch().to(update_workspace_integration_branding),
+    );
+    cfg.route(
+        "/integrations/auth-config",
+        web::get().to(get_workspace_integration_auth_config),
+    );
+    cfg.route(
+        "/integrations/auth-config",
+        web::patch().to(update_workspace_integration_auth_config),
+    );
+    cfg.route(
+        "/integrations/clients",
+        web::get().to(list_workspace_integration_clients),
+    );
+    cfg.route(
+        "/integrations/clients",
+        web::post().to(create_workspace_integration_client),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}",
+        web::get().to(get_workspace_integration_client_detail),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}",
+        web::patch().to(update_workspace_integration_client),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}",
+        web::delete().to(delete_workspace_integration_client),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}/status",
+        web::patch().to(update_workspace_integration_client_status),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}/secret-metadata",
+        web::get().to(get_workspace_integration_client_secret_metadata),
+    );
+    cfg.route(
+        "/integrations/clients/{client_id}/rotate-secret",
+        web::post().to(rotate_workspace_integration_client_secret),
+    );
+    cfg.route(
+        "/integrations/members",
+        web::get().to(list_workspace_integration_members),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}",
+        web::get().to(get_workspace_integration_member_detail),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}/activity",
+        web::get().to(list_workspace_integration_member_activity),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}/profile",
+        web::patch().to(update_workspace_integration_member_profile),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}/sessions",
+        web::get().to(list_workspace_integration_member_sessions),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}/sessions",
+        web::delete().to(revoke_workspace_integration_member_sessions),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}/role",
+        web::patch().to(update_workspace_integration_member_role),
+    );
+    cfg.route(
+        "/integrations/members/{member_id}",
+        web::delete().to(remove_workspace_integration_member),
+    );
+    cfg.route(
+        "/integrations/invites",
+        web::get().to(list_workspace_integration_invites),
+    );
+    cfg.route(
+        "/integrations/invites",
+        web::post().to(send_workspace_integration_invite),
+    );
+    cfg.route(
+        "/integrations/invites/{invite_id}",
+        web::get().to(get_workspace_integration_invite_detail),
+    );
+    cfg.route(
+        "/integrations/invites/{invite_id}",
+        web::delete().to(revoke_workspace_integration_invite),
+    );
+    cfg.route(
+        "/integrations/activity",
+        web::get().to(list_workspace_integration_activity),
+    );
+    cfg.route(
+        "/integrations/audit/actions",
+        web::get().to(list_workspace_integration_audit_actions),
+    );
+    cfg.route(
+        "/integrations/effective-policy",
+        web::get().to(get_workspace_integration_effective_policy),
+    );
+    cfg.route(
+        "/integrations/policy-summary",
+        web::get().to(get_workspace_integration_policy_summary),
+    );
+    cfg.route(
+        "/integrations/roles",
+        web::get().to(list_workspace_integration_roles),
+    );
+    cfg.route(
+        "/integrations/permissions",
+        web::get().to(list_workspace_integration_permissions),
+    );
+    cfg.route(
+        "/integrations/api-keys/me",
+        web::get().to(get_workspace_integration_api_key_me),
+    );
+    cfg.route(
+        "/integrations/widget-preview-config",
+        web::get().to(get_workspace_integration_widget_preview_config),
+    );
     crate::modules::rbac::handlers::routes(cfg);
     cfg.service(
         web::scope("")
@@ -6016,48 +7143,153 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("", web::post().to(create_org))
             .route("", web::get().to(list_orgs))
             .route("/current/portal", web::get().to(current_portal))
-            .route("/current/branding", web::patch().to(update_current_org_branding))
-            .route("/current/branding/upload", web::post().to(upload_current_org_branding_asset))
-            .route("/current/auth-policy", web::patch().to(update_current_org_auth_policy))
-            .route("/current/client-policy", web::get().to(get_current_org_client_policy))
-            .route("/current/client-policy", web::patch().to(update_current_org_client_policy))
-            .route("/current/ip-policy", web::get().to(get_current_org_ip_policy))
-            .route("/current/ip-policy", web::patch().to(update_current_org_ip_policy))
-            .route("/current/auth-config", web::get().to(get_current_org_auth_config))
-            .route("/current/auth-config", web::patch().to(update_current_org_auth_config))
-            .route("/current/auth-config/prepare-oauth-verification", web::post().to(prepare_current_org_oauth_verification))
-            .route("/current/status", web::patch().to(update_current_org_status))
+            .route(
+                "/current/branding",
+                web::patch().to(update_current_org_branding),
+            )
+            .route(
+                "/current/branding/upload",
+                web::post().to(upload_current_org_branding_asset),
+            )
+            .route(
+                "/current/auth-policy",
+                web::patch().to(update_current_org_auth_policy),
+            )
+            .route(
+                "/current/client-policy",
+                web::get().to(get_current_org_client_policy),
+            )
+            .route(
+                "/current/client-policy",
+                web::patch().to(update_current_org_client_policy),
+            )
+            .route(
+                "/current/ip-policy",
+                web::get().to(get_current_org_ip_policy),
+            )
+            .route(
+                "/current/ip-policy",
+                web::patch().to(update_current_org_ip_policy),
+            )
+            .route(
+                "/current/auth-config",
+                web::get().to(get_current_org_auth_config),
+            )
+            .route(
+                "/current/auth-config",
+                web::patch().to(update_current_org_auth_config),
+            )
+            .route(
+                "/current/auth-config/prepare-oauth-verification",
+                web::post().to(prepare_current_org_oauth_verification),
+            )
+            .route(
+                "/current/status",
+                web::patch().to(update_current_org_status),
+            )
             .route("/current/clients", web::get().to(list_current_org_clients))
-            .route("/current/clients", web::post().to(create_current_org_client))
-            .route("/current/clients/{client_id}", web::patch().to(update_current_org_client))
-            .route("/current/clients/{client_id}/rotate-secret", web::post().to(rotate_current_org_client_secret))
-            .route("/current/clients/{client_id}/status", web::patch().to(update_current_org_client_status))
-            .route("/current/clients/{client_id}", web::delete().to(delete_current_org_client))
+            .route(
+                "/current/clients",
+                web::post().to(create_current_org_client),
+            )
+            .route(
+                "/current/clients/{client_id}",
+                web::patch().to(update_current_org_client),
+            )
+            .route(
+                "/current/clients/{client_id}/rotate-secret",
+                web::post().to(rotate_current_org_client_secret),
+            )
+            .route(
+                "/current/clients/{client_id}/status",
+                web::patch().to(update_current_org_client_status),
+            )
+            .route(
+                "/current/clients/{client_id}",
+                web::delete().to(delete_current_org_client),
+            )
             .route("/current/members", web::get().to(list_current_org_members))
             .route("/current/invites", web::get().to(list_current_org_invites))
-            .route("/current/members/{member_id}/role", web::patch().to(update_current_org_member_role))
-            .route("/current/members/{member_id}", web::delete().to(remove_current_org_member))
-            .route("/workspace/activity", web::get().to(list_current_org_activity))
-            .route("/workspace/activity/export", web::get().to(export_current_org_activity))
-            .route("/current/security-alert-reviews", web::get().to(list_current_org_security_alert_reviews))
-            .route("/current/security-alert-reviews", web::post().to(mark_current_org_security_alert_reviewed))
-            .route("/current/security-alert-reviews", web::delete().to(reset_current_org_security_alert_reviews))
+            .route(
+                "/current/members/{member_id}/role",
+                web::patch().to(update_current_org_member_role),
+            )
+            .route(
+                "/current/members/{member_id}",
+                web::delete().to(remove_current_org_member),
+            )
+            .route(
+                "/workspace/activity",
+                web::get().to(list_current_org_activity),
+            )
+            .route(
+                "/workspace/activity/export",
+                web::get().to(export_current_org_activity),
+            )
+            .route(
+                "/current/security-alert-reviews",
+                web::get().to(list_current_org_security_alert_reviews),
+            )
+            .route(
+                "/current/security-alert-reviews",
+                web::post().to(mark_current_org_security_alert_reviewed),
+            )
+            .route(
+                "/current/security-alert-reviews",
+                web::delete().to(reset_current_org_security_alert_reviews),
+            )
             .route("/tenant/activity", web::get().to(list_my_orgs_activity))
             .route("/current/invites", web::post().to(send_current_org_invite))
-            .route("/current/invites/{invite_id}", web::delete().to(revoke_current_org_invite))
-            .route("/current/api-keys", web::get().to(list_current_org_api_keys))
-            .route("/current/api-keys", web::post().to(create_current_org_api_key))
-            .route("/current/api-keys/{key_id}", web::delete().to(revoke_current_org_api_key))
+            .route(
+                "/current/invites/{invite_id}",
+                web::delete().to(revoke_current_org_invite),
+            )
+            .route(
+                "/current/api-keys",
+                web::get().to(list_current_org_api_keys),
+            )
+            .route(
+                "/current/api-keys",
+                web::post().to(create_current_org_api_key),
+            )
+            .route(
+                "/current/api-keys/{key_id}",
+                web::delete().to(revoke_current_org_api_key),
+            )
             // Phase 6: Control Plane Maturity
-            .route("/current/effective-policy", web::get().to(get_effective_policy))
-            .route("/current/auth-policy/preview", web::post().to(preview_auth_policy_change))
-            .route("/current/auth-policy/self-check", web::post().to(check_self_lockout))
-            .route("/current/policy-snapshots", web::get().to(list_policy_snapshots))
-            .route("/current/policy-snapshots/{id}/restore", web::post().to(restore_policy_snapshot))
-            .route("/current/role-templates", web::get().to(list_role_templates))
+            .route(
+                "/current/effective-policy",
+                web::get().to(get_effective_policy),
+            )
+            .route(
+                "/current/auth-policy/preview",
+                web::post().to(preview_auth_policy_change),
+            )
+            .route(
+                "/current/auth-policy/self-check",
+                web::post().to(check_self_lockout),
+            )
+            .route(
+                "/current/policy-snapshots",
+                web::get().to(list_policy_snapshots),
+            )
+            .route(
+                "/current/policy-snapshots/{id}/restore",
+                web::post().to(restore_policy_snapshot),
+            )
+            .route(
+                "/current/role-templates",
+                web::get().to(list_role_templates),
+            )
             .route("/current/role-diff", web::get().to(diff_roles))
-            .route("/current/owner-transfer", web::post().to(initiate_owner_transfer))
-            .route("/current/owner-transfer/accept", web::post().to(accept_owner_transfer))
+            .route(
+                "/current/owner-transfer",
+                web::post().to(initiate_owner_transfer),
+            )
+            .route(
+                "/current/owner-transfer/accept",
+                web::post().to(accept_owner_transfer),
+            )
             .route("/switch", web::post().to(switch_org))
             .route("/{org_id}/members", web::get().to(list_org_members))
             .route("/{org_id}/invites", web::post().to(send_invite))

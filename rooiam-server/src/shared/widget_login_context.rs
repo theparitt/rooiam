@@ -35,8 +35,12 @@ pub async fn create_widget_login_context(
     OsRng.fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
     let redis_key = format!("widget_login_context:{}", token);
-    let payload_json = serde_json::to_string(&payload)
-        .map_err(|e| AppError::Internal(format!("Failed to encode widget login context payload: {}", e)))?;
+    let payload_json = serde_json::to_string(&payload).map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to encode widget login context payload: {}",
+            e
+        ))
+    })?;
     let mut redis_conn = state.redis.clone();
     let _: () = redis::cmd("SETEX")
         .arg(&redis_key)

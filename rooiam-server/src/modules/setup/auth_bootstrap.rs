@@ -8,12 +8,8 @@ use crate::modules::setup::settings::{get_setting, has_setting_or_env};
 use crate::modules::setup::support::{demo_mailbox_url, resolve_workspace};
 use crate::modules::setup::timing::log_timing;
 use crate::modules::setup::types::{
-    LoginBootstrapAppResponse,
-    LoginBootstrapAppRow,
-    LoginBootstrapBrandingResponse,
-    LoginBootstrapResponse,
-    PublicAuthMethodsQuery,
-    PublicAuthMethodsResponse,
+    LoginBootstrapAppResponse, LoginBootstrapAppRow, LoginBootstrapBrandingResponse,
+    LoginBootstrapResponse, PublicAuthMethodsQuery, PublicAuthMethodsResponse,
 };
 use crate::shared::auth_policy::admin_console_passkey_allowed;
 use crate::shared::demo_seed::demo_seed_enabled;
@@ -24,21 +20,14 @@ use crate::shared::tenant_access::load_tenant_access_policy;
 use crate::shared::widget_login_context::create_widget_login_context;
 use crate::shared::widget_login_context::WidgetLoginContextPayload;
 
-
-
-
-
-fn redirect_origin(redirect_uri: &str) -> Option<String> 
-{
-    Url::parse(redirect_uri).ok().map(|url| url.origin().ascii_serialization())
+fn redirect_origin(redirect_uri: &str) -> Option<String> {
+    Url::parse(redirect_uri)
+        .ok()
+        .map(|url| url.origin().ascii_serialization())
 }
 
-
-
-fn is_root_redirect_uri( redirect_uri: &str ) -> bool
-{
-    if let Ok( url ) = Url::parse( redirect_uri )
-    {
+fn is_root_redirect_uri(redirect_uri: &str) -> bool {
+    if let Ok(url) = Url::parse(redirect_uri) {
         let is_root_path = url.path() == "/" || url.path().is_empty();
         let has_no_query = url.query().is_none();
         return is_root_path && has_no_query;
@@ -47,39 +36,25 @@ fn is_root_redirect_uri( redirect_uri: &str ) -> bool
     false
 }
 
+fn redirect_rank(redirect_uri: &str, workspace_slug: Option<&str>) -> i32 {
+    if let Some(slug) = workspace_slug {
+        let org_query = format!("org={}", slug);
 
-
-fn redirect_rank
-(
-    redirect_uri  : &str,
-    workspace_slug: Option<&str>,
-) 
--> i32
-{
-    if let Some( slug ) = workspace_slug
-    {
-        let org_query = format!( "org={}", slug );
-
-        if redirect_uri.contains( &org_query )
-        {
+        if redirect_uri.contains(&org_query) {
             return 0;
         }
     }
 
-    if redirect_uri.contains( "/callback" )
-    {
+    if redirect_uri.contains("/callback") {
         return 1;
     }
 
-    if is_root_redirect_uri( redirect_uri )
-    {
+    if is_root_redirect_uri(redirect_uri) {
         return 9;
     }
 
     5
 }
-
-
 
 // fn select_login_bootstrap_redirect_uri
 // (
@@ -87,10 +62,10 @@ fn redirect_rank
 //     requested_embed_origin: Option<&str>,
 //     workspace_slug        : Option<&str>,
 //     rows                  : Vec<LoginBootstrapAppRow>,
-// ) 
-// -> Option<LoginBootstrapAppRow> 
+// )
+// -> Option<LoginBootstrapAppRow>
 // {
-//     if rows.is_empty() 
+//     if rows.is_empty()
 //     {
 //         tracing::warn!(
 //             client_id = %client_id,
@@ -100,8 +75,7 @@ fn redirect_rank
 //         return None;
 //     }
 
-
-//     if let Some(embed_origin) = requested_embed_origin 
+//     if let Some(embed_origin) = requested_embed_origin
 //     {
 //         if let Some(row) = rows
 //             .iter()
@@ -115,14 +89,13 @@ fn redirect_rank
 //                 "login bootstrap selected redirect URI matching widget embed origin"
 //             );
 
-//             return Some(LoginBootstrapAppRow 
+//             return Some(LoginBootstrapAppRow
 //             {
 //                 client_id   : row.client_id.clone(),
 //                 app_name    : row.app_name.clone(),
 //                 redirect_uri: row.redirect_uri.clone(),
 //             });
 //         }
-
 
 //         tracing::warn!(
 //             client_id = %client_id,
@@ -144,20 +117,13 @@ fn redirect_rank
 //     Some(row)
 // }
 
-
-
-
-fn select_login_bootstrap_redirect_uri
-(
-    client_id             : &str,
+fn select_login_bootstrap_redirect_uri(
+    client_id: &str,
     requested_embed_origin: Option<&str>,
-    workspace_slug        : Option<&str>,
-    rows                  : Vec<LoginBootstrapAppRow>,
-)
--> Option<LoginBootstrapAppRow>
-{
-    if rows.is_empty()
-    {
+    workspace_slug: Option<&str>,
+    rows: Vec<LoginBootstrapAppRow>,
+) -> Option<LoginBootstrapAppRow> {
+    if rows.is_empty() {
         tracing::warn!(
             client_id = %client_id,
             requested_embed_origin = requested_embed_origin.unwrap_or( "(none)" ),
@@ -168,20 +134,16 @@ fn select_login_bootstrap_redirect_uri
         return None;
     }
 
-
     let mut candidates = rows;
 
-
-    if let Some( embed_origin ) = requested_embed_origin
-    {
-        let same_origin_candidates = candidates.clone()
+    if let Some(embed_origin) = requested_embed_origin {
+        let same_origin_candidates = candidates
+            .clone()
             .into_iter()
-            .filter( |row| redirect_origin( &row.redirect_uri ).as_deref() == Some( embed_origin ) )
+            .filter(|row| redirect_origin(&row.redirect_uri).as_deref() == Some(embed_origin))
             .collect::<Vec<_>>();
 
-
-        if same_origin_candidates.is_empty()
-        {
+        if same_origin_candidates.is_empty() {
             tracing::warn!(
                 client_id = %client_id,
                 requested_embed_origin = %embed_origin,
@@ -194,16 +156,12 @@ fn select_login_bootstrap_redirect_uri
             return None;
         }
 
-
         candidates = same_origin_candidates;
     }
 
-
-    candidates.sort_by_key( |row| redirect_rank( &row.redirect_uri, workspace_slug ) );
-
+    candidates.sort_by_key(|row| redirect_rank(&row.redirect_uri, workspace_slug));
 
     let row = candidates.into_iter().next()?;
-
 
     tracing::info!(
         client_id = %client_id,
@@ -214,12 +172,8 @@ fn select_login_bootstrap_redirect_uri
         "login bootstrap selected redirect URI using ranked workspace-aware match"
     );
 
-
-    Some( row )
+    Some(row)
 }
-
-
-
 
 #[utoipa::path(
     get,
@@ -231,46 +185,45 @@ fn select_login_bootstrap_redirect_uri
         (status = 400, description = "Validation error"),
     ),
 )]
-pub async fn get_public_auth_methods
-(
+pub async fn get_public_auth_methods(
     state: web::Data<AppState>,
     query: web::Query<PublicAuthMethodsQuery>,
-)
--> Result<HttpResponse, AppError>
-{
+) -> Result<HttpResponse, AppError> {
     Ok(HttpResponse::Ok().json(load_public_auth_methods(&state, &query).await?))
 }
 
-
-
-pub async fn load_public_auth_methods
-(
+pub async fn load_public_auth_methods(
     state: &web::Data<AppState>,
     query: &PublicAuthMethodsQuery,
-) 
--> Result<PublicAuthMethodsResponse, AppError> 
-{
-    let total_start    = Instant::now();
-    let workspace_id   = query.workspace_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let workspace_slug = query.org.as_deref().or(query.workspace.as_deref()).map(str::trim).filter(|value| !value.is_empty());
-
+) -> Result<PublicAuthMethodsResponse, AppError> {
+    let total_start = Instant::now();
+    let workspace_id = query
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let workspace_slug = query
+        .org
+        .as_deref()
+        .or(query.workspace.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let oauth_start = Instant::now();
     let runtime_oauth = crate::modules::oauth::handlers::load_runtime_oauth_config(&state).await?;
     log_timing(
         "setup.auth_methods.load_runtime_oauth_config",
         oauth_start.elapsed().as_millis(),
-        format!("workspace={}", workspace_id.or(workspace_slug).unwrap_or("(root)")),
+        format!(
+            "workspace={}",
+            workspace_id.or(workspace_slug).unwrap_or("(root)")
+        ),
     );
 
-
     let smtp_start = Instant::now();
-    let magic_link_enabled = if demo_seed_enabled() 
-    {
+    let magic_link_enabled = if demo_seed_enabled() {
         crate::infra::email::demo_smtp_present()
-    } 
-    else 
-    {
+    } else {
         has_setting_or_env(&state.db, "smtp_host", &["ROOIAM_SMTP_HOST"]).await
             && has_setting_or_env(
                 &state.db,
@@ -282,42 +235,42 @@ pub async fn load_public_auth_methods
     log_timing(
         "setup.auth_methods.resolve_magic_link",
         smtp_start.elapsed().as_millis(),
-        format!("workspace={}", workspace_id.or(workspace_slug).unwrap_or("(root)")),
+        format!(
+            "workspace={}",
+            workspace_id.or(workspace_slug).unwrap_or("(root)")
+        ),
     );
 
-
-    let google_enabled = if demo_seed_enabled() 
-    {
+    let google_enabled = if demo_seed_enabled() {
         true
-    } 
-    else 
-    {
+    } else {
         !runtime_oauth.oauth.google_client_id.trim().is_empty()
             && !runtime_oauth.oauth.google_client_secret.trim().is_empty()
     };
 
-
-    let microsoft_enabled = if demo_seed_enabled() 
-    {
+    let microsoft_enabled = if demo_seed_enabled() {
         true
-    } 
-    else 
-    {
+    } else {
         !runtime_oauth.oauth.microsoft_client_id.trim().is_empty()
-            && !runtime_oauth.oauth.microsoft_client_secret.trim().is_empty()
+            && !runtime_oauth
+                .oauth
+                .microsoft_client_secret
+                .trim()
+                .is_empty()
     };
 
-
-    let passkey_enabled =
-        !state.config.webauthn.rp_id.trim().is_empty()
-            && !state.config.webauthn.origin.trim().is_empty();
+    let passkey_enabled = !state.config.webauthn.rp_id.trim().is_empty()
+        && !state.config.webauthn.origin.trim().is_empty();
 
     let org_lookup_start = Instant::now();
     let org_policy = resolve_workspace(state, workspace_id, workspace_slug).await?;
     log_timing(
         "setup.auth_methods.load_org_policy",
         org_lookup_start.elapsed().as_millis(),
-        format!("workspace={}", workspace_id.or(workspace_slug).unwrap_or("(root)")),
+        format!(
+            "workspace={}",
+            workspace_id.or(workspace_slug).unwrap_or("(root)")
+        ),
     );
 
     let tenant_access_policy = if workspace_id.is_none() && workspace_slug.is_none() {
@@ -326,50 +279,76 @@ pub async fn load_public_auth_methods
         None
     };
 
-    let google_admin_login_enabled = if demo_seed_enabled() 
-    {
+    let google_admin_login_enabled = if demo_seed_enabled() {
         true
-    } 
-    else
-    {
-        google_enabled && get_setting(&state.db, "google_admin_login_enabled").await.as_deref() == Some("true")
+    } else {
+        google_enabled
+            && get_setting(&state.db, "google_admin_login_enabled")
+                .await
+                .as_deref()
+                == Some("true")
     };
 
-
-    let microsoft_admin_login_enabled = if demo_seed_enabled() 
-    {
+    let microsoft_admin_login_enabled = if demo_seed_enabled() {
         true
-    } 
-    else 
-    {
-        microsoft_enabled && get_setting(&state.db, "microsoft_admin_login_enabled").await.as_deref() == Some("true")
+    } else {
+        microsoft_enabled
+            && get_setting(&state.db, "microsoft_admin_login_enabled")
+                .await
+                .as_deref()
+                == Some("true")
     };
-    let admin_passkey_allowed = admin_console_passkey_allowed(&state.db).await.unwrap_or(true);
+    let admin_passkey_allowed = admin_console_passkey_allowed(&state.db)
+        .await
+        .unwrap_or(true);
 
-
-
-    let response = PublicAuthMethodsResponse 
-    {
+    let response = PublicAuthMethodsResponse {
         magic_link_enabled: magic_link_enabled
-            && tenant_access_policy.as_ref().map(|policy| policy.allow_magic_link).unwrap_or(true)
-            && org_policy.as_ref().map(|org| org.allow_magic_link).unwrap_or(true),
+            && tenant_access_policy
+                .as_ref()
+                .map(|policy| policy.allow_magic_link)
+                .unwrap_or(true)
+            && org_policy
+                .as_ref()
+                .map(|org| org.allow_magic_link)
+                .unwrap_or(true),
         google_enabled: google_enabled
-            && tenant_access_policy.as_ref().map(|policy| policy.allow_google).unwrap_or(true)
-            && org_policy.as_ref().map(|org| org.allow_google).unwrap_or(true),
+            && tenant_access_policy
+                .as_ref()
+                .map(|policy| policy.allow_google)
+                .unwrap_or(true)
+            && org_policy
+                .as_ref()
+                .map(|org| org.allow_google)
+                .unwrap_or(true),
         microsoft_enabled: microsoft_enabled
-            && tenant_access_policy.as_ref().map(|policy| policy.allow_microsoft).unwrap_or(true)
-            && org_policy.as_ref().map(|org| org.allow_microsoft).unwrap_or(true),
+            && tenant_access_policy
+                .as_ref()
+                .map(|policy| policy.allow_microsoft)
+                .unwrap_or(true)
+            && org_policy
+                .as_ref()
+                .map(|org| org.allow_microsoft)
+                .unwrap_or(true),
         passkey_enabled: passkey_enabled
-            && tenant_access_policy.as_ref().map(|policy| policy.allow_passkey).unwrap_or(true)
-            && org_policy.as_ref().map(|org| org.allow_passkey).unwrap_or(true),
-        mfa_required: org_policy.as_ref().map(|org| org.require_mfa).unwrap_or(false),
+            && tenant_access_policy
+                .as_ref()
+                .map(|policy| policy.allow_passkey)
+                .unwrap_or(true)
+            && org_policy
+                .as_ref()
+                .map(|org| org.allow_passkey)
+                .unwrap_or(true),
+        mfa_required: org_policy
+            .as_ref()
+            .map(|org| org.require_mfa)
+            .unwrap_or(false),
         demo_mode: demo_seed_enabled(),
         demo_mailbox_url: demo_mailbox_url(),
         google_admin_login_enabled,
         microsoft_admin_login_enabled,
         admin_passkey_allowed,
     };
-
 
     log_timing(
         "setup.auth_methods.total",
@@ -387,8 +366,6 @@ pub async fn load_public_auth_methods
     Ok(response)
 }
 
-
-
 #[utoipa::path(
     get,
     path = "/v1/setup/login-bootstrap",
@@ -399,29 +376,43 @@ pub async fn load_public_auth_methods
         (status = 400, description = "Validation error"),
     ),
 )]
-pub async fn get_login_bootstrap
-(
+pub async fn get_login_bootstrap(
     req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<PublicAuthMethodsQuery>,
-)
--> Result<HttpResponse, AppError>
-{
+) -> Result<HttpResponse, AppError> {
     let total_start = Instant::now();
-    let workspace_id = query.workspace_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let workspace_slug = query.org.as_deref().or(query.workspace.as_deref()).map(str::trim).filter(|value| !value.is_empty());
+    let workspace_id = query
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let workspace_slug = query
+        .org
+        .as_deref()
+        .or(query.workspace.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let requested_embed_origin = query
         .widget_embed_origin
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let requested_client_id = query.client_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let requested_client_id = query
+        .client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let is_preview_bootstrap = requested_embed_origin.is_none()
         && requested_client_id.is_none()
         && (workspace_id.is_some() || workspace_slug.is_some());
     let log_state = state.clone();
     let log_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let log_user_agent = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let log_user_agent = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
 
     let log_preview_bootstrap_failure = |reason: &str, detail: &str| {
         let reason = reason.to_string();
@@ -430,32 +421,36 @@ pub async fn get_login_bootstrap
         let log_ip = log_ip.clone();
         let log_user_agent = log_user_agent.clone();
         async move {
-        if !is_preview_bootstrap {
-            return;
-        }
-        tracing::warn!(
-            workspace_id = ?workspace_id,
-            workspace_slug = ?workspace_slug,
-            reason = %reason,
-            detail = %detail,
-            "preview widget bootstrap failed"
-        );
-        AuditService::new(log_state.db.clone()).log(AuditEvent {
-            actor_user_id: None,
-            organization_id: get_platform_org_id(&log_state.db).await,
-            action: "auth.widget.preview_bootstrap_failed".into(),
-            target_type: "workspace".into(),
-            target_id: workspace_id.map(str::to_string).or_else(|| workspace_slug.map(str::to_string)),
-            ip: log_ip.clone(),
-            user_agent: log_user_agent.clone(),
-            metadata: serde_json::json!({
-                "reason": reason,
-                "detail": detail,
-                "workspace_id": workspace_id,
-                "workspace": workspace_slug,
-                "path": "/v1/setup/login-bootstrap",
-            }),
-        }).await;
+            if !is_preview_bootstrap {
+                return;
+            }
+            tracing::warn!(
+                workspace_id = ?workspace_id,
+                workspace_slug = ?workspace_slug,
+                reason = %reason,
+                detail = %detail,
+                "preview widget bootstrap failed"
+            );
+            AuditService::new(log_state.db.clone())
+                .log(AuditEvent {
+                    actor_user_id: None,
+                    organization_id: get_platform_org_id(&log_state.db).await,
+                    action: "auth.widget.preview_bootstrap_failed".into(),
+                    target_type: "workspace".into(),
+                    target_id: workspace_id
+                        .map(str::to_string)
+                        .or_else(|| workspace_slug.map(str::to_string)),
+                    ip: log_ip.clone(),
+                    user_agent: log_user_agent.clone(),
+                    metadata: serde_json::json!({
+                        "reason": reason,
+                        "detail": detail,
+                        "workspace_id": workspace_id,
+                        "workspace": workspace_slug,
+                        "path": "/v1/setup/login-bootstrap",
+                    }),
+                })
+                .await;
         }
     };
 
@@ -477,39 +472,43 @@ pub async fn get_login_bootstrap
     };
     let workspace = resolved_workspace
         .as_ref()
-        .map(|org| LoginBootstrapBrandingResponse 
-        {
-            id                  : org.id,
-            slug                : org.slug.clone(),
-            name                : org.name.clone(),
-            login_display_name  : org.login_display_name.clone(),
-            login_title         : org.login_title.clone(),
-            login_subtitle      : org.login_subtitle.clone(),
-            icon_url            : org.icon_url.clone(),
-            icon_container      : org.icon_container.clone(),
-            login_logo_url      : org.login_logo_url.clone(),
-            brand_color         : org.brand_color.clone(),
-            show_login_logo     : org.show_login_logo,
-            show_login_title    : org.show_login_title,
-            show_login_subtitle : org.show_login_subtitle,
-            show_powered_by     : org.show_powered_by,
-            widget_radius       : org.widget_radius.clone(),
-            widget_shadow       : org.widget_shadow.clone(),
+        .map(|org| LoginBootstrapBrandingResponse {
+            id: org.id,
+            slug: org.slug.clone(),
+            name: org.name.clone(),
+            login_display_name: org.login_display_name.clone(),
+            login_title: org.login_title.clone(),
+            login_subtitle: org.login_subtitle.clone(),
+            icon_url: org.icon_url.clone(),
+            icon_container: org.icon_container.clone(),
+            login_logo_url: org.login_logo_url.clone(),
+            brand_color: org.brand_color.clone(),
+            show_login_logo: org.show_login_logo,
+            show_login_title: org.show_login_title,
+            show_login_subtitle: org.show_login_subtitle,
+            show_powered_by: org.show_powered_by,
+            widget_radius: org.widget_radius.clone(),
+            widget_shadow: org.widget_shadow.clone(),
             login_logo_container: org.login_logo_container.clone(),
-            login_logo_size     : org.login_logo_size.clone(),
-            card_radius         : org.card_radius.clone(),
-            button_style        : org.button_style.clone(),
-            card_bg_style       : org.card_bg_style.clone(),
-            card_bg_color2      : org.card_bg_color2.clone(),
-            card_border_width   : org.card_border_width.clone(),
-            card_border_color   : org.card_border_color.clone(),
-            login_method_order  : org.login_method_order.clone(),
+            login_logo_size: org.login_logo_size.clone(),
+            card_radius: org.card_radius.clone(),
+            button_style: org.button_style.clone(),
+            card_bg_style: org.card_bg_style.clone(),
+            card_bg_color2: org.card_bg_color2.clone(),
+            card_border_width: org.card_border_width.clone(),
+            card_border_color: org.card_border_color.clone(),
+            login_method_order: org.login_method_order.clone(),
         });
 
     // widget_embed_origin requires client_id — without it we cannot look up the registered
     // redirect_uri or create a widget_login_context. Fail early with a clear error.
     if requested_embed_origin.is_some() {
-        let client_id_present = query.client_id.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_some();
+        let client_id_present = query
+            .client_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some();
         if !client_id_present {
             tracing::error!(
                 embed_origin = ?requested_embed_origin,
@@ -523,7 +522,11 @@ pub async fn get_login_bootstrap
         }
     }
 
-    let app = if let Some(client_id) = query.client_id.as_deref().map(str::trim).filter(|value| !value.is_empty()) 
+    let app = if let Some(client_id) = query
+        .client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
     {
         let org_id = resolved_workspace.as_ref().map(|org| org.id);
         let rows = sqlx::query_as::<_, LoginBootstrapAppRow>(
@@ -542,18 +545,18 @@ pub async fn get_login_bootstrap
         .fetch_all(&state.db)
         .await?;
 
-
-
-        if let Some(row) = select_login_bootstrap_redirect_uri(client_id, requested_embed_origin, workspace_slug, rows)
-        {
-            let widget_login_context = if let Some(embed_origin) = requested_embed_origin
-            {
-                let payload = WidgetLoginContextPayload
-                {
+        if let Some(row) = select_login_bootstrap_redirect_uri(
+            client_id,
+            requested_embed_origin,
+            workspace_slug,
+            rows,
+        ) {
+            let widget_login_context = if let Some(embed_origin) = requested_embed_origin {
+                let payload = WidgetLoginContextPayload {
                     redirect_uri: row.redirect_uri.clone(),
                     workspace_id: org_id,
-                    client_id   : row.client_id.clone(),
-                    app_name    : row.app_name.clone(),
+                    client_id: row.client_id.clone(),
+                    app_name: row.app_name.clone(),
                     embed_origin: embed_origin.to_string(),
                 };
 
@@ -565,23 +568,17 @@ pub async fn get_login_bootstrap
                 );
 
                 Some(create_widget_login_context(&state, payload).await?)
-            }
-            else
-            {
+            } else {
                 None
             };
 
-
-            Some(LoginBootstrapAppResponse
-            {
-                client_id   : row.client_id,
-                app_name    : row.app_name,
+            Some(LoginBootstrapAppResponse {
+                client_id: row.client_id,
+                app_name: row.app_name,
                 redirect_uri: row.redirect_uri,
                 widget_login_context,
             })
-        }
-        else
-        {
+        } else {
             // No redirect URI matched the embed origin — client may not have this origin in
             // allowed_embed_origins, or no redirect URI shares the same origin.
             if let Some(embed_origin) = requested_embed_origin {
@@ -599,19 +596,18 @@ pub async fn get_login_bootstrap
             }
             None
         }
-    } 
-    else 
-    {
+    } else {
         None
     };
-
 
     log_timing(
         "setup.login_bootstrap.load_workspace_branding",
         branding_start.elapsed().as_millis(),
-        format!("workspace={}", workspace_id.or(workspace_slug).unwrap_or("(root)")),
+        format!(
+            "workspace={}",
+            workspace_id.or(workspace_slug).unwrap_or("(root)")
+        ),
     );
-
 
     log_timing(
         "setup.login_bootstrap.total",
@@ -623,6 +619,9 @@ pub async fn get_login_bootstrap
         ),
     );
 
-
-    Ok(HttpResponse::Ok().json(LoginBootstrapResponse { auth, workspace, app }))
+    Ok(HttpResponse::Ok().json(LoginBootstrapResponse {
+        auth,
+        workspace,
+        app,
+    }))
 }

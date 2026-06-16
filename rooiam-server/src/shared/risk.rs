@@ -44,7 +44,11 @@ pub enum RiskSignal {
     /// The login IP has not been seen in this user's recent login history.
     NewIp { ip: String },
     /// The user logged in from a different IP address within a short time window.
-    RapidIpChange { previous_ip: String, current_ip: String, window_minutes: i64 },
+    RapidIpChange {
+        previous_ip: String,
+        current_ip: String,
+        window_minutes: i64,
+    },
     /// The login user-agent has not been seen in this user's recent login history.
     NewUserAgent { user_agent: String },
 }
@@ -79,7 +83,11 @@ impl RiskSignal {
                 "reason": self.reason_key(),
                 "ip": ip,
             }),
-            RiskSignal::RapidIpChange { previous_ip, current_ip, window_minutes } => serde_json::json!({
+            RiskSignal::RapidIpChange {
+                previous_ip,
+                current_ip,
+                window_minutes,
+            } => serde_json::json!({
                 "reason": self.reason_key(),
                 "previous_ip": previous_ip,
                 "current_ip": current_ip,
@@ -129,24 +137,27 @@ impl Default for RiskPolicy {
 
 /// Load risk policy from system_settings. Missing keys fall back to defaults.
 pub async fn load_policy(db: &PgPool) -> RiskPolicy {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT key, value FROM system_settings WHERE key LIKE 'risk_%'"
-    )
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT key, value FROM system_settings WHERE key LIKE 'risk_%'")
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
 
     let mut policy = RiskPolicy::default();
     for (key, value) in rows {
         match key.as_str() {
-            "risk_enabled"                       => policy.enabled = value != "0",
-            "risk_new_ip_enabled"                => policy.new_ip_enabled = value != "0",
-            "risk_new_ip_lookback"               => policy.new_ip_lookback = value.parse().unwrap_or(10),
-            "risk_rapid_ip_change_enabled"       => policy.rapid_ip_change_enabled = value != "0",
-            "risk_rapid_ip_change_window_minutes"=> policy.rapid_ip_change_window_minutes = value.parse().unwrap_or(10),
-            "risk_new_user_agent_enabled"        => policy.new_user_agent_enabled = value != "0",
-            "risk_new_user_agent_lookback"       => policy.new_user_agent_lookback = value.parse().unwrap_or(10),
-            "risk_operator_email_enabled"        => policy.operator_email_enabled = value != "0",
+            "risk_enabled" => policy.enabled = value != "0",
+            "risk_new_ip_enabled" => policy.new_ip_enabled = value != "0",
+            "risk_new_ip_lookback" => policy.new_ip_lookback = value.parse().unwrap_or(10),
+            "risk_rapid_ip_change_enabled" => policy.rapid_ip_change_enabled = value != "0",
+            "risk_rapid_ip_change_window_minutes" => {
+                policy.rapid_ip_change_window_minutes = value.parse().unwrap_or(10)
+            }
+            "risk_new_user_agent_enabled" => policy.new_user_agent_enabled = value != "0",
+            "risk_new_user_agent_lookback" => {
+                policy.new_user_agent_lookback = value.parse().unwrap_or(10)
+            }
+            "risk_operator_email_enabled" => policy.operator_email_enabled = value != "0",
             _ => {}
         }
     }
@@ -200,7 +211,9 @@ pub async fn evaluate(
 
         // Only flag if the user has prior logins — skip on first-ever login
         if !known_ips.is_empty() && !known_ips.iter().any(|k| k == current_ip) {
-            signals.push(RiskSignal::NewIp { ip: current_ip.to_string() });
+            signals.push(RiskSignal::NewIp {
+                ip: current_ip.to_string(),
+            });
         }
     }
 
@@ -239,7 +252,9 @@ pub async fn evaluate(
 
     // --- Signal 3: New user agent (not seen in last N successful logins) ---
     if policy.new_user_agent_enabled {
-        if let Some(current_user_agent) = user_agent.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(current_user_agent) =
+            user_agent.map(str::trim).filter(|value| !value.is_empty())
+        {
             let recent_uas: Vec<Option<String>> = sqlx::query_scalar(
                 r#"
                 SELECT user_agent

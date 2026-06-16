@@ -23,18 +23,18 @@ pub fn demo_mailbox_url() -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-    std::env::var("ROOIAM_DEMO_MAILBOX_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            if demo_seed_enabled() {
-                Some("http://localhost:8025".to_string())
-            } else {
-                None
-            }
+            std::env::var("ROOIAM_DEMO_MAILBOX_URL")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or_else(|| {
+                    if demo_seed_enabled() {
+                        Some("http://localhost:8025".to_string())
+                    } else {
+                        None
+                    }
+                })
         })
-    })
 }
 
 pub async fn resolve_workspace(
@@ -44,7 +44,10 @@ pub async fn resolve_workspace(
 ) -> Result<Option<crate::modules::organization::models::Organization>, AppError> {
     let repo = OrganizationRepository::new(state.db.clone());
 
-    if let Some(raw_id) = workspace_id.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(raw_id) = workspace_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let parsed = Uuid::parse_str(raw_id)
             .map_err(|_| AppError::Validation("Workspace ID is invalid.".into()))?;
         if let Some(org) = repo.get_organization_by_id(parsed).await? {
@@ -53,7 +56,10 @@ pub async fn resolve_workspace(
         return Ok(None);
     }
 
-    if let Some(slug) = workspace_slug.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(slug) = workspace_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         return repo.get_organization_by_slug(slug).await;
     }
 

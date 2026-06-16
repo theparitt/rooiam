@@ -6,25 +6,28 @@ use futures_util::TryStreamExt;
 use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use uuid::Uuid;
 use url::Url;
+use uuid::Uuid;
 
+use super::models::{
+    LinkedAccountsResponse, LinkedMagicLinkStatus, LinkedProviderStatus,
+    SecurityCapabilitiesResponse,
+};
+use super::{repository::IdentityRepository, service::IdentityService};
 use crate::bootstrap::state::AppState;
-use crate::shared::error::AppError;
 use crate::http::middleware::auth::{extract_session, RequireAuth};
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::mfa::{repository::MfaRepository, service::MfaService};
 use crate::modules::oidc::service::OIDCService;
 use crate::modules::organization::repository::OrganizationRepository;
 use crate::modules::session::{models::ActiveSession, repository::SessionRepository};
-use crate::shared::storage_config::{delete_public_asset, store_public_asset};
 use crate::modules::webauthn::repository::WebauthnRepository;
 use crate::modules::webauthn::service::WebauthnService;
+use crate::shared::error::AppError;
 use crate::shared::request_ip::client_ip_string_from_http_request;
 use crate::shared::runtime_config::load_runtime_app_config;
 use crate::shared::runtime_config::{effective_admin_url, effective_app_url};
-use super::{repository::IdentityRepository, service::IdentityService};
-use super::models::{LinkedAccountsResponse, LinkedMagicLinkStatus, LinkedProviderStatus, SecurityCapabilitiesResponse};
+use crate::shared::storage_config::{delete_public_asset, store_public_asset};
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -76,13 +79,14 @@ pub struct MyAuditLogQuery {
 }
 
 async fn is_platform_staff(state: &web::Data<AppState>, user_id: Uuid) -> Result<bool, AppError> {
-    let is_staff: Option<bool> = sqlx::query_scalar(
-        "SELECT (is_platform_owner OR is_superuser) FROM users WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to check platform staff status: {}", e)))?;
+    let is_staff: Option<bool> =
+        sqlx::query_scalar("SELECT (is_platform_owner OR is_superuser) FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to check platform staff status: {}", e))
+            })?;
 
     Ok(is_staff.unwrap_or(false))
 }
@@ -96,25 +100,32 @@ async fn require_recent_admin_reauth(
         return Ok(());
     }
 
-    let (current_session, _) = crate::modules::session::repository::SessionRepository::new(state.db.clone())
-        .get_valid_session(session.session_id)
-        .await?;
+    let (current_session, _) =
+        crate::modules::session::repository::SessionRepository::new(state.db.clone())
+            .get_valid_session(session.session_id)
+            .await?;
 
     let max_age = Duration::minutes(60);
     if Utc::now() - current_session.created_at > max_age {
-        AuditService::new(state.db.clone()).log(AuditEvent {
-            actor_user_id: Some(session.user_id),
-            organization_id: session.current_org_id,
-            action: "identity.link.reauth_required".into(),
-            target_type: "external_identity".into(),
-            target_id: None,
-            ip: client_ip_string_from_http_request(req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({
-                "reason": "admin_session_too_old",
-                "max_age_minutes": 60
-            }),
-        }).await;
+        AuditService::new(state.db.clone())
+            .log(AuditEvent {
+                actor_user_id: Some(session.user_id),
+                organization_id: session.current_org_id,
+                action: "identity.link.reauth_required".into(),
+                target_type: "external_identity".into(),
+                target_id: None,
+                ip: client_ip_string_from_http_request(req, state.config.as_ref()),
+                user_agent: req
+                    .headers()
+                    .get("user-agent")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from),
+                metadata: serde_json::json!({
+                    "reason": "admin_session_too_old",
+                    "max_age_minutes": 60
+                }),
+            })
+            .await;
 
         return Err(AppError::Forbidden(
             "For admin accounts, linking and unlinking providers requires a recent sign-in. Sign out and sign in again before retrying.".into()
@@ -140,19 +151,35 @@ fn token_mfa_service(state: &web::Data<AppState>) -> MfaService {
     )
 }
 
-fn validated_audit_log_pagination(query: &MyAuditLogQuery) -> Result<(i64, i64, Option<String>, Option<String>), AppError> {
+fn validated_audit_log_pagination(
+    query: &MyAuditLogQuery,
+) -> Result<(i64, i64, Option<String>, Option<String>), AppError> {
     let page = query.page.unwrap_or(1);
     if page < 1 {
-        return Err(AppError::Validation("page must be greater than or equal to 1.".into()));
+        return Err(AppError::Validation(
+            "page must be greater than or equal to 1.".into(),
+        ));
     }
 
     let page_size = query.page_size.unwrap_or(25);
     if !(1..=1000).contains(&page_size) {
-        return Err(AppError::Validation("page_size must be between 1 and 1000.".into()));
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 1000.".into(),
+        ));
     }
 
-    let date_from = query.date_from.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(String::from);
-    let date_to = query.date_to.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(String::from);
+    let date_from = query
+        .date_from
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from);
+    let date_to = query
+        .date_to
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from);
 
     Ok((page, page_size, date_from, date_to))
 }
@@ -177,28 +204,44 @@ async fn load_actor_security_state(
 ) -> Result<ActorSecurityState, AppError> {
     let identity_repo = IdentityRepository::new(state.db.clone());
     let primary_email = identity_repo.get_primary_email_by_user_id(user_id).await?;
-    let external_identities = identity_repo.list_external_identities_by_user_id(user_id).await?;
+    let external_identities = identity_repo
+        .list_external_identities_by_user_id(user_id)
+        .await?;
     let passkeys = WebauthnRepository::new(state.db.clone())
         .list_passkeys_by_user_id(user_id)
         .await?;
-    let (totp_enabled, backup_codes_remaining) = token_mfa_service(state).totp_status(user_id).await?;
+    let (totp_enabled, backup_codes_remaining) =
+        token_mfa_service(state).totp_status(user_id).await?;
 
     let current_org = match current_org_id {
-        Some(org_id) => OrganizationRepository::new(state.db.clone()).get_organization_by_id(org_id).await?,
+        Some(org_id) => {
+            OrganizationRepository::new(state.db.clone())
+                .get_organization_by_id(org_id)
+                .await?
+        }
         None => None,
     };
 
     let passkey_supported = !state.config.webauthn.rp_id.trim().is_empty()
         && !state.config.webauthn.origin.trim().is_empty();
     let passkey_allowed = passkey_supported
-        && current_org.as_ref().map(|org| org.allow_passkey).unwrap_or(true);
-    let mfa_required = current_org.as_ref().map(|org| org.require_mfa).unwrap_or(false);
+        && current_org
+            .as_ref()
+            .map(|org| org.allow_passkey)
+            .unwrap_or(true);
+    let mfa_required = current_org
+        .as_ref()
+        .map(|org| org.require_mfa)
+        .unwrap_or(false);
 
     Ok(ActorSecurityState {
         current_org_id,
         current_org_slug: current_org.map(|org| org.slug),
         primary_email,
-        linked_providers: external_identities.into_iter().map(|identity| identity.provider).collect(),
+        linked_providers: external_identities
+            .into_iter()
+            .map(|identity| identity.provider)
+            .collect(),
         passkey_count: passkeys.len(),
         totp_enabled,
         backup_codes_remaining,
@@ -209,7 +252,9 @@ async fn load_actor_security_state(
 }
 
 fn can_remove_last_passkey(security: &ActorSecurityState) -> bool {
-    security.primary_email.is_some() || !security.linked_providers.is_empty() || security.passkey_count > 1
+    security.primary_email.is_some()
+        || !security.linked_providers.is_empty()
+        || security.passkey_count > 1
 }
 
 async fn get_security_capabilities_bearer(
@@ -217,7 +262,8 @@ async fn get_security_capabilities_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let security = load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
+    let security =
+        load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
 
     Ok(HttpResponse::Ok().json(SecurityCapabilitiesResponse {
         current_org_id: security.current_org_id,
@@ -240,7 +286,10 @@ async fn get_security_capabilities_bearer(
 }
 
 /// GET /identity/token/me — Bearer-auth version of get_me for candycloud-api proxy
-async fn get_me_bearer(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+async fn get_me_bearer(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
 
     let repo = IdentityRepository::new(state.db.clone());
@@ -280,14 +329,16 @@ async fn list_my_audit_logs_bearer(
         r#"SELECT COUNT(*) FROM audit_logs al
            WHERE al.actor_user_id = $1
              AND ($2::date IS NULL OR al.created_at >= $2::date)
-             AND ($3::date IS NULL OR al.created_at < ($3::date + interval '1 day'))"#
+             AND ($3::date IS NULL OR al.created_at < ($3::date + interval '1 day'))"#,
     )
     .bind(session.user_id)
     .bind(&date_from)
     .bind(&date_to)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to count personal audit log entries: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to count personal audit log entries: {}", e))
+    })?;
 
     let logs = sqlx::query_as::<_, MyAuditLog>(
         r#"
@@ -330,7 +381,10 @@ async fn list_my_audit_logs_bearer(
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn get_me(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
 
     let repo = IdentityRepository::new(state.db.clone());
@@ -363,12 +417,16 @@ pub async fn update_me(
 
     if let Some(ref name) = body.display_name {
         if name.len() > 100 {
-            return Err(AppError::Validation("Display name must be 100 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Display name must be 100 characters or fewer.".into(),
+            ));
         }
     }
     if let Some(ref url) = body.avatar_url {
         if url.len() > 2048 {
-            return Err(AppError::Validation("Avatar URL must be 2048 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Avatar URL must be 2048 characters or fewer.".into(),
+            ));
         }
         // Must be a relative path or an absolute https URL
         if !url.starts_with('/') {
@@ -384,23 +442,37 @@ pub async fn update_me(
     let service = IdentityService::new(repo);
 
     let updated_user = service
-        .update_my_profile(session.user_id, body.display_name.clone(), body.avatar_url.clone())
+        .update_my_profile(
+            session.user_id,
+            body.display_name.clone(),
+            body.avatar_url.clone(),
+        )
         .await?;
 
     let mut changed_fields = serde_json::Map::new();
-    if body.display_name.is_some() { changed_fields.insert("display_name".into(), serde_json::Value::Bool(true)); }
-    if body.avatar_url.is_some()   { changed_fields.insert("avatar_url".into(), serde_json::Value::Bool(true)); }
+    if body.display_name.is_some() {
+        changed_fields.insert("display_name".into(), serde_json::Value::Bool(true));
+    }
+    if body.avatar_url.is_some() {
+        changed_fields.insert("avatar_url".into(), serde_json::Value::Bool(true));
+    }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "identity.profile.updated".into(),
-        target_type: "user".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "fields": changed_fields }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "identity.profile.updated".into(),
+            target_type: "user".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "fields": changed_fields }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(updated_user))
 }
@@ -415,12 +487,16 @@ async fn update_me_bearer(
 
     if let Some(ref name) = body.display_name {
         if name.len() > 100 {
-            return Err(AppError::Validation("Display name must be 100 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Display name must be 100 characters or fewer.".into(),
+            ));
         }
     }
     if let Some(ref url) = body.avatar_url {
         if url.len() > 2048 {
-            return Err(AppError::Validation("Avatar URL must be 2048 characters or fewer.".into()));
+            return Err(AppError::Validation(
+                "Avatar URL must be 2048 characters or fewer.".into(),
+            ));
         }
         if !url.starts_with('/') {
             let parsed = Url::parse(url)
@@ -435,23 +511,37 @@ async fn update_me_bearer(
     let service = IdentityService::new(repo);
 
     let updated_user = service
-        .update_my_profile(session.user_id, body.display_name.clone(), body.avatar_url.clone())
+        .update_my_profile(
+            session.user_id,
+            body.display_name.clone(),
+            body.avatar_url.clone(),
+        )
         .await?;
 
     let mut changed_fields = serde_json::Map::new();
-    if body.display_name.is_some() { changed_fields.insert("display_name".into(), serde_json::Value::Bool(true)); }
-    if body.avatar_url.is_some()   { changed_fields.insert("avatar_url".into(), serde_json::Value::Bool(true)); }
+    if body.display_name.is_some() {
+        changed_fields.insert("display_name".into(), serde_json::Value::Bool(true));
+    }
+    if body.avatar_url.is_some() {
+        changed_fields.insert("avatar_url".into(), serde_json::Value::Bool(true));
+    }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "identity.profile.updated".into(),
-        target_type: "user".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "fields": changed_fields }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "identity.profile.updated".into(),
+            target_type: "user".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "fields": changed_fields }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(updated_user))
 }
@@ -484,21 +574,31 @@ fn validate_avatar_upload_part(
     content_type: Option<&mime::Mime>,
 ) -> Result<&'static str, AppError> {
     if field_name != Some("file") {
-        return Err(AppError::Validation("Avatar upload must contain exactly one multipart field named 'file'.".into()));
+        return Err(AppError::Validation(
+            "Avatar upload must contain exactly one multipart field named 'file'.".into(),
+        ));
     }
 
     let content_type_value = content_type
         .map(|value| value.essence_str())
-        .ok_or_else(|| AppError::Validation("Avatar upload must include an image Content-Type.".into()))?;
+        .ok_or_else(|| {
+            AppError::Validation("Avatar upload must include an image Content-Type.".into())
+        })?;
 
     match content_type_value {
         "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/svg+xml" => {}
-        _ => return Err(AppError::Validation("Unsupported image Content-Type. Use PNG, JPG, WEBP, GIF, or SVG.".into())),
+        _ => {
+            return Err(AppError::Validation(
+                "Unsupported image Content-Type. Use PNG, JPG, WEBP, GIF, or SVG.".into(),
+            ))
+        }
     }
 
     let ext = avatar_filename_ext(file_name, content_type);
     if ext == "bin" {
-        return Err(AppError::Validation("Unsupported image format. Use PNG, JPG, WEBP, GIF, or SVG.".into()));
+        return Err(AppError::Validation(
+            "Unsupported image format. Use PNG, JPG, WEBP, GIF, or SVG.".into(),
+        ));
     }
 
     Ok(ext)
@@ -531,7 +631,9 @@ pub async fn upload_avatar(
         .map_err(|e| AppError::Validation(format!("Invalid upload payload: {}", e)))?
     {
         if image.is_some() {
-            return Err(AppError::Validation("Avatar upload must contain exactly one image file.".into()));
+            return Err(AppError::Validation(
+                "Avatar upload must contain exactly one image file.".into(),
+            ));
         }
 
         let field_name = field
@@ -543,7 +645,11 @@ pub async fn upload_avatar(
             .content_disposition()
             .and_then(|value| value.get_filename())
             .map(str::to_string);
-        let ext = validate_avatar_upload_part(field_name.as_deref(), file_name.as_deref(), content_type.as_ref())?;
+        let ext = validate_avatar_upload_part(
+            field_name.as_deref(),
+            file_name.as_deref(),
+            content_type.as_ref(),
+        )?;
 
         let mut bytes = Vec::new();
         while let Some(chunk) = field
@@ -553,7 +659,10 @@ pub async fn upload_avatar(
         {
             if bytes.len() + chunk.len() > max_bytes {
                 let mb = (max_bytes / (1024 * 1024)).max(1);
-                return Err(AppError::Validation(format!("Image is too large. Maximum size is {}MB.", mb)));
+                return Err(AppError::Validation(format!(
+                    "Image is too large. Maximum size is {}MB.",
+                    mb
+                )));
             }
             bytes.extend_from_slice(&chunk);
         }
@@ -565,10 +674,15 @@ pub async fn upload_avatar(
         image = Some((bytes, content_type, ext));
     }
 
-    let (bytes, content_type, ext) = image
-        .ok_or_else(|| AppError::Validation("No image file was uploaded.".into()))?;
+    let (bytes, content_type, ext) =
+        image.ok_or_else(|| AppError::Validation("No image file was uploaded.".into()))?;
 
-    let relative_path = format!("uploads/users/{}/avatar/{}.{}", session.user_id, Uuid::new_v4(), ext);
+    let relative_path = format!(
+        "uploads/users/{}/avatar/{}.{}",
+        session.user_id,
+        Uuid::new_v4(),
+        ext
+    );
     let url = store_public_asset(
         &state.db,
         state.config.as_ref(),
@@ -591,18 +705,24 @@ pub async fn upload_avatar(
         .update_my_profile(session.user_id, None, Some(url.clone()))
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "identity.profile.avatar_uploaded".into(),
-        target_type: "user".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "avatar_url": url,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "identity.profile.avatar_uploaded".into(),
+            target_type: "user".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "avatar_url": url,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "url": url,
@@ -620,7 +740,10 @@ pub async fn upload_avatar(
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn list_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn list_sessions(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     list_sessions_for_actor(&state, &session).await
 }
@@ -635,7 +758,10 @@ pub async fn list_sessions(req: HttpRequest, state: web::Data<AppState>) -> Resu
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn revoke_all_sessions(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn revoke_all_sessions(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     revoke_all_sessions_for_actor(&req, &state, &session).await
 }
@@ -652,7 +778,11 @@ pub async fn revoke_all_sessions(req: HttpRequest, state: web::Data<AppState>) -
         (status = 404, description = "Session not found"),
     ),
 )]
-pub async fn revoke_session(req: HttpRequest, state: web::Data<AppState>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
+pub async fn revoke_session(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     revoke_one_session_for_actor(&state, &session, path.into_inner()).await
 }
@@ -706,7 +836,9 @@ async fn list_sessions_for_actor(
     tracing::info!("Listing sessions for user {}", session.user_id);
 
     let session_repo = SessionRepository::new(state.db.clone());
-    let sessions = session_repo.get_sessions_by_user_id(session.user_id).await?;
+    let sessions = session_repo
+        .get_sessions_by_user_id(session.user_id)
+        .await?;
 
     let viewable_sessions: Vec<serde_json::Value> = sessions
         .into_iter()
@@ -739,16 +871,22 @@ async fn revoke_all_sessions_for_actor(
         .revoke_sessions_by_user_id(session.user_id, Some(session.session_id))
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.sessions.revoked_all".into(),
-        target_type: "session".into(),
-        target_id: Some(session.session_id.to_string()),
-        ip: client_ip_string_from_http_request(req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "revoked_count": revoked }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.sessions.revoked_all".into(),
+            target_type: "session".into(),
+            target_id: Some(session.session_id.to_string()),
+            ip: client_ip_string_from_http_request(req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "revoked_count": revoked }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -762,7 +900,11 @@ async fn revoke_one_session_for_actor(
     session: &ActiveSession,
     target_session_id: Uuid,
 ) -> Result<HttpResponse, AppError> {
-    tracing::info!("User {} attempting to revoke {}", session.user_id, target_session_id);
+    tracing::info!(
+        "User {} attempting to revoke {}",
+        session.user_id,
+        target_session_id
+    );
 
     let session_repo = SessionRepository::new(state.db.clone());
     let (target_session, _) = session_repo.get_valid_session(target_session_id).await?;
@@ -778,12 +920,18 @@ async fn revoke_one_session_for_actor(
     })))
 }
 
-async fn list_sessions_bearer(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+async fn list_sessions_bearer(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
     list_sessions_for_actor(&state, &session).await
 }
 
-async fn revoke_all_sessions_bearer(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+async fn revoke_all_sessions_bearer(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
     revoke_all_sessions_for_actor(&req, &state, &session).await
 }
@@ -807,7 +955,10 @@ async fn revoke_session_bearer(
         (status = 401, description = "No valid session cookie"),
     ),
 )]
-pub async fn get_linked_accounts(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+pub async fn get_linked_accounts(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     get_linked_accounts_for_actor(&state, session.user_id).await
 }
@@ -818,7 +969,9 @@ async fn get_linked_accounts_for_actor(
 ) -> Result<HttpResponse, AppError> {
     let identity_repo = IdentityRepository::new(state.db.clone());
     let primary_email = identity_repo.get_primary_email_by_user_id(user_id).await?;
-    let external_identities = identity_repo.list_external_identities_by_user_id(user_id).await?;
+    let external_identities = identity_repo
+        .list_external_identities_by_user_id(user_id)
+        .await?;
     let passkeys = WebauthnRepository::new(state.db.clone())
         .list_passkeys_by_user_id(user_id)
         .await?;
@@ -833,7 +986,9 @@ async fn get_linked_accounts_for_actor(
     let providers = ["google", "microsoft"]
         .into_iter()
         .map(|provider| {
-            let linked = external_identities.iter().find(|identity| identity.provider == provider);
+            let linked = external_identities
+                .iter()
+                .find(|identity| identity.provider == provider);
             // A provider is the signup provider if it's linked and the user has no magic-link
             // email — meaning they originally signed up through this OAuth provider.
             let is_signup_provider = linked.is_some() && primary_email.is_none();
@@ -896,15 +1051,22 @@ async fn start_passkey_registration_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let security = load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
+    let security =
+        load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
     if !security.passkey_supported {
-        return Err(AppError::Validation("Passkeys are not configured on this Rooiam server.".into()));
+        return Err(AppError::Validation(
+            "Passkeys are not configured on this Rooiam server.".into(),
+        ));
     }
     if !security.passkey_allowed {
-        return Err(AppError::Forbidden("Passkeys are disabled for this workspace.".into()));
+        return Err(AppError::Forbidden(
+            "Passkeys are disabled for this workspace.".into(),
+        ));
     }
 
-    let result = token_webauthn_service(&state).start_registration(session.user_id).await?;
+    let result = token_webauthn_service(&state)
+        .start_registration(session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "challenge_id": result.challenge.id,
@@ -920,12 +1082,17 @@ async fn finish_passkey_registration_bearer(
     body: web::Json<FinishPasskeyRegistrationRequest>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let security = load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
+    let security =
+        load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
     if !security.passkey_supported {
-        return Err(AppError::Validation("Passkeys are not configured on this Rooiam server.".into()));
+        return Err(AppError::Validation(
+            "Passkeys are not configured on this Rooiam server.".into(),
+        ));
     }
     if !security.passkey_allowed {
-        return Err(AppError::Forbidden("Passkeys are disabled for this workspace.".into()));
+        return Err(AppError::Forbidden(
+            "Passkeys are disabled for this workspace.".into(),
+        ));
     }
 
     let passkey = token_webauthn_service(&state)
@@ -940,16 +1107,22 @@ async fn finish_passkey_registration_bearer(
         )
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.registered".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey.id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "name": passkey.name, "surface": "token_api" }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.registered".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey.id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "name": passkey.name, "surface": "token_api" }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -971,7 +1144,9 @@ async fn rename_passkey_bearer(
         return Err(AppError::Validation("Passkey name cannot be empty.".into()));
     }
     if new_name.len() > 100 {
-        return Err(AppError::Validation("Passkey name is too long (max 100 characters).".into()));
+        return Err(AppError::Validation(
+            "Passkey name is too long (max 100 characters).".into(),
+        ));
     }
 
     let service = token_webauthn_service(&state);
@@ -984,16 +1159,22 @@ async fn rename_passkey_bearer(
         .rename_passkey(passkey_id, session.user_id, &new_name)
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.renamed".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "new_name": new_name, "surface": "token_api" }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.renamed".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "new_name": new_name, "surface": "token_api" }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1008,7 +1189,8 @@ async fn delete_passkey_bearer(
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
     let passkey_id = path.into_inner();
-    let security = load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
+    let security =
+        load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
     if security.passkey_count == 0 {
         return Err(AppError::NotFound("Passkey not found.".into()));
     }
@@ -1022,16 +1204,22 @@ async fn delete_passkey_bearer(
         .delete_my_passkey(session.user_id, passkey_id)
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.passkey.deleted".into(),
-        target_type: "passkey".into(),
-        target_id: Some(passkey_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "surface": "token_api" }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.passkey.deleted".into(),
+            target_type: "passkey".into(),
+            target_id: Some(passkey_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "surface": "token_api" }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1044,7 +1232,9 @@ async fn get_mfa_status_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let (enabled, remaining) = token_mfa_service(&state).totp_status(session.user_id).await?;
+    let (enabled, remaining) = token_mfa_service(&state)
+        .totp_status(session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "totp_enabled": enabled,
@@ -1057,7 +1247,9 @@ async fn start_totp_enrollment_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let enrollment = token_mfa_service(&state).start_totp_enrollment(session.user_id).await?;
+    let enrollment = token_mfa_service(&state)
+        .start_totp_enrollment(session.user_id)
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "challenge_id": enrollment.challenge.id,
@@ -1076,16 +1268,22 @@ async fn finish_totp_enrollment_bearer(
         .finish_totp_enrollment(session.user_id, body.challenge_id, &body.code)
         .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.mfa.enrolled".into(),
-        target_type: "mfa_method".into(),
-        target_id: Some("totp".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "method": "totp", "surface": "token_api" }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.mfa.enrolled".into(),
+            target_type: "mfa_method".into(),
+            target_id: Some("totp".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "method": "totp", "surface": "token_api" }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1098,18 +1296,26 @@ async fn regenerate_backup_codes_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let result = token_mfa_service(&state).regenerate_backup_codes(session.user_id).await?;
+    let result = token_mfa_service(&state)
+        .regenerate_backup_codes(session.user_id)
+        .await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "auth.mfa.backup_codes.regenerated".into(),
-        target_type: "mfa_method".into(),
-        target_id: Some("totp".into()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "count": result.remaining, "surface": "token_api" }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "auth.mfa.backup_codes.regenerated".into(),
+            target_type: "mfa_method".into(),
+            target_id: Some("totp".into()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "count": result.remaining, "surface": "token_api" }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "codes": result.codes,
@@ -1122,16 +1328,21 @@ async fn disable_totp_bearer(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    let security = load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
+    let security =
+        load_actor_security_state(&state, session.user_id, session.current_org_id).await?;
     if security.mfa_required {
         return Err(AppError::Forbidden(
             "MFA is required for this workspace, so TOTP cannot be disabled.".into(),
         ));
     }
 
-    let deleted = token_mfa_service(&state).disable_totp(session.user_id).await?;
+    let deleted = token_mfa_service(&state)
+        .disable_totp(session.user_id)
+        .await?;
     let session_repo = SessionRepository::new(state.db.clone());
-    let _ = session_repo.revoke_sessions_by_user_id(session.user_id, Some(session.session_id)).await;
+    let _ = session_repo
+        .revoke_sessions_by_user_id(session.user_id, Some(session.session_id))
+        .await;
 
     AuditService::new(state.db.clone()).log(AuditEvent {
         actor_user_id: Some(session.user_id),
@@ -1218,7 +1429,11 @@ async fn start_link_provider_for_actor(
     };
 
     let initiated_ip = client_ip_string_from_http_request(&req, state.config.as_ref());
-    let initiated_ua = req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from);
+    let initiated_ua = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
     let authorization_url = crate::modules::oauth::handlers::start_oauth_flow(
         state,
         &provider,
@@ -1274,7 +1489,14 @@ pub async fn unlink_provider(
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
     require_recent_admin_reauth(&req, &state, &session).await?;
-    unlink_provider_for_actor(&req, &state, &path.into_inner(), session.user_id, session.current_org_id).await
+    unlink_provider_for_actor(
+        &req,
+        &state,
+        &path.into_inner(),
+        session.user_id,
+        session.current_org_id,
+    )
+    .await
 }
 
 async fn unlink_provider_for_actor(
@@ -1291,14 +1513,21 @@ async fn unlink_provider_for_actor(
 
     let identity_repo = IdentityRepository::new(state.db.clone());
     let primary_email = identity_repo.get_primary_email_by_user_id(user_id).await?;
-    let external_identities = identity_repo.list_external_identities_by_user_id(user_id).await?;
+    let external_identities = identity_repo
+        .list_external_identities_by_user_id(user_id)
+        .await?;
     let passkeys = WebauthnRepository::new(state.db.clone())
         .list_passkeys_by_user_id(user_id)
         .await?;
 
-    let currently_linked = external_identities.iter().any(|identity| identity.provider == provider);
+    let currently_linked = external_identities
+        .iter()
+        .any(|identity| identity.provider == provider);
     if !currently_linked {
-        return Err(AppError::NotFound(format!("{} is not linked to this account", provider)));
+        return Err(AppError::NotFound(format!(
+            "{} is not linked to this account",
+            provider
+        )));
     }
 
     let remaining_external_providers = external_identities
@@ -1310,7 +1539,7 @@ async fn unlink_provider_for_actor(
     let has_passkey = !passkeys.is_empty();
     if !magic_link_available && remaining_external_providers == 0 && !has_passkey {
         return Err(AppError::Forbidden(
-            "Cannot unlink the last usable sign-in method for this account.".into()
+            "Cannot unlink the last usable sign-in method for this account.".into(),
         ));
     }
 
@@ -1318,24 +1547,33 @@ async fn unlink_provider_for_actor(
         .delete_external_identity_for_user(user_id, &provider)
         .await?;
     if deleted == 0 {
-        return Err(AppError::NotFound(format!("{} is not linked to this account", provider)));
+        return Err(AppError::NotFound(format!(
+            "{} is not linked to this account",
+            provider
+        )));
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(user_id),
-        organization_id: current_org_id,
-        action: format!("identity.unlink.{}", provider),
-        target_type: "external_identity".into(),
-        target_id: Some(provider.clone()),
-        ip: client_ip_string_from_http_request(req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "provider": provider,
-            "magic_link_available": magic_link_available,
-            "remaining_external_providers": remaining_external_providers,
-            "has_passkey": has_passkey,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(user_id),
+            organization_id: current_org_id,
+            action: format!("identity.unlink.{}", provider),
+            target_type: "external_identity".into(),
+            target_id: Some(provider.clone()),
+            ip: client_ip_string_from_http_request(req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "provider": provider,
+                "magic_link_available": magic_link_available,
+                "remaining_external_providers": remaining_external_providers,
+                "has_passkey": has_passkey,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1349,7 +1587,14 @@ async fn unlink_provider_bearer(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_bearer_self_session(&req, &state).await?;
-    unlink_provider_for_actor(&req, &state, &path.into_inner(), session.user_id, session.current_org_id).await
+    unlink_provider_for_actor(
+        &req,
+        &state,
+        &path.into_inner(),
+        session.user_id,
+        session.current_org_id,
+    )
+    .await
 }
 
 // ── Email change flow ────────────────────────────────────────────────────────
@@ -1394,19 +1639,27 @@ pub async fn request_email_change(
         .ok_or_else(|| AppError::Validation("No primary email on this account.".into()))?;
 
     if new_email == old_email {
-        return Err(AppError::Validation("New email is the same as current email.".into()));
+        return Err(AppError::Validation(
+            "New email is the same as current email.".into(),
+        ));
     }
 
     // Block if new email is already in use
-    let existing: Option<Uuid> = sqlx::query_scalar(
-        "SELECT user_id FROM user_emails WHERE email = $1 LIMIT 1"
-    )
-    .bind(&new_email)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to check whether the new email is already in use: {}", e)))?;
+    let existing: Option<Uuid> =
+        sqlx::query_scalar("SELECT user_id FROM user_emails WHERE email = $1 LIMIT 1")
+            .bind(&new_email)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "Failed to check whether the new email is already in use: {}",
+                    e
+                ))
+            })?;
     if existing.is_some() {
-        return Err(AppError::Validation("That email address is already in use.".into()));
+        return Err(AppError::Validation(
+            "That email address is already in use.".into(),
+        ));
     }
 
     // Generate token
@@ -1421,7 +1674,12 @@ pub async fn request_email_change(
         .bind(session.user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear previous email change requests: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear previous email change requests: {}",
+                e
+            ))
+        })?;
 
     sqlx::query(
         "INSERT INTO email_change_tokens (user_id, old_email, new_email, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5)"
@@ -1444,7 +1702,8 @@ pub async fn request_email_change(
             raw_token
         )
     } else {
-        let app_url = effective_app_url(&state.db).await
+        let app_url = effective_app_url(&state.db)
+            .await
             .unwrap_or_else(|_| "http://localhost:5172".to_string());
         format!(
             "{}/settings/email-change/verify?token={}",
@@ -1459,7 +1718,10 @@ pub async fn request_email_change(
         &new_email,
         "Verify your new email address",
         "Email change verification",
-        &format!("Someone requested to change their Rooiam account email to this address ({}).", new_email),
+        &format!(
+            "Someone requested to change their Rooiam account email to this address ({}).",
+            new_email
+        ),
         "Verify email address",
         &verify_url,
     )
@@ -1471,7 +1733,8 @@ pub async fn request_email_change(
             e
         );
         AppError::External(
-            "We could not send the email-change verification message right now. Please try again.".into(),
+            "We could not send the email-change verification message right now. Please try again."
+                .into(),
         )
     })?;
 
@@ -1535,7 +1798,7 @@ pub async fn verify_email_change(
         SELECT id, user_id, old_email, new_email, expires_at, used_at
         FROM email_change_tokens
         WHERE token_hash = $1
-        "#
+        "#,
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)
@@ -1544,51 +1807,70 @@ pub async fn verify_email_change(
     .ok_or_else(|| AppError::NotFound("Invalid or expired email change token.".into()))?;
 
     if record.user_id != session.user_id {
-        return Err(AppError::Forbidden("This token belongs to a different account.".into()));
+        return Err(AppError::Forbidden(
+            "This token belongs to a different account.".into(),
+        ));
     }
     if record.used_at.is_some() {
-        return Err(AppError::Validation("This email change token has already been used.".into()));
+        return Err(AppError::Validation(
+            "This email change token has already been used.".into(),
+        ));
     }
     if Utc::now() > record.expires_at {
-        return Err(AppError::Validation("This email change token has expired.".into()));
+        return Err(AppError::Validation(
+            "This email change token has expired.".into(),
+        ));
     }
 
     // Check new email still not taken (could have changed since request)
     let existing: Option<Uuid> = sqlx::query_scalar(
-        "SELECT user_id FROM user_emails WHERE email = $1 AND user_id != $2 LIMIT 1"
+        "SELECT user_id FROM user_emails WHERE email = $1 AND user_id != $2 LIMIT 1",
     )
     .bind(&record.new_email)
     .bind(record.user_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to verify whether the new email is already in use: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to verify whether the new email is already in use: {}",
+            e
+        ))
+    })?;
     if existing.is_some() {
-        return Err(AppError::Validation("That email address is now in use by another account.".into()));
+        return Err(AppError::Validation(
+            "That email address is now in use by another account.".into(),
+        ));
     }
 
     // Commit the email change in a transaction
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to start the email change transaction: {}", e)))?;
+    let mut tx = state.db.begin().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to start the email change transaction: {}",
+            e
+        ))
+    })?;
 
     // Update primary email record
-    sqlx::query(
-        "UPDATE user_emails SET email = $1 WHERE user_id = $2 AND is_primary = true"
-    )
-    .bind(&record.new_email)
-    .bind(record.user_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to update the primary email address: {}", e)))?;
+    sqlx::query("UPDATE user_emails SET email = $1 WHERE user_id = $2 AND is_primary = true")
+        .bind(&record.new_email)
+        .bind(record.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to update the primary email address: {}", e))
+        })?;
 
     // Mark token as used
     sqlx::query("UPDATE email_change_tokens SET used_at = NOW() WHERE id = $1")
         .bind(record.id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to mark the email change token as used: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to mark the email change token as used: {}",
+                e
+            ))
+        })?;
 
     tx.commit()
         .await
@@ -1609,21 +1891,29 @@ pub async fn verify_email_change(
         "Your account email address was changed",
         &text_body,
         &html_body,
-    ).await.map_err(|e| tracing::warn!("Old-email change notification failed: {}", e));
+    )
+    .await
+    .map_err(|e| tracing::warn!("Old-email change notification failed: {}", e));
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: session.current_org_id,
-        action: "user.email.changed".into(),
-        target_type: "user".into(),
-        target_id: Some(session.user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "old_email": record.old_email,
-            "new_email": record.new_email,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "user.email.changed".into(),
+            target_type: "user".into(),
+            target_id: Some(session.user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "old_email": record.old_email,
+                "new_email": record.new_email,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1672,14 +1962,16 @@ pub async fn list_my_audit_logs(
         r#"SELECT COUNT(*) FROM audit_logs al
            WHERE al.actor_user_id = $1
              AND ($2::date IS NULL OR al.created_at >= $2::date)
-             AND ($3::date IS NULL OR al.created_at < ($3::date + interval '1 day'))"#
+             AND ($3::date IS NULL OR al.created_at < ($3::date + interval '1 day'))"#,
     )
     .bind(session.user_id)
     .bind(&date_from)
     .bind(&date_to)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Internal(format!("Failed to count personal audit log entries: {}", e)))?;
+    .map_err(|e| {
+        AppError::Internal(format!("Failed to count personal audit log entries: {}", e))
+    })?;
 
     let logs = sqlx::query_as::<_, MyAuditLog>(
         r#"
@@ -1768,7 +2060,12 @@ pub async fn request_delete_account(
         .bind(user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to clear previous account deletion requests: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to clear previous account deletion requests: {}",
+                e
+            ))
+        })?;
 
     // Generate token
     let mut bytes = [0u8; 32];
@@ -1778,7 +2075,7 @@ pub async fn request_delete_account(
     let expires_at = Utc::now() + Duration::hours(1);
 
     sqlx::query(
-        "INSERT INTO account_deletion_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)"
+        "INSERT INTO account_deletion_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
     )
     .bind(user_id)
     .bind(&token_hash)
@@ -1787,7 +2084,8 @@ pub async fn request_delete_account(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to create account deletion request: {}", e)))?;
 
-    let app_url = effective_app_url(&state.db).await
+    let app_url = effective_app_url(&state.db)
+        .await
         .unwrap_or_else(|_| "http://localhost:5172".to_string());
     let confirm_url = format!(
         "{}/settings/delete-account/confirm?token={}",
@@ -1816,16 +2114,22 @@ pub async fn request_delete_account(
         )
     })?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(user_id),
-        organization_id: session.current_org_id,
-        action: "user.account.deletion_requested".into(),
-        target_type: "user".into(),
-        target_id: Some(user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(user_id),
+            organization_id: session.current_org_id,
+            action: "user.account.deletion_requested".into(),
+            target_type: "user".into(),
+            target_id: Some(user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
@@ -1866,7 +2170,10 @@ pub async fn delete_account(
     let token_hash = hex::encode(Sha256::digest(body.token.as_bytes()));
 
     #[derive(sqlx::FromRow)]
-    struct DeletionToken { id: Uuid, user_id: Uuid }
+    struct DeletionToken {
+        id: Uuid,
+        user_id: Uuid,
+    }
 
     let token_row: Option<DeletionToken> = sqlx::query_as(
         "SELECT id, user_id FROM account_deletion_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()"
@@ -1880,7 +2187,9 @@ pub async fn delete_account(
         .ok_or_else(|| AppError::NotFound("Invalid or expired confirmation token.".into()))?;
 
     if token_row.user_id != user_id {
-        return Err(AppError::Forbidden("This confirmation token does not belong to your account.".into()));
+        return Err(AppError::Forbidden(
+            "This confirmation token does not belong to your account.".into(),
+        ));
     }
 
     // Mark token used before deletion
@@ -1888,19 +2197,30 @@ pub async fn delete_account(
         .bind(token_row.id)
         .execute(&state.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to mark account deletion token as used: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to mark account deletion token as used: {}",
+                e
+            ))
+        })?;
 
     // Write audit log BEFORE deleting (actor_user_id will be anonymized in the next step)
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(user_id),
-        organization_id: session.current_org_id,
-        action: "user.account.deleted".into(),
-        target_type: "user".into(),
-        target_id: Some(user_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(user_id),
+            organization_id: session.current_org_id,
+            action: "user.account.deleted".into(),
+            target_type: "user".into(),
+            target_id: Some(user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
     let mut tx = state.db.begin().await?;
 
@@ -1910,27 +2230,37 @@ pub async fn delete_account(
 
     // 2. Revoke all sessions
     sqlx::query("UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
 
     // 3. Anonymize audit log entries (preserve the log, scrub the identity)
     sqlx::query("UPDATE audit_logs SET actor_user_id = NULL WHERE actor_user_id = $1")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
 
     // 4. Remove from all organizations (cascades member_roles)
     sqlx::query("DELETE FROM organization_members WHERE user_id = $1")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
 
     // 5. Delete the user (cascades emails, linked accounts, MFA, passkeys, etc.)
     sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(user_id).execute(&mut *tx).await?;
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
 
     let clear_cookie = crate::modules::session::cookie::build_clear_session_cookie(&state.config);
-    Ok(HttpResponse::Ok().cookie(clear_cookie).json(serde_json::json!({
-        "ok": true,
-        "message": "Your account has been permanently deleted.",
-    })))
+    Ok(HttpResponse::Ok()
+        .cookie(clear_cookie)
+        .json(serde_json::json!({
+            "ok": true,
+            "message": "Your account has been permanently deleted.",
+        })))
 }
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
@@ -1945,10 +2275,19 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("/sessions/revoke-all", web::post().to(revoke_all_sessions))
             .route("/sessions/{id}", web::delete().to(revoke_session))
             .route("/linked-accounts", web::get().to(get_linked_accounts))
-            .route("/linked-accounts/{provider}/start", web::post().to(start_link_provider))
-            .route("/linked-accounts/{provider}", web::delete().to(unlink_provider))
+            .route(
+                "/linked-accounts/{provider}/start",
+                web::post().to(start_link_provider),
+            )
+            .route(
+                "/linked-accounts/{provider}",
+                web::delete().to(unlink_provider),
+            )
             .route("/audit-logs", web::get().to(list_my_audit_logs))
-            .route("/email-change/request", web::post().to(request_email_change))
+            .route(
+                "/email-change/request",
+                web::post().to(request_email_change),
+            )
             .route("/email-change/verify", web::post().to(verify_email_change))
             .route("/delete/request", web::post().to(request_delete_account))
             .route("/delete/confirm", web::delete().to(delete_account)),
@@ -1968,22 +2307,52 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(get_me_bearer))
             .route("/profile", web::patch().to(update_me_bearer))
             .route("/audit-logs", web::get().to(list_my_audit_logs_bearer))
-            .route("/security-capabilities", web::get().to(get_security_capabilities_bearer))
+            .route(
+                "/security-capabilities",
+                web::get().to(get_security_capabilities_bearer),
+            )
             .route("/sessions", web::get().to(list_sessions_bearer))
-            .route("/sessions/revoke-all", web::post().to(revoke_all_sessions_bearer))
+            .route(
+                "/sessions/revoke-all",
+                web::post().to(revoke_all_sessions_bearer),
+            )
             .route("/sessions/{id}", web::delete().to(revoke_session_bearer))
-            .route("/linked-accounts", web::get().to(get_linked_accounts_bearer))
-            .route("/linked-accounts/{provider}/start", web::post().to(start_link_provider_bearer))
-            .route("/linked-accounts/{provider}", web::delete().to(unlink_provider_bearer))
+            .route(
+                "/linked-accounts",
+                web::get().to(get_linked_accounts_bearer),
+            )
+            .route(
+                "/linked-accounts/{provider}/start",
+                web::post().to(start_link_provider_bearer),
+            )
+            .route(
+                "/linked-accounts/{provider}",
+                web::delete().to(unlink_provider_bearer),
+            )
             .route("/passkeys", web::get().to(list_passkeys_bearer))
-            .route("/passkeys/register/start", web::post().to(start_passkey_registration_bearer))
-            .route("/passkeys/register/finish", web::post().to(finish_passkey_registration_bearer))
+            .route(
+                "/passkeys/register/start",
+                web::post().to(start_passkey_registration_bearer),
+            )
+            .route(
+                "/passkeys/register/finish",
+                web::post().to(finish_passkey_registration_bearer),
+            )
             .route("/passkeys/{id}", web::patch().to(rename_passkey_bearer))
             .route("/passkeys/{id}", web::delete().to(delete_passkey_bearer))
             .route("/mfa", web::get().to(get_mfa_status_bearer))
-            .route("/mfa/totp/start", web::post().to(start_totp_enrollment_bearer))
-            .route("/mfa/totp/finish", web::post().to(finish_totp_enrollment_bearer))
-            .route("/mfa/recovery-codes/regenerate", web::post().to(regenerate_backup_codes_bearer))
+            .route(
+                "/mfa/totp/start",
+                web::post().to(start_totp_enrollment_bearer),
+            )
+            .route(
+                "/mfa/totp/finish",
+                web::post().to(finish_totp_enrollment_bearer),
+            )
+            .route(
+                "/mfa/recovery-codes/regenerate",
+                web::post().to(regenerate_backup_codes_bearer),
+            )
             .route("/mfa/totp", web::delete().to(disable_totp_bearer)),
     );
 }

@@ -1,8 +1,8 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::shared::error::AppError;
 use super::models::User;
+use crate::shared::error::AppError;
 
 #[derive(Debug, Clone)]
 pub struct WebauthnUserIdentity {
@@ -95,18 +95,19 @@ impl IdentityRepository {
     }
 
     pub async fn get_user_id_by_email(&self, email: &str) -> Result<Option<Uuid>, AppError> {
-        let rec = sqlx::query(
-            "SELECT user_id FROM user_emails WHERE email = $1"
-        )
-        .bind(email)
-        .fetch_optional(&self.pool)
-        .await?;
-        
+        let rec = sqlx::query("SELECT user_id FROM user_emails WHERE email = $1")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await?;
+
         use sqlx::Row;
         Ok(rec.map(|r| r.get("user_id")))
     }
 
-    pub async fn get_webauthn_identity(&self, user_id: Uuid) -> Result<WebauthnUserIdentity, AppError> {
+    pub async fn get_webauthn_identity(
+        &self,
+        user_id: Uuid,
+    ) -> Result<WebauthnUserIdentity, AppError> {
         let row = sqlx::query(
             r#"
             SELECT u.id, e.email, COALESCE(u.display_name, split_part(e.email::text, '@', 1)) AS display_name
@@ -131,12 +132,10 @@ impl IdentityRepository {
     pub async fn create_user_with_email(&self, email: &str) -> Result<Uuid, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        let rec = sqlx::query(
-            "INSERT INTO users DEFAULT VALUES RETURNING id"
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-        
+        let rec = sqlx::query("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&mut *tx)
+            .await?;
+
         use sqlx::Row;
         let user_id: Uuid = rec.get("id");
 
@@ -153,9 +152,13 @@ impl IdentityRepository {
         Ok(user_id)
     }
 
-    pub async fn get_user_id_by_external_identity(&self, provider: &str, provider_user_id: &str) -> Result<Option<Uuid>, AppError> {
+    pub async fn get_user_id_by_external_identity(
+        &self,
+        provider: &str,
+        provider_user_id: &str,
+    ) -> Result<Option<Uuid>, AppError> {
         let rec = sqlx::query(
-            "SELECT user_id FROM external_identities WHERE provider = $1 AND provider_user_id = $2"
+            "SELECT user_id FROM external_identities WHERE provider = $1 AND provider_user_id = $2",
         )
         .bind(provider)
         .bind(provider_user_id)
@@ -166,14 +169,17 @@ impl IdentityRepository {
         Ok(rec.map(|r| r.get("user_id")))
     }
 
-    pub async fn list_external_identities_by_user_id(&self, user_id: Uuid) -> Result<Vec<super::models::ExternalIdentity>, AppError> {
+    pub async fn list_external_identities_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<super::models::ExternalIdentity>, AppError> {
         let identities = sqlx::query_as::<_, super::models::ExternalIdentity>(
             r#"
             SELECT id, user_id, provider, provider_user_id, email, profile_json, created_at
             FROM external_identities
             WHERE user_id = $1
             ORDER BY provider ASC, created_at ASC
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -182,32 +188,36 @@ impl IdentityRepository {
         Ok(identities)
     }
 
-    pub async fn delete_external_identity_for_user(&self, user_id: Uuid, provider: &str) -> Result<u64, AppError> {
-        let result = sqlx::query(
-            "DELETE FROM external_identities WHERE user_id = $1 AND provider = $2"
-        )
-        .bind(user_id)
-        .bind(provider)
-        .execute(&self.pool)
-        .await?;
+    pub async fn delete_external_identity_for_user(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> Result<u64, AppError> {
+        let result =
+            sqlx::query("DELETE FROM external_identities WHERE user_id = $1 AND provider = $2")
+                .bind(user_id)
+                .bind(provider)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
 
-    pub async fn get_primary_email_by_user_id(&self, user_id: Uuid) -> Result<Option<String>, AppError> {
-        sqlx::query_scalar(
-            "SELECT email FROM user_emails WHERE user_id = $1 AND is_primary = true"
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(Into::into)
+    pub async fn get_primary_email_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<String>, AppError> {
+        sqlx::query_scalar("SELECT email FROM user_emails WHERE user_id = $1 AND is_primary = true")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn create_user_with_external_identity(
-        &self, 
-        provider: &str, 
-        provider_user_id: &str, 
+        &self,
+        provider: &str,
+        provider_user_id: &str,
         email: Option<String>,
         email_verified: bool,
         name: Option<String>,
@@ -216,7 +226,7 @@ impl IdentityRepository {
         let mut tx = self.pool.begin().await?;
 
         let rec = sqlx::query(
-            "INSERT INTO users (display_name, avatar_url) VALUES ($1, $2) RETURNING id"
+            "INSERT INTO users (display_name, avatar_url) VALUES ($1, $2) RETURNING id",
         )
         .bind(name)
         .bind(avatar_url)
@@ -227,7 +237,7 @@ impl IdentityRepository {
         let user_id: Uuid = rec.get("id");
 
         if let Some(e) = email.clone() {
-            // Best effort to link email. If email already exists, this might fail, 
+            // Best effort to link email. If email already exists, this might fail,
             // but normally we check by email first before calling this.
             sqlx::query(
                 "INSERT INTO user_emails (user_id, email, is_primary, is_verified, verified_at) VALUES ($1, $2, true, $3, CASE WHEN $3 THEN NOW() ELSE NULL END) ON CONFLICT DO NOTHING"
@@ -255,10 +265,10 @@ impl IdentityRepository {
     }
 
     pub async fn link_external_identity(
-        &self, 
-        user_id: Uuid, 
-        provider: &str, 
-        provider_user_id: &str, 
+        &self,
+        user_id: Uuid,
+        provider: &str,
+        provider_user_id: &str,
         email: Option<String>,
     ) -> Result<(), AppError> {
         sqlx::query(

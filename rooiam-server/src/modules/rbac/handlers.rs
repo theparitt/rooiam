@@ -39,8 +39,13 @@ async fn list_org_roles(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage roles.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage roles.".into(),
+        ));
     }
 
     let repo = RbacRepository::new(state.db.clone());
@@ -74,8 +79,13 @@ async fn list_permissions(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage roles.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage roles.".into(),
+        ));
     }
 
     let repo = RbacRepository::new(state.db.clone());
@@ -95,38 +105,57 @@ async fn create_org_role(
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage roles.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage roles.".into(),
+        ));
     }
 
     let name = body.name.trim().to_string();
     let code = body.code.trim().to_lowercase().replace(' ', "_");
 
     if name.is_empty() || code.is_empty() {
-        return Err(AppError::Validation("Role name and code are required.".into()));
+        return Err(AppError::Validation(
+            "Role name and code are required.".into(),
+        ));
     }
-    if code.starts_with("system_") || ["owner","admin","manager","member","viewer"].contains(&code.as_str()) {
-        return Err(AppError::Validation("That role code is reserved for system roles.".into()));
+    if code.starts_with("system_")
+        || ["owner", "admin", "manager", "member", "viewer"].contains(&code.as_str())
+    {
+        return Err(AppError::Validation(
+            "That role code is reserved for system roles.".into(),
+        ));
     }
 
     let repo = RbacRepository::new(state.db.clone());
-    let role = repo.create_custom_role(org_id, &name, &code, &body.permissions).await?;
+    let role = repo
+        .create_custom_role(org_id, &name, &code, &body.permissions)
+        .await?;
     let permissions = repo.get_role_permissions(role.id).await?;
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.role.created".into(),
-        target_type: "role".into(),
-        target_id: Some(role.id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({
-            "role_code": role.code,
-            "role_name": role.name,
-            "permissions": permissions,
-        }),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.role.created".into(),
+            target_type: "role".into(),
+            target_id: Some(role.id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({
+                "role_code": role.code,
+                "role_name": role.name,
+                "permissions": permissions,
+            }),
+        })
+        .await;
 
     Ok(HttpResponse::Created().json(RoleWithPermissions {
         id: role.id,
@@ -152,26 +181,39 @@ async fn delete_org_role(
     let role_id = path.into_inner();
 
     let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    if !rbac.has_permission(session.user_id, org_id, "roles:manage").await? {
-        return Err(AppError::Forbidden("You do not have permission to manage roles.".into()));
+    if !rbac
+        .has_permission(session.user_id, org_id, "roles:manage")
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            "You do not have permission to manage roles.".into(),
+        ));
     }
 
     let repo = RbacRepository::new(state.db.clone());
     let deleted = repo.delete_custom_role(org_id, role_id).await?;
     if !deleted {
-        return Err(AppError::NotFound("Custom role not found in this workspace (system roles cannot be deleted).".into()));
+        return Err(AppError::NotFound(
+            "Custom role not found in this workspace (system roles cannot be deleted).".into(),
+        ));
     }
 
-    AuditService::new(state.db.clone()).log(AuditEvent {
-        actor_user_id: Some(session.user_id),
-        organization_id: Some(org_id),
-        action: "workspace.role.deleted".into(),
-        target_type: "role".into(),
-        target_id: Some(role_id.to_string()),
-        ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-        user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({}),
-    }).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.role.deleted".into(),
+            target_type: "role".into(),
+            target_id: Some(role_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }

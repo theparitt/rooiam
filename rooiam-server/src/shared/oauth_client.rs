@@ -24,7 +24,9 @@ fn validate_client_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<St
         .map_err(|_| AppError::Validation("redirect_uri must be a valid absolute URL".into()))?;
 
     if parsed.fragment().is_some() {
-        return Err(AppError::Validation("redirect_uri must not contain a fragment".into()));
+        return Err(AppError::Validation(
+            "redirect_uri must not contain a fragment".into(),
+        ));
     }
 
     let scheme = parsed.scheme();
@@ -54,7 +56,9 @@ fn validate_client_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<St
                 "Native redirect_uri values must use a custom scheme, HTTPS, or localhost/loopback HTTP.".into(),
             ))
         }
-        _ => Err(AppError::Validation("app_type must be web, spa, or native.".into())),
+        _ => Err(AppError::Validation(
+            "app_type must be web, spa, or native.".into(),
+        )),
     }
 }
 
@@ -64,7 +68,9 @@ pub fn normalize_client_redirect_uris_with_limit(
     max_redirect_uris: usize,
 ) -> Result<Vec<String>, AppError> {
     if redirect_uris.is_empty() {
-        return Err(AppError::Validation("At least one redirect URI is required.".into()));
+        return Err(AppError::Validation(
+            "At least one redirect URI is required.".into(),
+        ));
     }
     if redirect_uris.len() > max_redirect_uris {
         return Err(AppError::Validation(format!(
@@ -86,26 +92,36 @@ pub fn normalize_client_redirect_uris_with_limit(
     Ok(normalized)
 }
 
-pub fn normalize_client_redirect_uris(app_type: &str, redirect_uris: &[String]) -> Result<Vec<String>, AppError> {
+pub fn normalize_client_redirect_uris(
+    app_type: &str,
+    redirect_uris: &[String],
+) -> Result<Vec<String>, AppError> {
     normalize_client_redirect_uris_with_limit(app_type, redirect_uris, MAX_CLIENT_REDIRECT_URIS)
 }
 
 fn validate_client_allowed_embed_origin(origin: &str) -> Result<String, AppError> {
     let value = origin.trim();
     if value.is_empty() {
-        return Err(AppError::Validation("allowed_embed_origin cannot be empty".into()));
+        return Err(AppError::Validation(
+            "allowed_embed_origin cannot be empty".into(),
+        ));
     }
 
-    let parsed = Url::parse(value)
-        .map_err(|_| AppError::Validation("allowed_embed_origin must be a valid absolute origin URL".into()))?;
+    let parsed = Url::parse(value).map_err(|_| {
+        AppError::Validation("allowed_embed_origin must be a valid absolute origin URL".into())
+    })?;
 
     if parsed.fragment().is_some() || parsed.query().is_some() {
-        return Err(AppError::Validation("allowed_embed_origin must not contain a query or fragment".into()));
+        return Err(AppError::Validation(
+            "allowed_embed_origin must not contain a query or fragment".into(),
+        ));
     }
 
     let path = parsed.path();
     if !path.is_empty() && path != "/" {
-        return Err(AppError::Validation("allowed_embed_origin must be an origin only, without a path".into()));
+        return Err(AppError::Validation(
+            "allowed_embed_origin must be an origin only, without a path".into(),
+        ));
     }
 
     let scheme = parsed.scheme();

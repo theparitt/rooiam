@@ -29,11 +29,15 @@ pub async fn load_admin_access_policy(db: &PgPool) -> Result<AdminAccessPolicy, 
         google_admin_login_enabled,
         microsoft_admin_login_enabled,
         admin_passkey_allowed: !matches!(
-            get_string_setting(db, "admin_passkey_allowed").await?.as_deref(),
+            get_string_setting(db, "admin_passkey_allowed")
+                .await?
+                .as_deref(),
             Some("false")
         ),
         admin_require_mfa: matches!(
-            get_string_setting(db, "admin_require_mfa").await?.as_deref(),
+            get_string_setting(db, "admin_require_mfa")
+                .await?
+                .as_deref(),
             Some("true")
         ),
     })
@@ -51,5 +55,10 @@ async fn get_string_setting(db: &PgPool, key: &str) -> Result<Option<String>, Ap
         .bind(key)
         .fetch_optional(db)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to load admin access setting '{}': {}", key, e)))
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to load admin access setting '{}': {}",
+                key, e
+            ))
+        })
 }
