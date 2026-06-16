@@ -496,13 +496,15 @@ pub fn register_routes(
                     web::scope("/auth")
                         .wrap(RateLimit::per_endpoint(rl.auth_per_endpoint, 60))
                         .wrap(RateLimit::global_per_ip("auth", rl.auth_per_ip, 60))
-                        .configure(crate::modules::auth::handlers::routes),
+                        .configure(crate::modules::auth::handlers::routes)
+                        .configure(crate::modules::device_login::handlers::auth_routes),
                 )
                 .service(
                     web::scope("/identity")
                         .wrap(RateLimit::per_endpoint(rl.identity_per_endpoint, 60))
                         .wrap(RateLimit::global_per_ip("identity", rl.identity_per_ip, 60))
-                        .configure(crate::modules::identity::handlers::routes),
+                        .configure(crate::modules::identity::handlers::routes)
+                        .configure(crate::modules::device_login::handlers::routes),
                 )
                 .service(
                     web::scope("/orgs")

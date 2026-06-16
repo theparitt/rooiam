@@ -194,6 +194,16 @@ pub async fn save_platform_storage_config(
 }
 
 fn build_public_asset_url(public_media_base: &str, relative_path: &str) -> String {
+    // Persist the public media URL exactly as:
+    //   <ROOIAM_PUBLIC_MEDIA_BASE>/<relative_path>
+    //
+    // Examples:
+    //   /media + uploads/users/... -> /media/uploads/users/...
+    //   https://api.rooiam.com/media + uploads/users/...
+    //     -> https://api.rooiam.com/media/uploads/users/...
+    //
+    // Changing ROOIAM_PUBLIC_MEDIA_BASE later only affects future uploads. It
+    // does not rewrite old avatar/logo URLs already stored in the database.
     format!(
         "{}/{}",
         public_media_base.trim_end_matches('/'),

@@ -59,6 +59,17 @@ export function resolveApiAssetUrl(assetUrl: string | null | undefined): string
         return ''
     }
 
+    // Media URLs stored by the server can be absolute
+    // (https://api.rooiam.com/media/uploads/...) or root-relative
+    // (/media/uploads/...).
+    //
+    // Root-relative values must resolve against the API origin, not the app
+    // origin. Example: app.rooiam.com should still load /media from
+    // api.rooiam.com when VITE_API_URL=https://api.rooiam.com/v1.
+    //
+    // This does not rewrite stale absolute URLs already stored in the database.
+    // If a row contains http://192.168.x.x/... the browser will use that exact
+    // value until the row is updated or cleared.
     if (value.startsWith('http://') || value.startsWith('https://'))
     {
         return value

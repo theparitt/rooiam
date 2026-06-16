@@ -2,6 +2,7 @@ pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod clients;
+pub mod device_login;
 pub mod identity;
 pub mod mfa;
 pub mod oauth;

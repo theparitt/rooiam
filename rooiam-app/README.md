@@ -105,6 +105,19 @@ mode files.
 
 ---
 
+## Media URL handling
+
+Uploaded media URLs come from `rooiam-server`, not from the app.
+
+- If the server stores an absolute URL like `https://api.rooiam.com/media/uploads/...`, the app uses it as-is.
+- If the server stores a root-relative URL like `/media/uploads/...`, the app resolves it against the API origin from `VITE_API_URL`, not the app origin.
+- Example: with `VITE_API_URL=https://api.rooiam.com/v1`, the stored value `/media/uploads/a.jpg` becomes `https://api.rooiam.com/media/uploads/a.jpg` in the browser.
+- The app does not rewrite stale absolute URLs already stored in the database. If a row contains `http://192.168.x.x/...`, the browser will keep trying that exact URL until the row is updated or cleared.
+
+This is why one bad historical avatar or logo URL can fail while the rest of the site still works.
+
+---
+
 ## Project layout
 
 ```

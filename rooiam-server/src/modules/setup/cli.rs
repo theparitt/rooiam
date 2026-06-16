@@ -328,7 +328,12 @@ async fn collect_config(
         DeployTarget::Public => None,
     };
     let public_media_base = match target {
+        // Local mode stores root-relative URLs. The browser app resolves them
+        // against the API origin, so /media/uploads/... becomes
+        // http://localhost:5170/media/uploads/... in prod-local.
         DeployTarget::Local => "/media".to_string(),
+        // Public mode stores a fully-qualified URL to make the browser-facing
+        // media host explicit in the generated env file.
         DeployTarget::Public => format!("{}/media", server_url.trim_end_matches('/')),
     };
 

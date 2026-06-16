@@ -133,6 +133,10 @@ async fn main() -> std::io::Result<()> {
             .unwrap_or(StorageBackend::Local),
         StorageBackend::Local
     );
+    // Only the Local backend is served directly by this process.
+    // With MinIO, ROOIAM_PUBLIC_MEDIA_BASE must already point at a public path
+    // or URL that browsers can reach. The server does not proxy /media itself
+    // in MinIO mode.
 
     // Spawn background task: prune old audit logs according to retention policy
     shared::audit_retention::spawn_audit_retention_task(state_data.db.clone());

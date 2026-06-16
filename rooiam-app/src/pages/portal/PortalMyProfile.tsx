@@ -10,11 +10,26 @@ type Props = {
     user: MeResponse | null
     setUser: React.Dispatch<React.SetStateAction<MeResponse | null>>
     demoMode?: boolean
+    maxAvatarBytes?: number
 }
 
-export default function PortalMyProfile({ user, setUser, demoMode = false }: Props) {
+const SUPPORTED_AVATAR_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'image/svg+xml',
+])
+
+export default function PortalMyProfile({
+    user,
+    setUser,
+    demoMode = false,
+    maxAvatarBytes = 8 * 1024 * 1024,
+}: Props) {
     const [displayName, setDisplayName] = useState(user?.display_name || '')
     const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '')
+    const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
     const [saving, setSaving] = useState(false)
     const [uploading, setUploading] = useState(false)
     const [saved, setSaved] = useState(false)
@@ -29,6 +44,7 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
     useEffect(() => {
         setDisplayName(user?.display_name || '')
         setAvatarUrl(user?.avatar_url || '')
+        setAvatarLoadFailed(false)
     }, [user?.avatar_url, user?.display_name])
 
     useEffect(() => {
@@ -61,8 +77,14 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
     const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (!file) return
-        if (!file.type.startsWith('image/')) {
-            setError('Use an image file.')
+        if (!SUPPORTED_AVATAR_TYPES.has(file.type)) {
+            setError('Use PNG, JPG, WEBP, GIF, or SVG.')
+            event.target.value = ''
+            return
+        }
+        if (file.size > maxAvatarBytes) {
+            const mb = (maxAvatarBytes / (1024 * 1024)).toFixed(0)
+            setError(`Image is too large. Maximum size is ${mb}MB.`)
             event.target.value = ''
             return
         }
@@ -119,7 +141,7 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
         }
     }
 
-    const previewSrc = resolveApiAssetUrl(avatarUrl) || '/rooiam-app-white.svg'
+    const previewSrc = resolveApiAssetUrl(avatarUrl)
 
     return (
         <div className="space-y-5 sm:space-y-6 animate-slide-up">
@@ -132,12 +154,18 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
                 <div className="space-y-7">
                     <div className="flex items-center gap-5">
                         <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-border bg-white shadow-md">
-                            <img
-                                src={previewSrc}
-                                alt="Avatar preview"
-                                className="h-full w-full object-cover scale-[1.06]"
-                                onError={e => { (e.currentTarget as HTMLImageElement).src = '/rooiam-app-white.svg' }}
-                            />
+                            {previewSrc && !avatarLoadFailed ? (
+                                <img
+                                    src={previewSrc}
+                                    alt="Avatar preview"
+                                    className="h-full w-full object-cover scale-[1.06]"
+                                    onError={() => setAvatarLoadFailed(true)}
+                                />
+                            ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-50 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                    {avatarUrl ? 'Broken URL' : 'No Avatar'}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <p className="font-black text-sm mb-1">Profile Picture</p>
@@ -163,7 +191,7 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
                         <input
                             ref={avatarInputRef}
                             type="file"
-                            accept="image/*"
+                            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                             className="hidden"
                             onChange={handleAvatarUpload}
                         />
@@ -192,6 +220,11 @@ export default function PortalMyProfile({ user, setUser, demoMode = false }: Pro
                             </div>
                             {avatarUrl ? (
                                 <p className="mt-3 break-all text-[11px] font-mono text-muted-foreground">{avatarUrl}</p>
+                            ) : null}
+                            {avatarUrl && avatarLoadFailed ? (
+                                <p className="mt-2 text-[11px] font-semibold text-rose-600">
+                                    Stored avatar URL could not be loaded. Remove it or upload a new avatar.
+                                </p>
                             ) : null}
                         </div>
                         <p className="text-xs font-semibold text-muted-foreground mt-1.5">

@@ -73,8 +73,37 @@ export type TenantProfile = {
 }
 
 export const tenantAuthApi = {
-    updateProfile: (payload: { display_name?: string | null; avatar_url?: string | null }) =>
-        viaSdk((s) => s.updateProfile(payload) as Promise<TenantProfile>),
+    updateProfile: async (payload: { display_name?: string | null; avatar_url?: string | null }): Promise<TenantProfile> => {
+        try {
+            const res = await apiFetch(`${getApiBase()}/identity/me/profile`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            })
+
+            const data = await res.json().catch(() => ({})) as
+                | (TenantProfile & { error?: { message?: string } })
+                | { error?: { message?: string } }
+                | undefined
+
+            if (res.status === 401) {
+                throw new Error('UNAUTHORIZED')
+            }
+            if (res.status === 429) {
+                throw new Error('RATE_LIMITED')
+            }
+            if (!res.ok || !data || typeof data !== 'object' || !('id' in data)) {
+                throw new Error(data?.error?.message || 'Could not save profile.')
+            }
+
+            return data as TenantProfile
+        } catch (err) {
+            if (err instanceof TypeError) {
+                throw new Error(`Could not reach ${getApiBase()}. The browser blocked the profile update request before the API responded.`)
+            }
+            throw err
+        }
+    },
     uploadAvatar: async (file: File): Promise<{ url: string; user: TenantProfile }> => {
         const formData = new FormData()
         formData.append('file', file, file.name)
@@ -102,7 +131,7 @@ export const tenantAuthApi = {
             return { url: data.url, user: data.user }
         } catch (err) {
             if (err instanceof TypeError) {
-                throw new Error(`Could not reach ${getApiBase()}. Check that the Rooiam API is running.`)
+                throw new Error(`Could not upload to ${getApiBase()}. The API, proxy, or browser blocked this upload request.`)
             }
             throw err
         }

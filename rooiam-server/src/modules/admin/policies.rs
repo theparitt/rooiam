@@ -87,6 +87,7 @@ pub(super) struct UpdateTenantAccessPolicyRequest {
     pub allow_google: bool,
     pub allow_microsoft: bool,
     pub allow_passkey: bool,
+    pub allow_device_login: bool,
 }
 
 pub(super) async fn get_platform_client_governance(
@@ -169,6 +170,7 @@ pub(super) async fn update_tenant_access_policy(
         allow_google: body.allow_google,
         allow_microsoft: body.allow_microsoft,
         allow_passkey: body.allow_passkey,
+        allow_device_login: body.allow_device_login,
     };
     save_tenant_access_policy(&state.db, &policy).await?;
 
@@ -191,6 +193,7 @@ pub(super) async fn update_tenant_access_policy(
                 "allow_google": policy.allow_google,
                 "allow_microsoft": policy.allow_microsoft,
                 "allow_passkey": policy.allow_passkey,
+                "allow_device_login": policy.allow_device_login,
             }),
         })
         .await;

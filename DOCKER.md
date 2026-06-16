@@ -102,6 +102,64 @@ Demo mode requires a database whose name ends in `rooiam_demo` (safety check).
 4. **Google/Microsoft OAuth keys are optional.** Unset shows as `[ - ]`, not an
    error. Demo and local prod run fine without them.
 
+5. **Media URLs are stored, not derived at read time.**
+   `ROOIAM_PUBLIC_MEDIA_BASE` controls what gets written into avatar/logo fields
+   for future uploads:
+   - local setups usually use `/media`
+   - public setups usually use `https://api.rooiam.com/media`
+
+   If you previously uploaded media while using a temporary base like
+   `http://192.168.0.147:9000/rooiam`, those exact URLs remain in the database.
+   Changing `ROOIAM_PUBLIC_MEDIA_BASE` later does not fix old rows. Clean or
+   rewrite the affected DB values separately.
+
+6. **`/media` in the app means API-origin media, not app-origin media.**
+   The browser app resolves stored root-relative URLs like `/media/uploads/...`
+   against `VITE_API_URL`'s origin. With `VITE_API_URL=https://api.rooiam.com/v1`,
+   the browser loads `https://api.rooiam.com/media/uploads/...`.
+
+## Stale media cleanup
+
+If media was uploaded while `ROOIAM_PUBLIC_MEDIA_BASE` pointed at a temporary or
+private URL, the bad absolute URL stays in the database even after the env is
+fixed. Use the maintenance script in `rooiam-server/scripts/cleanup_stale_media_urls.sh`
+to inspect and clean those rows.
+
+Dry run:
+
+```bash
+bash rooiam-server/scripts/cleanup_stale_media_urls.sh \
+  --old-base http://192.168.0.147:9000/rooiam \
+  --dry-run
+```
+
+Clear matching URLs to `NULL`:
+
+```bash
+bash rooiam-server/scripts/cleanup_stale_media_urls.sh \
+  --old-base http://192.168.0.147:9000/rooiam \
+  --yes
+```
+
+Rewrite matching URLs to a new base:
+
+```bash
+bash rooiam-server/scripts/cleanup_stale_media_urls.sh \
+  --old-base http://192.168.0.147:9000/rooiam \
+  --new-base /media \
+  --yes
+```
+
+The script covers:
+
+- `users.avatar_url`
+- `organizations.icon_url`
+- `organizations.login_logo_url`
+- `organizations.logo_url` if the legacy column still exists
+
+Use `--new-base` only if you are certain the replacement base is already valid
+for browsers. Otherwise prefer clearing the bad values and re-uploading.
+
 ## The server image
 
 `Dockerfile.server.prod` is a two-stage build:

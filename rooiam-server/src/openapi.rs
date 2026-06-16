@@ -65,6 +65,9 @@ use utoipa::{Modify, OpenApi};
         crate::modules::setup::auth_bootstrap::get_login_bootstrap,
         crate::modules::auth::handlers::start_magic_link,
         crate::modules::auth::handlers::verify_magic_link,
+        crate::modules::device_login::handlers::start_device_login,
+        crate::modules::device_login::handlers::get_device_login_status,
+        crate::modules::device_login::handlers::complete_device_login,
         crate::modules::auth::handlers::logout,
         crate::modules::identity::handlers::get_me,
         crate::modules::identity::handlers::update_me,
@@ -89,6 +92,11 @@ use utoipa::{Modify, OpenApi};
         crate::modules::identity::handlers::verify_email_change,
         crate::modules::identity::handlers::request_delete_account,
         crate::modules::identity::handlers::delete_account,
+        crate::modules::device_login::handlers::register_trusted_device,
+        crate::modules::device_login::handlers::list_trusted_devices,
+        crate::modules::device_login::handlers::revoke_trusted_device,
+        crate::modules::device_login::handlers::get_device_login_intent,
+        crate::modules::device_login::handlers::approve_device_login,
         // passkeys (webauthn)
         crate::modules::webauthn::handlers::start_registration,
         crate::modules::webauthn::handlers::finish_registration,
@@ -129,7 +137,15 @@ use utoipa::{Modify, OpenApi};
             // browser DTOs
             crate::modules::auth::handlers::StartMagicLinkRequest,
             crate::modules::auth::handlers::VerifyMagicLinkRequest,
+            crate::modules::device_login::handlers::StartDeviceLoginRequest,
+            crate::modules::device_login::handlers::StartDeviceLoginResponse,
+            crate::modules::device_login::handlers::CompleteDeviceLoginRequest,
+            crate::modules::device_login::handlers::DeviceLoginStatusResponse,
+            crate::modules::device_login::handlers::DeviceLoginIntentPreviewResponse,
+            crate::modules::device_login::handlers::ApproveDeviceLoginRequest,
             crate::modules::identity::handlers::UpdateProfileRequest,
+            crate::modules::device_login::handlers::RegisterTrustedDeviceRequest,
+            crate::modules::device_login::handlers::TrustedDeviceResponse,
             // OIDC DTOs
             crate::modules::oidc::handlers::TokenRequest,
             // browser security self-service DTOs

@@ -9,6 +9,7 @@ pub struct TenantAccessPolicy {
     pub allow_google: bool,
     pub allow_microsoft: bool,
     pub allow_passkey: bool,
+    pub allow_device_login: bool,
 }
 
 pub async fn load_tenant_access_policy(db: &PgPool) -> Result<TenantAccessPolicy, AppError> {
@@ -17,6 +18,7 @@ pub async fn load_tenant_access_policy(db: &PgPool) -> Result<TenantAccessPolicy
         allow_google: get_system_bool(db, "tenant_login_google_enabled", true).await?,
         allow_microsoft: get_system_bool(db, "tenant_login_microsoft_enabled", true).await?,
         allow_passkey: get_system_bool(db, "tenant_login_passkey_enabled", true).await?,
+        allow_device_login: get_system_bool(db, "tenant_login_device_enabled", false).await?,
     })
 }
 
@@ -33,6 +35,7 @@ pub async fn save_tenant_access_policy(
     set_system_bool(db, "tenant_login_google_enabled", policy.allow_google).await?;
     set_system_bool(db, "tenant_login_microsoft_enabled", policy.allow_microsoft).await?;
     set_system_bool(db, "tenant_login_passkey_enabled", policy.allow_passkey).await?;
+    set_system_bool(db, "tenant_login_device_enabled", policy.allow_device_login).await?;
     Ok(())
 }
 

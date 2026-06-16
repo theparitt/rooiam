@@ -337,7 +337,7 @@ impl AppConfig {
         );
         check_optional_val(
             "ROOIAM_PUBLIC_MEDIA_BASE",
-            "public base URL or path for uploaded media (default /media)",
+            "public base URL or path for uploaded media (default /media; old stored URLs are not rewritten)",
         );
         check_optional_val(
             "ROOIAM_MINIO_ENDPOINT",
@@ -807,6 +807,12 @@ fn normalize_public_media_base(raw: String) -> String {
     // trailing slash is trimmed. A bare path gets a leading slash. The bug this
     // guards against: blindly prepending "/" to a full URL produced
     // "/https://api.example.com/media", which then doubled into the asset URL.
+    // Semantics:
+    // - "/media" stores root-relative URLs like /media/uploads/...
+    // - "https://api.example.com/media" stores fully-qualified URLs
+    //
+    // Important: this affects future stored URLs only. It does not rewrite
+    // stale absolute media URLs already present in the database.
     let is_absolute = trimmed.starts_with("http://") || trimmed.starts_with("https://");
     let mut normalized = if is_absolute || trimmed.starts_with('/') {
         trimmed.to_string()

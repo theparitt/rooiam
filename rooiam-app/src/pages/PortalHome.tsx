@@ -1626,6 +1626,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         user={user}
                         setUser={setUser}
                         demoMode={portalState?.demo_mode ?? false}
+                        maxAvatarBytes={portalState?.max_logo_bytes ?? 8 * 1024 * 1024}
                     />
                 )
             case 'workspace-security-alerts':

@@ -1,238 +1,496 @@
-# Device Login (QR / Phone) — Full Plan & Flow
+# Device Login (QR / Phone) — Server-Aligned Plan
 
-Status: **PLAN** (not implemented). Foundation (OpenAPI + SDK) must land first.
-Date: 2026-06-02.
+Status: **PLAN** (not implemented).
+Updated: 2026-06-16.
 
 ## Goal
 
-User opens a Rooiam web login surface → sees a **QR code + a number**.
-User scans with `rooiam-android` → phone shows **3 numbers** → user taps the one
-matching the web → web logs in.
+Rooiam should support **cross-device login approval**:
 
-**Build order: server → web widget → fake phone tester → Android → iOS.**
-(Not Android first.)
+1. A browser login surface shows a QR code and a short number.
+2. A logged-in Rooiam mobile app scans the QR code.
+3. The phone shows the login request details and a number-matching choice.
+4. The user approves on the phone.
+5. `rooiam-server` completes the browser login for the exact browser session that started the request.
 
-Surfaces:
-- `rooiam-app` (tenant portal) = where a workspace owner toggles the policy ON.
-- Hosted login widget / candycloud (web) = where the end user clicks "Sign in
-  with phone" and sees the QR + number.
-- `rooiam-android` (mobile, to build) = the trusted authenticator.
-- `rooiam-server` = the broker.
+This is **not** "QR code equals login credential".
+The QR code only points to a short-lived server-side login intent.
 
----
+Build order remains:
 
-## Phase 0 — Keep current foundation first
+1. `rooiam-server`
+2. web/downstream demo surface
+3. fake phone tester
+4. `rooiam-android`
+5. `rooiam-ios`
 
-Finish before device login, because QR login needs clean APIs:
+## Current Server Foundation To Reuse
 
-1. OpenAPI ([42_openapi_sdk_phases.md](./42_openapi_sdk_phases.md))
-2. SDK ([41_sdk_plan.md](./41_sdk_plan.md))
-3. stable auth endpoints
-4. hosted widget stability
-5. self-host config clarity
+This plan should follow the current `rooiam-server` patterns instead of inventing a parallel auth system.
 
-Reason: if the API contract is messy, Android becomes painful.
+- Workspace login methods already live on `organizations`:
+  `allow_magic_link`, `allow_google`, `allow_microsoft`, `allow_passkey`.
+- Workspace auth gating already happens in `src/shared/auth_policy.rs`.
+- Platform-wide tenant login toggles already live in `system_settings` via `src/shared/tenant_access.rs`.
+- Challenge-style auth flows already exist:
+  - MFA in `src/modules/mfa`
+  - WebAuthn in `src/modules/webauthn`
+- Audit logging already exists in `src/modules/audit`.
+- Session issuance already exists in `src/modules/session/service.rs`.
+- Hosted login widget and redirect-driven login flows already exist in `src/modules/auth/handlers.rs`.
 
----
+So QR login should become:
 
-## Phase 1 — Database
+- a new auth method in workspace policy
+- a new device-login module in the server
+- a normal audited login path
+- a normal session issuance path
+
+## Product Decision
+
+V1 QR login should be a **trusted mobile approval flow**, not an anonymous login shortcut.
+
+Required properties:
+
+- the phone user is already logged in
+- the phone is a trusted registered device
+- the workspace allows device login
+- the QR request is short-lived and single-use
+- the approval is bound to the browser that started it
+- the browser does not receive a session until the phone explicitly approves
+
+This keeps QR login closer to passkey/device-approval security than to a weak magic QR shortcut.
+
+## Policy Model
+
+QR login should follow the same policy structure as existing auth methods.
+
+### Platform level
+
+Add a platform-wide tenant login toggle in `system_settings`, alongside:
+
+- `tenant_login_magic_link_enabled`
+- `tenant_login_google_enabled`
+- `tenant_login_microsoft_enabled`
+- `tenant_login_passkey_enabled`
+
+New key:
+
+- `tenant_login_device_enabled`
+
+This is managed from the platform/admin side and acts as the master switch.
+
+### Workspace level
+
+Add a new `organizations` boolean:
+
+- `allow_device_login BOOLEAN NOT NULL DEFAULT FALSE`
+
+This matches the existing per-workspace method flags.
+
+Also allow the method in `login_method_order` using:
+
+- `device_login`
+
+If `device_login` is disabled by workspace policy or by the platform-wide toggle, the login UI should not offer it.
+
+### UI control
+
+`app.rooiam.com` should expose a workspace-level toggle:
+
+- `Allow QR / phone login`
+
+with explanatory text:
+
+- "Users must register a trusted Rooiam mobile device before they can sign in with phone QR login."
+
+## Server Data Model
+
+### 1. Trusted devices
+
+Add a user-owned device table.
+
+Suggested table:
 
 ```sql
-ALTER TABLE organizations ADD COLUMN allow_device_login boolean NOT NULL DEFAULT false;
+CREATE TABLE user_trusted_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_label TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  device_token_hash TEXT NOT NULL,
+  device_public_key TEXT,
+  push_token TEXT,
+  last_seen_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-CREATE TABLE trusted_devices (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  organization_id    UUID,                       -- workspace scope
-  device_name        TEXT NOT NULL,              -- "Pixel 8 Pro"
-  platform           TEXT NOT NULL,              -- 'android' | 'ios'
-  device_public_key  TEXT,                       -- device-bound keypair (later)
-  device_token_hash  TEXT NOT NULL,              -- hashed device credential
-  push_token         TEXT,                       -- FCM, for push approval (later)
-  last_seen_at       TIMESTAMPTZ,
-  revoked_at         TIMESTAMPTZ,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE UNIQUE INDEX user_trusted_devices_device_token_hash_idx
+  ON user_trusted_devices(device_token_hash);
+```
+
+Notes:
+
+- `device_public_key` is optional in v1, but should exist for later signed approval hardening.
+- `push_token` is for later push approval, not required in QR-scan v1.
+- Use `revoked_at` instead of delete-only semantics so audit and recent-history remain explainable.
+
+### 2. Device login intents
+
+Use a dedicated database table for login intents instead of Redis-only state.
+The server already leans on SQL-backed challenge tables for MFA and WebAuthn.
+Redis can still be used later for fan-out, polling acceleration, or rate limiting, but the source of truth should be Postgres.
+
+Suggested table:
+
+```sql
+CREATE TABLE device_login_intents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  public_id UUID NOT NULL UNIQUE,
+  browser_binding_hash TEXT NOT NULL,
+  nonce_hash TEXT NOT NULL,
+  workspace_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+  oauth_client_id UUID REFERENCES oauth_clients(id) ON DELETE SET NULL,
+  redirect_uri TEXT,
+  surface TEXT,
+  display_code TEXT NOT NULL,
+  match_number SMALLINT NOT NULL,
+  decoy_numbers SMALLINT[] NOT NULL DEFAULT '{}',
+  approved_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_device_id UUID REFERENCES user_trusted_devices(id) ON DELETE SET NULL,
+  status TEXT NOT NULL,
+  status_reason TEXT,
+  requester_ip TEXT,
+  requester_user_agent TEXT,
+  approved_at TIMESTAMPTZ,
+  consumed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
-Device-bound keypair is an improvement to add later.
+Recommended status values:
 
----
+- `pending`
+- `scanned`
+- `approved`
+- `rejected`
+- `expired`
+- `cancelled`
+- `consumed`
 
-## Phase 2 — Redis challenge
+## Server Module Shape
 
-Key: `device_login:{challenge_id}`  ·  TTL **120s**
+Add a new module:
 
-```json
-{
-  "status": "pending",
-  "workspace_id": "...",
-  "client_id": "...",
-  "surface": "hosted_widget",
-  "web_number": 47,
-  "decoy_numbers": [12, 91],
-  "code": "284913",
-  "web_channel": "secret-random-binding",
-  "approved_user_id": null,
-  "created_at": "...", "ip": "...", "user_agent": "..."
-}
+- `src/modules/device_login`
+
+Suggested layout:
+
+- `handlers.rs`
+- `service.rs`
+- `repository.rs`
+- `models.rs`
+- `mod.rs`
+
+And register it from:
+
+- `src/modules/mod.rs`
+- `src/bootstrap/router.rs`
+
+This should look like the existing MFA and WebAuthn modules rather than a one-off handler blob.
+
+## API Split
+
+Keep unauthenticated browser-start endpoints under `/v1/auth`, and authenticated phone/device actions under `/v1/identity/me`.
+
+### Browser / unauthenticated flow
+
+```text
+POST /v1/auth/device-login/start
+GET  /v1/auth/device-login/{public_id}/status
+POST /v1/auth/device-login/{public_id}/complete
+POST /v1/auth/device-login/{public_id}/cancel
 ```
 
-Rules: short TTL · single use · cannot approve twice · cannot reuse after the web
-session is issued · wrong number = reject · expired = explicit error.
+### Mobile app / authenticated flow
 
----
-
-## Phase 3 — Server API
-
-```
-POST   /v1/auth/device/start          web creates QR challenge
-GET    /v1/auth/device/status         web polls pending/approved/denied/expired
-POST   /v1/auth/device/approve        phone approves with chosen number
-POST   /v1/auth/device/deny           phone rejects login
-POST   /v1/auth/device/code/verify    fallback code flow
-POST   /v1/auth/device/register       phone becomes a trusted device
-GET    /v1/identity/me/devices        user lists trusted devices
-DELETE /v1/identity/me/devices/{id}   user revokes a device
+```text
+POST /v1/identity/me/device-logins/resolve
+POST /v1/identity/me/device-logins/{public_id}/approve
+POST /v1/identity/me/device-logins/{public_id}/reject
 ```
 
-All DTOs use `#[serde(deny_unknown_fields)]`. Reuse the `challenge_id` pattern
-from `modules/mfa`. Annotate every endpoint for OpenAPI (`#[utoipa::path]`).
+### Trusted device management
 
----
-
-## Phase 4 — Security requirements (mandatory)
-
-1. **Number matching** — web shows `47`; phone shows `12 / 47 / 91`.
-2. **Phone must already be logged in** — random install can't approve.
-3. **Phone must be trusted** — must register the device first.
-4. **Workspace policy** — `allow_device_login` must be ON (re-checked on approve).
-5. **Channel binding** — only the browser that started the challenge can finish it.
-6. **Rate limits** — on start, approve, code-verify, and wrong-number attempts.
-7. **Audit logs** —
-   `auth.device.challenge_started`, `auth.device.approved`,
-   `auth.device.denied`, `auth.device.expired`, `auth.device.wrong_number`,
-   `auth.device.revoked`.
-8. **No silent fallback** — never auto-fallback to magic link / passkey if QR
-   fails. See [[feedback_no_fallback]].
-
----
-
-## Phase 5 — Web widget
-
-Hosted widget adds a "Sign in with phone" option:
-
-```
-QR code
-Confirm this number on your phone:
-   47
-Waiting for approval...
-No camera? Open Rooiam app and enter the code.
+```text
+POST   /v1/identity/me/devices
+GET    /v1/identity/me/devices
+DELETE /v1/identity/me/devices/{id}
 ```
 
-Web behavior: call `/device/start` → render QR → poll `/device/status` → on
-approved, server issues the session → redirect via the existing widget redirect
-contract ([[project_rooiam_widget_redirect_contract]]).
+This split is consistent with the current server:
 
----
+- `auth/*` for unauthenticated login initiation
+- `identity/me/*` for authenticated self-service actions
 
-## Phase 6 — Fake phone tester (before Android)
+## Browser Flow
 
-Dev-only page (e.g. `/dev/device-login-tester`) that can: paste a challenge id,
-show the numbers, approve, deny, simulate wrong number, simulate expired. Saves
-a lot of Android debugging time. Build this BEFORE the app.
+1. Browser chooses `Sign in with phone`.
+2. Browser calls `POST /v1/auth/device-login/start`.
+3. Server validates:
+   - platform tenant-device-login enabled
+   - workspace allows device login
+   - redirect/client/surface are valid
+4. Server creates a `device_login_intent`.
+5. Response contains:
+   - `public_id`
+   - raw `nonce`
+   - `expires_at`
+   - `display_code`
+   - `match_number`
+   - a QR payload or QR URL
+6. Browser renders QR code and starts polling `status`.
+7. Once approved, browser calls `complete`.
+8. Server verifies the browser binding and issues the real session using the existing session service.
 
----
+Important:
 
-## Phase 7 — Android MVP (`rooiam-android`)
+- `complete` must only work for the same browser binding that created the intent.
+- approval does not itself set the browser session; completion does.
 
-1. Log in once with an existing method.
-2. Register trusted device.
-3. Scan QR.
-4. Show login request: workspace name, browser/device info, rough location/IP,
-   3 numbers.
-5. User taps the matching number → app calls `/device/approve`.
-6. Success.
+## Mobile Flow
 
-Screens: login · trusted-device setup · QR scanner · approve-login · success ·
-trusted-devices list. **QR scan only first — no push notifications yet.**
+1. Mobile app user is already logged in.
+2. Mobile device is already registered as trusted.
+3. Mobile app scans the QR code.
+4. Mobile app calls `resolve`.
+5. Server returns request details:
+   - workspace name
+   - app/client name
+   - surface
+   - requester device / user-agent
+   - requester IP hint
+   - expiry
+   - number choices including the matching number
+6. User approves or rejects.
+7. Approve endpoint verifies:
+   - phone session valid
+   - trusted device valid and not revoked
+   - workspace still allows device login
+   - number chosen is correct
+   - intent still pending and not expired
+8. Server updates intent status.
+9. Browser polling sees the new status.
 
----
+## Security Rules
 
-## Phase 8 — Admin control (rooiam-app)
+### Mandatory for v1
 
-Authentication Methods adds: `[x] Phone QR Login`, with a note:
-"Phone QR Login requires users to register a trusted Rooiam mobile device."
+1. **Phone already logged in**
+   QR login is not for anonymous mobile devices.
 
----
+2. **Trusted device required**
+   Only registered non-revoked devices can approve.
 
-## Phase 9 — Account security page
+3. **Workspace + platform policy re-check**
+   Policy must be enforced at both `start` and `approve`.
 
-User account center: "My Trusted Devices" (device, platform, last used, revoke)
-+ "Recent login approvals". Important for user trust.
+4. **Number matching**
+   Browser shows one number. Phone shows multiple choices. User chooses the matching one.
 
----
+5. **Browser binding**
+   The browser that started the flow must be the only one allowed to complete it.
 
-## Phase 10 — iOS later
+6. **Single-use intent**
+   Once consumed, the intent cannot be approved or completed again.
 
-After Android is stable: reuse the same API, add `rooiam-ios`, same registration
-/ QR / number matching. No iOS-specific server logic.
+7. **Short TTL**
+   120 seconds is a good v1 default.
 
----
+8. **Explicit rejection / expiry**
+   No silent fallback and no ambiguous states.
 
-## Testing checklist
+9. **Audit logs**
+   Every meaningful transition should be logged.
 
-Server:
+10. **Rate limits**
+   Required on start, resolve, approve, reject, and complete.
+
+### Audit events
+
+Suggested events:
+
+- `auth.device_login.started`
+- `auth.device_login.scanned`
+- `auth.device_login.approved`
+- `auth.device_login.rejected`
+- `auth.device_login.expired`
+- `auth.device_login.cancelled`
+- `auth.device_login.completed`
+- `auth.device_login.wrong_number`
+- `identity.device.registered`
+- `identity.device.revoked`
+
+## Session Issuance
+
+Do not invent a separate session format for QR login.
+
+After successful browser completion, create the browser session through the existing session service:
+
+- `SessionService::create_opaque_session_with_context(...)`
+
+The context should include:
+
+- `current_org_id`
+- login surface
+- requester IP / user-agent if that is already passed through the session creation path
+
+This keeps QR login behavior aligned with the rest of the platform.
+
+## Where The Toggle Appears
+
+### `rooiam-app`
+
+Workspace policy / authentication methods:
+
+- `Allow Magic Link`
+- `Allow Google`
+- `Allow Microsoft`
+- `Allow Passkey`
+- `Allow QR / Phone Login`
+
+If enabled, `login_method_order` may include `device_login`.
+
+### Hosted login widget / downstream surface
+
+Show `Sign in with phone` only when:
+
+- platform tenant-device-login is enabled
+- workspace `allow_device_login` is true
+- `device_login` is in the workspace login method order
+
+## Fake Phone Tester
+
+Before building Android, create a dev-only tester page.
+
+Purpose:
+
+- approve/reject flows without QR scanner work
+- easier status/debug validation
+- easier automated testing
+
+Capabilities:
+
+- paste `public_id` + nonce
+- resolve request
+- simulate correct number approval
+- simulate wrong-number approval
+- simulate rejection
+- simulate expiry behavior
+
+This should land before the real mobile app.
+
+## Android MVP
+
+Screens:
+
+- login
+- register trusted device
+- scan QR
+- review login request
+- approve/reject
+- trusted devices list
+- recent approvals
+
+First Android milestone:
+
+- QR scan only
+- no push notifications
+- no background silent approval
+
+## iOS Later
+
+After the Android contract is stable:
+
+- same server API
+- same trusted-device model
+- same resolve / approve / reject flow
+
+No iOS-specific server branch should be required.
+
+## Testing Checklist
+
+### Server
+
+```text
+device_login_start_rejects_when_platform_toggle_disabled
+device_login_start_rejects_when_workspace_toggle_disabled
+device_login_start_creates_pending_intent
+device_login_resolve_requires_phone_session
+device_login_approve_requires_trusted_device
+device_login_approve_rejects_revoked_device
+device_login_approve_rejects_wrong_number
+device_login_approve_rejects_expired_intent
+device_login_approve_is_single_use
+device_login_complete_requires_browser_binding
+device_login_complete_issues_session
+device_login_complete_cannot_reuse_consumed_intent
+device_login_reject_sets_rejected_status
+device_register_creates_trusted_device
+device_revoke_blocks_future_approvals
 ```
-device_start_creates_pending_challenge
-device_start_rejects_when_policy_disabled
-device_approve_requires_phone_session
-device_approve_requires_trusted_device
-device_approve_rejects_wrong_number
-device_approve_rejects_expired_challenge
-device_approve_single_use_only
-device_status_requires_web_channel
-device_code_verify_works
-device_deny_sets_denied
-device_revoke_blocks_future_approval
+
+### Integration
+
+```text
+browser_start -> phone_resolve -> phone_approve -> browser_complete -> session_created
 ```
-Integration: web start → phone approve → web status approved → web receives
-session → challenge cannot be reused.
-Security: wrong browser can't consume challenge · wrong user can't approve ·
-disabled workspace blocks approval · revoked device blocks approval.
 
----
+### Security
 
-## Build order
+- wrong browser cannot complete
+- wrong user cannot approve
+- revoked device cannot approve
+- disabled workspace cannot start or approve
+- expired intent cannot be resolved or completed
 
-```
+## Build Order
+
+```text
 0. OpenAPI + SDK foundation
-1. Server device-login API
-2. Redis challenge
-3. trusted_devices table
-4. admin allow_device_login toggle
-5. hosted widget QR UI
-6. fake phone tester
-7. Android MVP
-8. account security device management
-9. push notification login
-10. iOS
+1. Server policy additions
+2. Server trusted-device tables + repository
+3. Server device-login intent tables + repository
+4. Server auth/device-login endpoints
+5. Workspace toggle in rooiam-app
+6. Hosted widget / downstream QR UI
+7. Fake phone tester
+8. Android MVP
+9. Trusted-device management UX
+10. Push approval later
+11. iOS later
 ```
 
----
+## Recommended Versioning
 
-## Version plan (where it lands)
-
-```
+```text
 v0.2   OpenAPI / SDK / self-host polish
-v0.3   device login server foundation
-v0.4   hosted widget QR login
+v0.3   trusted device + server device-login foundation
+v0.4   hosted widget / downstream QR login
 v0.5   rooiam-android MVP
-v0.6   trusted device management + audit/risk polish
-v0.7   push notification approval
+v0.6   device management + audit/risk hardening
+v0.7   push approval
 v0.8   rooiam-ios
 v1.0   stable auth platform release
 ```
 
-**Recommendation: do QR phone login — it can become Rooiam's standout feature.
-But build it server-first, then widget, then Android.**
+## Recommendation
+
+QR login is worth building, but only if it is treated as a **server-first trusted-device approval flow**.
+
+Do not start with Android.
+Do not let the QR code act as the credential.
+Do not bypass the existing session, policy, audit, and challenge patterns already present in `rooiam-server`.
