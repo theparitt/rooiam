@@ -6,7 +6,7 @@ This page gives copy/paste examples for common Rooiam integrations.
 
 ```html
 <iframe
-  src="https://auth.example.com/login-widget?workspace_id=WORKSPACE_ID&client_id=CLIENT_ID&app=Acme%20Portal"
+  src="https://auth.example.com/login-widget?workspace_id=WORKSPACE_ID&client_id=CLIENT_ID"
   title="Sign in"
   style="width:100%;max-width:420px;height:640px;border:0;border-radius:24px"
 ></iframe>
@@ -15,6 +15,7 @@ This page gives copy/paste examples for common Rooiam integrations.
 Important:
 - register the exact callback URL on the app
 - register the exact embedding site origin in `Allowed Embed Origins`
+- do not add `app`
 - do not add `redirect_uri`, `state`, or PKCE fields to the widget URL
 - handle OIDC callback and token exchange in your own app callback page
 
@@ -109,8 +110,8 @@ If you embed `/login-widget`, keep these two flows separate:
 
 - widget URL:
   - `workspace_id`
+  - `workspace` (optional)
   - `client_id`
-  - `app`
 - downstream OIDC authorize request:
   - `redirect_uri`
   - `state`

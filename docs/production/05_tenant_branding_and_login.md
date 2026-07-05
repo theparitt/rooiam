@@ -58,7 +58,7 @@ Typical runtime embed parameters:
 Example:
 
 ```text
-https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>&app=Acme%20Portal
+https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>
 ```
 
 Reference:

@@ -6,14 +6,13 @@ use serde::Serialize;
 const SERVICE_NAME: &str = "rooiam-server";
 const PROJECT_SLUG: &str = "rooiam";
 const INTERFACE_VERSION: &str = "1";
-const SERVICE_ENVIRONMENT_VAR: &str = "ROOIAM_SERVICE_ENVIRONMENT";
+const MODE_VAR: &str = "ROOIAM_MODE";
 const MEERKATEER_ENABLED_VAR: &str = "ROOIAM_MEERKATEER_ENABLED";
 const MEERKATEER_INGEST_URL_VAR: &str = "ROOIAM_MEERKATEER_INGEST_URL";
 const MEERKATEER_SERVICE_KEY_VAR: &str = "ROOIAM_MEERKATEER_SERVICE_KEY";
 const MEERKATEER_TIMEOUT_MS_VAR: &str = "ROOIAM_MEERKATEER_TIMEOUT_MS";
 const MEERKATEER_HEARTBEAT_INTERVAL_SECONDS_VAR: &str =
     "ROOIAM_MEERKATEER_HEARTBEAT_INTERVAL_SECONDS";
-const DEFAULT_SERVICE_ENVIRONMENT: &str = "development";
 const DEFAULT_TIMEOUT_MS: u64 = 3000;
 const DEFAULT_HEARTBEAT_INTERVAL_SECONDS: u64 = 60;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -134,7 +133,7 @@ fn load_push_config() -> Option<PushConfig> {
     Some(PushConfig {
         ingest_url: ingest_url.trim().trim_end_matches('/').to_string(),
         service_key: service_key.trim().to_string(),
-        environment: service_environment(),
+        environment: current_mode(),
         timeout: Duration::from_millis(env_u64(MEERKATEER_TIMEOUT_MS_VAR, DEFAULT_TIMEOUT_MS)),
         heartbeat_interval: Duration::from_secs(env_u64(
             MEERKATEER_HEARTBEAT_INTERVAL_SECONDS_VAR,
@@ -200,14 +199,12 @@ fn current_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-fn service_environment() -> String {
-    match std::env::var(SERVICE_ENVIRONMENT_VAR) {
-        Ok(value) => match value.trim() {
-            "development" | "staging" | "production" | "test" | "local" => value.trim().to_string(),
-            _ => DEFAULT_SERVICE_ENVIRONMENT.to_string(),
-        },
-        Err(_) => DEFAULT_SERVICE_ENVIRONMENT.to_string(),
-    }
+fn current_mode() -> String {
+    std::env::var(MODE_VAR)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| matches!(value.as_str(), "production" | "demo" | "test"))
+        .unwrap_or_else(|| "production".to_string())
 }
 
 fn env_flag(key: &str, default: bool) -> bool {

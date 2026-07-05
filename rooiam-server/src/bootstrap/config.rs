@@ -125,6 +125,7 @@ pub struct AppConfig {
     pub oidc: OidcConfig,
     pub webauthn: WebauthnConfig,
     pub rate_limit: RateLimitConfig,
+    pub device_attestation: DeviceAttestationConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -207,6 +208,14 @@ pub struct WebauthnConfig {
     pub origin: String,
     pub extra_origins: Vec<String>,
     pub allow_any_port: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeviceAttestationConfig {
+    pub apple_app_id_prefix: Option<String>,
+    pub google_play_service_account_email: Option<String>,
+    pub google_play_service_account_private_key_pem: Option<String>,
+    pub google_play_token_uri: String,
 }
 
 impl AppConfig {
@@ -440,6 +449,28 @@ impl AppConfig {
             "override default Microsoft callback URL",
         );
 
+        section("Device attestation");
+        check_optional_val(
+            "ROOIAM_APPLE_APP_ID_PREFIX",
+            "Apple Team ID / App ID prefix for App Attest verification",
+        );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL",
+            "Google service-account email for Play Integrity backend verification",
+        );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
+            "path to Google service-account private key PEM for Play Integrity",
+        );
+        check_optional_secret(
+            "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM",
+            "inline Google service-account private key PEM for Play Integrity",
+        );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_TOKEN_URI",
+            "Google OAuth token URI for Play Integrity backend verification",
+        );
+
         // ── Mode-specific ──────────────────────────────────────────────────────
         match mode {
             ServerMode::Production => {
@@ -647,6 +678,25 @@ impl AppConfig {
                 public_key_pem: load_pem("ROOIAM_OIDC_PUBLIC_KEY_PEM", "ROOIAM_OIDC_PUBLIC_KEY_PATH"),
                 key_id: env::var("ROOIAM_OIDC_KEY_ID")
                     .unwrap_or_else(|_| "rooiam-rs256-1".to_string()),
+            },
+            device_attestation: DeviceAttestationConfig {
+                apple_app_id_prefix: env::var("ROOIAM_APPLE_APP_ID_PREFIX")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                google_play_service_account_email: env::var(
+                    "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL",
+                )
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+                google_play_service_account_private_key_pem: load_pem(
+                    "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM",
+                    "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
+                )
+                .map(|value| value.replace("\\n", "\n")),
+                google_play_token_uri: env::var("ROOIAM_GOOGLE_PLAY_TOKEN_URI")
+                    .unwrap_or_else(|_| "https://oauth2.googleapis.com/token".to_string()),
             },
             rate_limit: {
                 // Hardcoded defaults per mode.
@@ -1154,6 +1204,11 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_MICROSOFT_CLIENT_SECRET",
         "ROOIAM_MICROSOFT_REDIRECT_URI",
         "ROOIAM_MICROSOFT_TENANT_ID",
+        "ROOIAM_APPLE_APP_ID_PREFIX",
+        "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL",
+        "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM",
+        "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
+        "ROOIAM_GOOGLE_PLAY_TOKEN_URI",
         "ROOIAM_OIDC_PRIVATE_KEY_PEM",
         "ROOIAM_OIDC_PRIVATE_KEY_PATH",
         "ROOIAM_OIDC_PUBLIC_KEY_PEM",
@@ -1170,7 +1225,6 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_BUILD_TIME_UTC",
         "ROOIAM_GIT_SHA",
         "ROOIAM_GIT_BRANCH",
-        "ROOIAM_SERVICE_ENVIRONMENT",
         "ROOIAM_MEERKATEER_ENABLED",
         "ROOIAM_MEERKATEER_INGEST_URL",
         "ROOIAM_MEERKATEER_SERVICE_KEY",

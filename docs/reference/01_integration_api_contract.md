@@ -9,23 +9,26 @@ The goal is simple:
 
 ## Hosted Login Widget Contract
 
-The hosted widget is loaded with app identity, not a free callback.
+The hosted widget is loaded with workspace + app identity from the registered
+client, not a browser-chosen callback.
 
 Public widget URL inputs:
 - `workspace_id`
+- `workspace` (optional alternative to `workspace_id`)
 - `client_id`
-- `app`
 
 What Rooiam does with those:
 - verifies the app belongs to the workspace
 - verifies the current site is in `Allowed Embed Origins`
 - chooses the registered `redirect_uri` whose origin matches the current embedding site
 - mints a short-lived `widget_login_context`
+- resolves the app display name from the registered OAuth client / workspace branding
 
 What the browser should **not** choose:
 - final app callback after login
 
 What the browser should also **not** put on `/login-widget`:
+- `app`
 - `redirect_uri`
 - `state`
 - `code_challenge`
@@ -114,8 +117,8 @@ Recommended operator rule:
 Treat these as stable:
 - hosted widget identity inputs:
   - `workspace_id`
+  - `workspace`
   - `client_id`
-  - `app`
 - final app callback term:
   - `redirect_uri`
 - hosted widget transaction term:

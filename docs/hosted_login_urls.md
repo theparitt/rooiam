@@ -37,13 +37,10 @@ When `?org=` is omitted, the login page shows a generic Rooiam login with no ten
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `org` | Workspace slug — loads tenant branding | `?org=roochoco` |
-| `app` | App name hint shown in the UI | `?app=MyApp` |
+| `app` | App name hint shown in the root tenant login UI | `?app=MyApp` |
 
-Multiple parameters can be combined:
-
-```
-http://localhost:5172/?org=roochoco&app=Acme%20Portal
-```
+This `app` parameter is for the root `rooiam-app` login page only. It is not
+part of the canonical hosted-widget iframe contract described below.
 
 ---
 
@@ -91,10 +88,10 @@ Magic links sent during demo mode go to **Mailhog** (not real email):
 
 The hosted login widget is a different surface from the root tenant login page.
 
-Use the widget with app identity only:
+Use the widget with workspace + client identity only:
 
 ```text
-https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>&app=Acme%20Portal
+https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>
 ```
 
 Rooiam then:
@@ -105,6 +102,9 @@ Rooiam then:
 4. mints a short-lived hosted-widget login transaction
 
 Do not pass a browser-chosen `redirect_uri` to `/login-widget`.
+
+Also do not pass `app` to `/login-widget`. The widget should resolve app
+display context from the registered OAuth client and workspace branding.
 
 For the full widget integration path, production checklist, and multi-origin guidance, prefer:
 - [Hosted Widget Integration Guide](./reference/03_hosted_widget_integration_guide.md)

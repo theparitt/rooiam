@@ -39,6 +39,15 @@ impl DeviceLoginRepository {
         platform: &str,
         device_token_hash: &str,
         device_public_key: Option<&str>,
+        attestation_format: Option<&str>,
+        attestation_key_id: Option<&str>,
+        attestation_app_id: Option<&str>,
+        attestation_environment: Option<&str>,
+        attestation_statement: Option<&str>,
+        attestation_status: &str,
+        attestation_status_reason: Option<&str>,
+        attestation_received_at: Option<DateTime<Utc>>,
+        attestation_verified_at: Option<DateTime<Utc>>,
     ) -> Result<UserTrustedDevice, AppError> {
         let device = sqlx::query_as::<_, UserTrustedDevice>(
             r#"
@@ -47,10 +56,23 @@ impl DeviceLoginRepository {
                 device_label,
                 platform,
                 device_token_hash,
-                device_public_key
+                device_public_key,
+                attestation_format,
+                attestation_key_id,
+                attestation_app_id,
+                attestation_environment,
+                attestation_statement,
+                attestation_status,
+                attestation_status_reason,
+                attestation_received_at,
+                attestation_verified_at
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id, user_id, device_label, platform, device_token_hash, device_public_key,
+                      attestation_format, attestation_key_id, attestation_app_id,
+                      attestation_environment, attestation_statement, attestation_status,
+                      attestation_status_reason,
+                      attestation_received_at, attestation_verified_at,
                       push_token, last_seen_at, last_used_at, revoked_at, created_at
             "#,
         )
@@ -59,6 +81,15 @@ impl DeviceLoginRepository {
         .bind(platform)
         .bind(device_token_hash)
         .bind(device_public_key)
+        .bind(attestation_format)
+        .bind(attestation_key_id)
+        .bind(attestation_app_id)
+        .bind(attestation_environment)
+        .bind(attestation_statement)
+        .bind(attestation_status)
+        .bind(attestation_status_reason)
+        .bind(attestation_received_at)
+        .bind(attestation_verified_at)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
@@ -80,6 +111,10 @@ impl DeviceLoginRepository {
         let devices = sqlx::query_as::<_, UserTrustedDevice>(
             r#"
             SELECT id, user_id, device_label, platform, device_token_hash, device_public_key,
+                   attestation_format, attestation_key_id, attestation_app_id,
+                   attestation_environment, attestation_statement, attestation_status,
+                   attestation_status_reason,
+                   attestation_received_at, attestation_verified_at,
                    push_token, last_seen_at, last_used_at, revoked_at, created_at
             FROM user_trusted_devices
             WHERE user_id = $1
@@ -126,6 +161,10 @@ impl DeviceLoginRepository {
         let device = sqlx::query_as::<_, UserTrustedDevice>(
             r#"
             SELECT id, user_id, device_label, platform, device_token_hash, device_public_key,
+                   attestation_format, attestation_key_id, attestation_app_id,
+                   attestation_environment, attestation_statement, attestation_status,
+                   attestation_status_reason,
+                   attestation_received_at, attestation_verified_at,
                    push_token, last_seen_at, last_used_at, revoked_at, created_at
             FROM user_trusted_devices
             WHERE user_id = $1
@@ -138,6 +177,78 @@ impl DeviceLoginRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to load trusted device: {}", e)))?;
+
+        Ok(device)
+    }
+
+    pub async fn update_trusted_device_attestation_verdict(
+        &self,
+        device_id: Uuid,
+        attestation_status: &str,
+        attestation_status_reason: Option<&str>,
+        attestation_verified_at: Option<DateTime<Utc>>,
+    ) -> Result<UserTrustedDevice, AppError> {
+        let device = sqlx::query_as::<_, UserTrustedDevice>(
+            r#"
+            UPDATE user_trusted_devices
+            SET attestation_status = $2,
+                attestation_status_reason = $3,
+                attestation_verified_at = $4
+            WHERE id = $1
+            RETURNING id, user_id, device_label, platform, device_token_hash, device_public_key,
+                      attestation_format, attestation_key_id, attestation_app_id,
+                      attestation_environment, attestation_statement, attestation_status,
+                      attestation_status_reason,
+                      attestation_received_at, attestation_verified_at,
+                      push_token, last_seen_at, last_used_at, revoked_at, created_at
+            "#,
+        )
+        .bind(device_id)
+        .bind(attestation_status)
+        .bind(attestation_status_reason)
+        .bind(attestation_verified_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to update trusted device attestation verdict: {}",
+                e
+            ))
+        })?;
+
+        Ok(device)
+    }
+
+    pub async fn update_trusted_device_push_token(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        push_token: Option<&str>,
+    ) -> Result<Option<UserTrustedDevice>, AppError> {
+        let device = sqlx::query_as::<_, UserTrustedDevice>(
+            r#"
+            UPDATE user_trusted_devices
+            SET push_token = $3,
+                last_seen_at = NOW()
+            WHERE id = $1
+              AND user_id = $2
+              AND revoked_at IS NULL
+            RETURNING id, user_id, device_label, platform, device_token_hash, device_public_key,
+                      attestation_format, attestation_key_id, attestation_app_id,
+                      attestation_environment, attestation_statement, attestation_status,
+                      attestation_status_reason,
+                      attestation_received_at, attestation_verified_at,
+                      push_token, last_seen_at, last_used_at, revoked_at, created_at
+            "#,
+        )
+        .bind(device_id)
+        .bind(user_id)
+        .bind(push_token)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to update trusted device push token: {}", e))
+        })?;
 
         Ok(device)
     }
@@ -305,6 +416,67 @@ impl DeviceLoginRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to approve device login intent: {}", e)))?;
+
+        Ok(intent)
+    }
+
+    pub async fn reject_device_login_intent(
+        &self,
+        public_id: Uuid,
+        status_reason: &str,
+    ) -> Result<Option<DeviceLoginIntent>, AppError> {
+        let intent = sqlx::query_as::<_, DeviceLoginIntent>(
+            r#"
+            UPDATE device_login_intents
+            SET status = 'rejected',
+                status_reason = $2
+            WHERE public_id = $1
+              AND status = 'pending'
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id, public_id, browser_binding_hash, nonce_hash, workspace_id, oauth_client_id,
+                      redirect_uri, surface, display_code, match_number, decoy_numbers,
+                      approved_user_id, approved_device_id, status, status_reason,
+                      requester_ip, requester_user_agent, approved_at, consumed_at, expires_at, created_at
+            "#,
+        )
+        .bind(public_id)
+        .bind(status_reason)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to reject device login intent: {}", e)))?;
+
+        Ok(intent)
+    }
+
+    pub async fn cancel_device_login_intent(
+        &self,
+        public_id: Uuid,
+        nonce_hash: &str,
+        status_reason: &str,
+    ) -> Result<Option<DeviceLoginIntent>, AppError> {
+        let intent = sqlx::query_as::<_, DeviceLoginIntent>(
+            r#"
+            UPDATE device_login_intents
+            SET status = 'cancelled',
+                status_reason = $3
+            WHERE public_id = $1
+              AND nonce_hash = $2
+              AND status = 'pending'
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id, public_id, browser_binding_hash, nonce_hash, workspace_id, oauth_client_id,
+                      redirect_uri, surface, display_code, match_number, decoy_numbers,
+                      approved_user_id, approved_device_id, status, status_reason,
+                      requester_ip, requester_user_agent, approved_at, consumed_at, expires_at, created_at
+            "#,
+        )
+        .bind(public_id)
+        .bind(nonce_hash)
+        .bind(status_reason)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to cancel device login intent: {}", e)))?;
 
         Ok(intent)
     }

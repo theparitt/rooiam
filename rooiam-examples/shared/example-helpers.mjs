@@ -48,7 +48,6 @@ export function readExampleConfig(exampleDir = process.cwd()) {
  *
  * The widget contract is intentionally narrow:
  * - identify the workspace
- * - identify the app
  * - identify the client
  *
  * The browser does not choose the final app callback here.
@@ -61,8 +60,6 @@ export function buildHostedWidgetUrl(config = {}) {
   } else if ((config.workspace_slug || '').trim()) {
     url.searchParams.set('org', config.workspace_slug.trim())
   }
-
-  url.searchParams.set('app', config.app_name || 'Rooiam Example')
 
   if ((config.client_id || '').trim()) {
     url.searchParams.set('client_id', config.client_id.trim())

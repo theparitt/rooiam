@@ -1,6 +1,6 @@
 # Device Login (QR / Phone) — Server-Aligned Plan
 
-Status: **PLAN** (not implemented).
+Status: **SERVER IMPLEMENTED / MOBILE HARDENING ACTIVE**.
 Updated: 2026-06-16.
 
 ## Goal
@@ -23,6 +23,58 @@ Build order remains:
 3. fake phone tester
 4. `rooiam-android`
 5. `rooiam-ios`
+
+## Current Implementation Snapshot
+
+The server foundation is now live in `rooiam-server`.
+
+Implemented:
+
+- trusted device registration and revocation
+- trusted-device push-token bootstrap contract
+- browser QR start / status / complete flow
+- authenticated mobile preview + approve flow
+- authenticated mobile reject flow
+- browser cancel flow
+- browser-binding enforcement
+- number matching
+- Postgres-backed device-login intents
+- tenant-level device-login enable / disable gate
+- MFA-aware session completion
+- audit logging around the main flow
+
+Production-grade server hardening now enforced:
+
+- trusted device registration requires a device public key
+- trusted device registration can now capture attestation evidence and track attestation status
+- QR approval requires a device signature
+- the server verifies that signature against the registered device key before approval
+- legacy trusted devices without a stored key must be re-registered before they can approve QR login
+
+Not implemented yet:
+
+- real push delivery through APNs / FCM
+- full platform attestation verification
+- biometric proof from the mobile device before signing
+
+Current attestation enforcement boundary:
+
+- compatibility verification is implemented now
+- a hard-enforcement policy key now exists for future vendor proof:
+  `device_attestation_require_vendor_verification_for_qr_login`
+- Google Play Integrity backend decoding is now wired behind that policy key
+- Apple App Attest registration now has:
+  - a server-issued one-time challenge endpoint
+  - certificate-chain verification to Apple App Attestation Root CA
+  - nonce / App ID / AAGUID / key-id binding checks
+- the iOS registration flow binds App Attest to the Rooiam Ed25519 device key
+  through a canonical `clientDataHash` preimage
+- do not enable that key in production until:
+  - Google service-account env vars are configured
+  - the Android client sends the required `requestHash` binding
+  - the iOS client uses the App Attest challenge endpoint and sends the challenge
+    token back at registration time
+  - `ROOIAM_APPLE_APP_ID_PREFIX` is configured with the Apple Team ID / App ID prefix
 
 ## Current Server Foundation To Reuse
 
@@ -133,9 +185,39 @@ CREATE UNIQUE INDEX user_trusted_devices_device_token_hash_idx
 
 Notes:
 
-- `device_public_key` is optional in v1, but should exist for later signed approval hardening.
+- `device_public_key` is required for production-grade device approval.
+- Current server normalization format is `ed25519:<base64url-32-byte-key>`.
 - `push_token` is for later push approval, not required in QR-scan v1.
+- the server now has a first bootstrap contract for this token, but it still does
+  not deliver APNs / FCM notifications itself yet.
 - Use `revoked_at` instead of delete-only semantics so audit and recent-history remain explainable.
+
+## Push Delivery Boundary
+
+The server now supports trusted-device push-token registration so mobile apps can
+declare that a device is push-capable.
+
+What exists now:
+
+- trusted device records can store a push token
+- mobile clients can update or clear that token through the identity API
+- trusted device responses now expose whether a device is `push_capable`
+
+What does not exist yet:
+
+- APNs dispatch
+- FCM dispatch
+- background fan-out workers
+- delivery receipts / retry logic
+
+Important product constraint:
+
+- the current browser QR start flow is anonymous
+- at `POST /v1/auth/device-login/start`, the server does not yet know which user
+  account should receive a push
+- because of that, Rooiam can bootstrap push-ready devices today, but it cannot
+  safely fan out a login-approval push during anonymous QR start without a
+  future user-bound initiation flow
 
 ### 2. Device login intents
 
@@ -204,23 +286,21 @@ This should look like the existing MFA and WebAuthn modules rather than a one-of
 
 ## API Split
 
-Keep unauthenticated browser-start endpoints under `/v1/auth`, and authenticated phone/device actions under `/v1/identity/me`.
+Keep unauthenticated browser-start endpoints under `/v1/auth`, and authenticated phone/device actions under `/v1/identity`.
 
 ### Browser / unauthenticated flow
 
 ```text
 POST /v1/auth/device-login/start
 GET  /v1/auth/device-login/{public_id}/status
-POST /v1/auth/device-login/{public_id}/complete
-POST /v1/auth/device-login/{public_id}/cancel
+POST /v1/auth/device-login/complete
 ```
 
 ### Mobile app / authenticated flow
 
 ```text
-POST /v1/identity/me/device-logins/resolve
-POST /v1/identity/me/device-logins/{public_id}/approve
-POST /v1/identity/me/device-logins/{public_id}/reject
+GET  /v1/identity/device-login/intents/{public_id}
+POST /v1/identity/device-login/approve
 ```
 
 ### Trusted device management
@@ -266,24 +346,36 @@ Important:
 1. Mobile app user is already logged in.
 2. Mobile device is already registered as trusted.
 3. Mobile app scans the QR code.
-4. Mobile app calls `resolve`.
+4. Mobile app calls `GET /v1/identity/device-login/intents/{public_id}`.
 5. Server returns request details:
-   - workspace name
-   - app/client name
-   - surface
-   - requester device / user-agent
-   - requester IP hint
-   - expiry
-   - number choices including the matching number
-6. User approves or rejects.
-7. Approve endpoint verifies:
+   - `public_id`
+   - status
+   - `display_code`
+   - `match_number`
+   - `expires_at`
+   - `approval_payload`
+6. Mobile app signs `approval_payload` with the registered device private key.
+7. User approves.
+8. Approve endpoint verifies:
    - phone session valid
    - trusted device valid and not revoked
    - workspace still allows device login
    - number chosen is correct
+   - `approval_signature` is valid for the registered device key
    - intent still pending and not expired
-8. Server updates intent status.
-9. Browser polling sees the new status.
+9. Server updates intent status.
+10. Browser polling sees the new status.
+
+Current approve request body:
+
+```json
+{
+  "public_id": "uuid",
+  "device_token": "device-secret-or-installation-token",
+  "selected_number": 42,
+  "approval_signature": "base64-or-base64url-ed25519-signature"
+}
+```
 
 ## Security Rules
 
@@ -317,7 +409,10 @@ Important:
    Every meaningful transition should be logged.
 
 10. **Rate limits**
-   Required on start, resolve, approve, reject, and complete.
+   Required on start, preview, approve, and complete.
+
+11. **Cryptographic device proof**
+   Approval must include a valid signature from the trusted device key. Device token alone is not sufficient.
 
 ### Audit events
 
@@ -333,6 +428,24 @@ Suggested events:
 - `auth.device_login.wrong_number`
 - `identity.device.registered`
 - `identity.device.revoked`
+
+## Approval Payload Contract
+
+The current server asks the mobile device to sign this exact payload:
+
+```text
+rooiam-device-login/v1
+{public_id}
+{display_code}
+{match_number}
+{expires_at_rfc3339}
+```
+
+Notes:
+
+- this payload is returned by `GET /v1/identity/device-login/intents/{public_id}` as `approval_payload`
+- the signature is verified server-side against the stored `device_public_key`
+- changing any field invalidates the signature
 
 ## Session Issuance
 
@@ -378,17 +491,17 @@ Before building Android, create a dev-only tester page.
 
 Purpose:
 
-- approve/reject flows without QR scanner work
+- preview/approve flows without QR scanner work
 - easier status/debug validation
 - easier automated testing
 
 Capabilities:
 
 - paste `public_id` + nonce
-- resolve request
+- preview request
 - simulate correct number approval
 - simulate wrong-number approval
-- simulate rejection
+- simulate bad-signature approval
 - simulate expiry behavior
 
 This should land before the real mobile app.
@@ -417,7 +530,7 @@ After the Android contract is stable:
 
 - same server API
 - same trusted-device model
-- same resolve / approve / reject flow
+- same preview / approve flow
 
 No iOS-specific server branch should be required.
 
@@ -429,8 +542,10 @@ No iOS-specific server branch should be required.
 device_login_start_rejects_when_platform_toggle_disabled
 device_login_start_rejects_when_workspace_toggle_disabled
 device_login_start_creates_pending_intent
-device_login_resolve_requires_phone_session
+device_login_preview_requires_phone_session
 device_login_approve_requires_trusted_device
+device_login_approve_requires_device_signature
+device_login_approve_rejects_invalid_signature
 device_login_approve_rejects_revoked_device
 device_login_approve_rejects_wrong_number
 device_login_approve_rejects_expired_intent
@@ -438,15 +553,15 @@ device_login_approve_is_single_use
 device_login_complete_requires_browser_binding
 device_login_complete_issues_session
 device_login_complete_cannot_reuse_consumed_intent
-device_login_reject_sets_rejected_status
 device_register_creates_trusted_device
+device_register_requires_device_public_key
 device_revoke_blocks_future_approvals
 ```
 
 ### Integration
 
 ```text
-browser_start -> phone_resolve -> phone_approve -> browser_complete -> session_created
+browser_start -> phone_preview -> phone_sign -> phone_approve -> browser_complete -> session_created
 ```
 
 ### Security
@@ -454,8 +569,9 @@ browser_start -> phone_resolve -> phone_approve -> browser_complete -> session_c
 - wrong browser cannot complete
 - wrong user cannot approve
 - revoked device cannot approve
+- unsigned or badly signed approval cannot approve
 - disabled workspace cannot start or approve
-- expired intent cannot be resolved or completed
+- expired intent cannot be previewed or completed
 
 ## Build Order
 

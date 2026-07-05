@@ -239,7 +239,8 @@ every language SDK is generated/derived from that spec.
 - It uses the **OIDC + PKCE (+ device-code grant)** login path — the same one
   `sdk-server` formalizes — to sign in.
 - Once signed in, it acts as the **trusted authenticator** for device login
-  (see [40_device_login_plan.md](./40_device_login_plan.md)).
+  (see [40_device_login_plan.md](./40_device_login_plan.md) and
+  [44_mobile_device_login_contract.md](./44_mobile_device_login_contract.md)).
 
 So the SDK work and the device-login work share one foundation: a clean,
 documented, language-agnostic auth + integration API.

@@ -11,6 +11,16 @@ pub struct UserTrustedDevice {
     #[serde(skip)]
     pub device_token_hash: String,
     pub device_public_key: Option<String>,
+    pub attestation_format: Option<String>,
+    pub attestation_key_id: Option<String>,
+    pub attestation_app_id: Option<String>,
+    pub attestation_environment: Option<String>,
+    #[serde(skip)]
+    pub attestation_statement: Option<String>,
+    pub attestation_status: String,
+    pub attestation_status_reason: Option<String>,
+    pub attestation_received_at: Option<DateTime<Utc>>,
+    pub attestation_verified_at: Option<DateTime<Utc>>,
     pub push_token: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,

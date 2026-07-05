@@ -46,11 +46,10 @@ export const getLoginBase = () => import.meta.env.VITE_LOGIN_URL.replace(/\/+$/,
 ## Step 2 — Build the hosted widget URL
 
 ```ts
-function buildLoginUrl(workspaceId: string, clientId: string, appName: string): string {
+function buildLoginUrl(workspaceId: string, clientId: string): string {
   const url = new URL(`${getLoginBase()}/login-widget`)
   url.searchParams.set('workspace_id', workspaceId)
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('app', appName)
   return url.toString()
 }
 ```
@@ -176,7 +175,7 @@ See `rooiam-demo/src/App.tsx` for the complete working implementation:
 
 | Function/Component | What it does |
 |---|---|
-| `buildLoginUrl()` | Constructs the hosted widget URL with app identity only |
+| `buildLoginUrl()` | Constructs the hosted widget URL with workspace + client identity only |
 | `fetchPublicBranding()` | Loads tenant branding without auth |
 | `fetchPublicAuthMethods()` | Checks which sign-in methods are enabled for the org |
 | `useDemoSession()` | Polls `/identity/me` and `/orgs/current/portal` on mount |

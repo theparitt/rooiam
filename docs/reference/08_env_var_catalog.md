@@ -29,7 +29,6 @@ Local vs public is explicit via `ROOIAM_DEPLOY_TARGET`.
 | `ROOIAM_REDIS_URL` | Redis connection | required |
 | `ROOIAM_HOST` | bind host | defaults to server local bind behavior |
 | `ROOIAM_PORT` | bind port | defaults to `5170` locally |
-| `ROOIAM_SERVICE_ENVIRONMENT` | MKS-1 environment label | `development`, `staging`, `production`, `test`, or `local` |
 | `ROOIAM_ALLOWED_ORIGINS` | CORS allowlist | frontend origins that may call the API |
 | `ROOIAM_DB_POOL_SIZE` | database pool size | optional tuning |
 
@@ -141,6 +140,16 @@ Normal setups should change `ROOIAM_SERVER_URL`, not try to manage separate prov
 | `ROOIAM_WEBAUTHN_ORIGIN` | primary WebAuthn origin | required for stable production setups |
 | `ROOIAM_WEBAUTHN_EXTRA_ORIGINS` | additional WebAuthn origins | use carefully |
 | `ROOIAM_WEBAUTHN_ALLOW_ANY_PORT` | localhost/dev helper | development convenience only |
+
+## Device Attestation
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `ROOIAM_APPLE_APP_ID_PREFIX` | Apple Team ID / App ID prefix for App Attest verification | required for real iOS App Attest registration |
+| `ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL` | Google service-account email for Play Integrity decoding | Android vendor verification |
+| `ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH` | path to Google service-account private key PEM | Android vendor verification |
+| `ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM` | inline Google service-account private key PEM | Android vendor verification |
+| `ROOIAM_GOOGLE_PLAY_TOKEN_URI` | Google OAuth token endpoint | defaults to Google standard token URI |
 
 ## Storage And Media
 

@@ -45,7 +45,7 @@ info "Triggering repeated blocked widget loads from a disallowed origin..."
 for _ in 1 2 3 4; do
   code=$(curl -s -o /tmp/rooiam_widget_probe.json -w "%{http_code}" \
     -H "Referer: http://evil.example/hijack" \
-    "$BASE_URL/login-widget?workspace_id=$WORKSPACE_ID&client_id=$CLIENT_ID&app=Probe%20Signal%20App")
+    "$BASE_URL/login-widget?workspace_id=$WORKSPACE_ID&client_id=$CLIENT_ID")
   [ "$code" = "403" ] || fail "Expected blocked widget load to return 403, got $code"
 done
 pass "Blocked widget loads were rejected"

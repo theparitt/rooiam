@@ -8,7 +8,7 @@
     "workspace_id": "Prefer the workspace UUID from rooiam-app for the hosted widget runtime. Leave blank only if you intentionally want to fall back to the workspace slug.",
     "workspace_slug": "Create a workspace in rooiam-app (5172) as Workspace Owner or Workspace Admin, then copy the workspace slug here.",
     "client_id": "Create an app in that workspace and copy its client ID here.",
-    "app_name": "Use the app display name here so the widget/login surface stays contextual.",
+    "app_name": "App display name still matters for the registered OAuth client and downstream callback flow, but it is not appended to the hosted widget URL.",
     "widget_base_url": "This is the hosted login/widget runtime URL served by Rooiam."
   }
 }

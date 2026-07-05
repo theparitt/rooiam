@@ -43,6 +43,7 @@ Generated from a full read of the Rust source — accurate as of the current cod
 - [Device Login Plan](./40_device_login_plan.md) — cross-device login design: phone-as-authenticator (QR scan / number match / 6-digit code), server endpoints, security model, build order
 - [SDK Plan](./41_sdk_plan.md) — two TS packages (browser + server), monorepo by language, OpenAPI generated from code (`utoipa`), build order
 - [OpenAPI + SDK Phases](./42_openapi_sdk_phases.md) — **execution plan + live status** — Phase A (OpenAPI foundation) done; B–F for integration annotation, TS SDKs, consumer refactor, multi-language
+- [Mobile Device Login Contract](./44_mobile_device_login_contract.md) — exact Android/iOS/fake-phone contract for trusted-device registration, QR preview, payload signing, and approval
 - [Audit Log Scope Doctrine](./28_audit_log_scope_doctrine.md) — canonical rules for what Platform, Tenant, Workspace, App, and My audit logs include and exclude across `rooiam-admin` and `rooiam-app`
 - [Data Flow Doctrine](./29_data_flow_doctrine.md) — canonical scope/entity/page-type/source-of-truth rules for lists, detail pages, create flows, settings, danger zones, and navigation
 - [Rooiam App Owner vs Admin Permission Matrix — 2026-03-20](./30_rooiam_app_owner_admin_permission_matrix_2026-03-20.md) — current `5172` authority comparison for workspace owner vs workspace admin, including what each role can view, edit, create, delete, and where owner-only controls begin

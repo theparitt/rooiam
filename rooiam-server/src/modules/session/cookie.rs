@@ -106,8 +106,8 @@ fn is_loopback_host(host: &str) -> bool {
 mod tests {
     use super::*;
     use crate::bootstrap::config::{
-        AppConfig, DatabaseConfig, DeployTarget, OAuthConfig, OidcConfig, RateLimitConfig,
-        RedisConfig, ServerConfig, ServerMode, StorageConfig, WebauthnConfig,
+        AppConfig, DatabaseConfig, DeployTarget, DeviceAttestationConfig, OAuthConfig, OidcConfig,
+        RateLimitConfig, RedisConfig, ServerConfig, ServerMode, StorageConfig, WebauthnConfig,
     };
     use std::sync::{Mutex, OnceLock};
 
@@ -178,6 +178,12 @@ mod tests {
                 origin: "http://localhost:5171".into(),
                 extra_origins: Vec::new(),
                 allow_any_port: true,
+            },
+            device_attestation: DeviceAttestationConfig {
+                apple_app_id_prefix: None,
+                google_play_service_account_email: None,
+                google_play_service_account_private_key_pem: None,
+                google_play_token_uri: "https://oauth2.googleapis.com/token".into(),
             },
             rate_limit: RateLimitConfig {
                 auth_per_endpoint: u64::MAX,

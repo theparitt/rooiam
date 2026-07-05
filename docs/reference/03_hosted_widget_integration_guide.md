@@ -8,16 +8,17 @@ For the full downstream app callback pattern, including PKCE ownership and what 
 
 ## Minimal Widget URL
 
-Use app identity only:
+Use workspace + client identity only:
 
 ```text
-https://auth.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>&app=Acme%20Portal
+https://auth.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>
 ```
 
 Do not pass a browser-chosen `redirect_uri` to `/login-widget`.
 
 Also do not pass:
 
+- `app`
 - `state`
 - `code_challenge`
 - `code_challenge_method`
@@ -25,6 +26,9 @@ Also do not pass:
 to `/login-widget`.
 
 Those belong to the downstream app's own `/oidc/authorize` request, not to the widget URL.
+
+The app display name should come from the registered OAuth client and workspace
+branding returned by Rooiam, not from a browser-composed `app` query string.
 
 ## What Must Be Registered
 

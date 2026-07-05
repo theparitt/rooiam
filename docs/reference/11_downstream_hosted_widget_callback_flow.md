@@ -54,7 +54,7 @@ api.rooiam.com              = Rooiam IAM   (Rust server, port 5170/5180)
    Stores it in localStorage
 
 4. Frontend renders iframe:
-   <iframe src="api.rooiam.com/login-widget?workspace_id=...&client_id=...&app=...">
+   <iframe src="api.rooiam.com/login-widget?workspace_id=...&client_id=...">
 
 5. User logs in inside the iframe
    └─ Rooiam sets rooiam_sid on api.rooiam.com domain
@@ -220,6 +220,12 @@ Calling `POST /v1/oidc/token` from the browser requires CORS from the app origin
 ### Do not pass `redirect_uri` to `/login-widget`
 
 The widget resolves the callback URL from the registered OAuth client and the current embed origin. Passing `redirect_uri` in the widget URL breaks the hosted-widget security contract.
+
+### Do not pass `app` to `/login-widget`
+
+The canonical downstream contract does not require a browser-composed `app`
+query parameter on the widget URL. The hosted widget should derive display
+context from the registered OAuth client and workspace branding instead.
 
 ### Do not store the access token in the browser
 

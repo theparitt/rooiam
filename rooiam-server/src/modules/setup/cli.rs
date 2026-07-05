@@ -98,7 +98,6 @@ struct WizardConfig {
     redis_url: String,
     storage_root: Option<String>,
     public_media_base: String,
-    service_environment: String,
     minio_endpoint: String,
     minio_bucket: String,
     minio_user: String,
@@ -337,7 +336,6 @@ async fn collect_config(
         DeployTarget::Public => format!("{}/media", server_url.trim_end_matches('/')),
     };
 
-    let service_environment = default_service_environment(mode, target).to_string();
     let setup_token = if mode == SetupMode::Production {
         section("Production");
         let generated_token = generate_setup_token();
@@ -419,7 +417,6 @@ async fn collect_config(
         redis_url,
         storage_root,
         public_media_base,
-        service_environment,
         minio_endpoint,
         minio_bucket,
         minio_user,
@@ -806,12 +803,6 @@ fn build_env_entries(config: &WizardConfig) -> Vec<EnvEntry> {
         "ROOIAM_PUBLIC_MEDIA_BASE",
         &config.public_media_base,
     );
-    push_entry(
-        &mut entries,
-        "ROOIAM_SERVICE_ENVIRONMENT",
-        &config.service_environment,
-    );
-
     push_entry(&mut entries, "ROOIAM_MEERKATEER_ENABLED", "false");
     push_entry(
         &mut entries,
@@ -1158,15 +1149,6 @@ fn default_storage_root(mode: SetupMode) -> &'static str {
     match mode {
         SetupMode::Production => "/data/rooiam",
         SetupMode::Demo => "/data/rooiam_demo",
-    }
-}
-
-fn default_service_environment(mode: SetupMode, target: DeployTarget) -> &'static str {
-    match (mode, target) {
-        (SetupMode::Production, DeployTarget::Local) => "local",
-        (SetupMode::Production, DeployTarget::Public) => "production",
-        (SetupMode::Demo, DeployTarget::Local) => "development",
-        (SetupMode::Demo, DeployTarget::Public) => "staging",
     }
 }
 

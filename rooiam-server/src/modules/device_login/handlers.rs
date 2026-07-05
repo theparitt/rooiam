@@ -33,8 +33,53 @@ use crate::shared::widget_login_context::{
 use super::models::{DeviceLoginIntent, UserTrustedDevice};
 use super::repository::DeviceLoginRepository;
 use super::service::{
-    effective_intent_status, DeviceLoginService, RegisterTrustedDeviceInput, StartDeviceLoginInput,
+    build_approval_payload, create_device_attestation_challenge,
+    device_attestation_challenge_redis_key, device_attestation_challenge_ttl_seconds,
+    effective_intent_status, CreateDeviceAttestationChallengeInput, DeviceLoginService,
+    RegisterTrustedDeviceAttestationInput, RegisterTrustedDeviceInput, StartDeviceLoginInput,
+    UpdateTrustedDevicePushTokenInput,
 };
+
+#[derive(serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterTrustedDeviceAttestationRequest {
+    pub format: String,
+    pub key_id: Option<String>,
+    pub app_id: Option<String>,
+    pub environment: Option<String>,
+    pub challenge_token: Option<String>,
+    pub statement: String,
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateDeviceAttestationChallengeRequest {
+    pub format: String,
+    pub key_id: String,
+    pub app_id: String,
+    pub environment: String,
+    pub device_public_key: String,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct CreateDeviceAttestationChallengeResponse {
+    pub ok: bool,
+    pub challenge_token: String,
+    pub challenge: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct TrustedDeviceAttestationSummary {
+    pub status: String,
+    pub status_reason: Option<String>,
+    pub format: Option<String>,
+    pub key_id: Option<String>,
+    pub app_id: Option<String>,
+    pub environment: Option<String>,
+    pub received_at: Option<DateTime<Utc>>,
+    pub verified_at: Option<DateTime<Utc>>,
+}
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -42,7 +87,8 @@ pub struct RegisterTrustedDeviceRequest {
     pub device_label: String,
     pub platform: String,
     pub device_token: String,
-    pub device_public_key: Option<String>,
+    pub device_public_key: String,
+    pub attestation: Option<RegisterTrustedDeviceAttestationRequest>,
 }
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -51,6 +97,8 @@ pub struct TrustedDeviceResponse {
     pub device_label: String,
     pub platform: String,
     pub device_public_key: Option<String>,
+    pub push_capable: bool,
+    pub attestation: TrustedDeviceAttestationSummary,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
@@ -86,6 +134,7 @@ pub struct DeviceLoginStatusQuery {
 pub struct DeviceLoginStatusResponse {
     pub ok: bool,
     pub status: String,
+    pub status_reason: Option<String>,
     pub display_code: String,
     pub number_choices: Vec<u8>,
     pub redirect_uri: Option<String>,
@@ -101,13 +150,22 @@ pub struct CompleteDeviceLoginRequest {
     pub browser_nonce: String,
 }
 
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelDeviceLoginRequest {
+    pub public_id: Uuid,
+    pub browser_nonce: String,
+}
+
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct DeviceLoginIntentPreviewResponse {
     pub ok: bool,
     pub public_id: Uuid,
     pub status: String,
+    pub status_reason: Option<String>,
     pub display_code: String,
     pub match_number: u8,
+    pub approval_payload: String,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -117,10 +175,28 @@ pub struct ApproveDeviceLoginRequest {
     pub public_id: Uuid,
     pub device_token: String,
     pub selected_number: u8,
+    pub approval_signature: String,
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RejectDeviceLoginRequest {
+    pub public_id: Uuid,
+    pub device_token: String,
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateTrustedDevicePushTokenRequest {
+    pub push_token: Option<String>,
 }
 
 fn device_login_service(state: &web::Data<AppState>) -> DeviceLoginService {
-    DeviceLoginService::new(DeviceLoginRepository::new(state.db.clone()))
+    DeviceLoginService::new(
+        DeviceLoginRepository::new(state.db.clone()),
+        state.config.clone(),
+        state.redis.clone(),
+    )
 }
 
 fn device_login_repo(state: &web::Data<AppState>) -> DeviceLoginRepository {
@@ -133,6 +209,22 @@ fn to_response(device: UserTrustedDevice) -> TrustedDeviceResponse {
         device_label: device.device_label,
         platform: device.platform,
         device_public_key: device.device_public_key,
+        push_capable: device
+            .push_token
+            .as_deref()
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false),
+        attestation: TrustedDeviceAttestationSummary {
+            status: device.attestation_status,
+            status_reason: device.attestation_status_reason,
+            format: device.attestation_format,
+            key_id: device.attestation_key_id,
+            app_id: device.attestation_app_id,
+            environment: device.attestation_environment,
+            received_at: device.attestation_received_at,
+            verified_at: device.attestation_verified_at,
+        },
         last_seen_at: device.last_seen_at,
         last_used_at: device.last_used_at,
         revoked_at: device.revoked_at,
@@ -466,6 +558,9 @@ pub async fn start_device_login(
                 "redirect_uri": effective_redirect_uri,
                 "surface": body.surface,
                 "display_code": started.display_code,
+                "expires_at": started.expires_at,
+                "workspace_id": workspace_id,
+                "oauth_client_id": oauth_client_id,
             }),
         })
         .await;
@@ -512,6 +607,7 @@ pub async fn get_device_login_status(
     Ok(HttpResponse::Ok().json(DeviceLoginStatusResponse {
         ok: true,
         status: effective_intent_status(&intent),
+        status_reason: intent.status_reason.clone(),
         display_code: intent.display_code.clone(),
         number_choices: intent_number_choices(&intent),
         redirect_uri: intent.redirect_uri.clone(),
@@ -549,6 +645,59 @@ pub async fn complete_device_login(
 }
 
 #[utoipa::path(
+    post,
+    path = "/v1/auth/device-login/cancel",
+    tag = "browser",
+    request_body = CancelDeviceLoginRequest,
+    responses(
+        (status = 200, description = "Pending QR device-login request cancelled from the browser"),
+        (status = 400, description = "Validation error"),
+        (status = 409, description = "Intent cannot be cancelled"),
+    ),
+)]
+pub async fn cancel_device_login(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<CancelDeviceLoginRequest>,
+) -> Result<HttpResponse, AppError> {
+    let cancelled = device_login_service(&state)
+        .cancel_browser_intent(
+            body.public_id,
+            &body.browser_nonce,
+            request_user_agent(&req).as_deref(),
+        )
+        .await?;
+
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: None,
+            organization_id: cancelled
+                .workspace_id
+                .or(get_platform_org_id(&state.db).await),
+            action: "auth.device_login.cancelled".into(),
+            target_type: "device_login_intent".into(),
+            target_id: Some(cancelled.public_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: request_user_agent(&req),
+            metadata: serde_json::json!({
+                "display_code": cancelled.display_code,
+                "status_reason": cancelled.status_reason,
+                "redirect_uri": cancelled.redirect_uri,
+                "surface": cancelled.surface,
+                "requester_ip": cancelled.requester_ip,
+                "requester_user_agent": cancelled.requester_user_agent,
+            }),
+        })
+        .await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "ok": true,
+        "status": effective_intent_status(&cancelled),
+        "status_reason": cancelled.status_reason,
+    })))
+}
+
+#[utoipa::path(
     get,
     path = "/v1/identity/device-login/intents/{public_id}",
     tag = "browser",
@@ -571,13 +720,16 @@ pub async fn get_device_login_intent(
         .get_device_login_intent_by_public_id(public_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Device login request not found.".into()))?;
+    let approval_payload = build_approval_payload(&intent);
 
     Ok(HttpResponse::Ok().json(DeviceLoginIntentPreviewResponse {
         ok: true,
         public_id: intent.public_id,
         status: effective_intent_status(&intent),
+        status_reason: intent.status_reason,
         display_code: intent.display_code,
         match_number: intent.match_number as u8,
+        approval_payload,
         expires_at: intent.expires_at,
     }))
 }
@@ -607,6 +759,7 @@ pub async fn approve_device_login(
             body.public_id,
             &body.device_token,
             body.selected_number,
+            &body.approval_signature,
         )
         .await?;
 
@@ -622,6 +775,10 @@ pub async fn approve_device_login(
             metadata: serde_json::json!({
                 "approved_device_id": approved.approved_device_id,
                 "display_code": approved.display_code,
+                "redirect_uri": approved.redirect_uri,
+                "surface": approved.surface,
+                "requester_ip": approved.requester_ip,
+                "requester_user_agent": approved.requester_user_agent,
             }),
         })
         .await;
@@ -629,7 +786,58 @@ pub async fn approve_device_login(
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
         "status": effective_intent_status(&approved),
+        "status_reason": approved.status_reason,
         "approved_at": approved.approved_at,
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/identity/device-login/reject",
+    tag = "browser",
+    request_body = RejectDeviceLoginRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "QR device-login request rejected from a trusted device"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+        (status = 409, description = "Intent cannot be rejected"),
+    ),
+)]
+pub async fn reject_device_login(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<RejectDeviceLoginRequest>,
+) -> Result<HttpResponse, AppError> {
+    let session = extract_session(&req)?;
+    let rejected = device_login_service(&state)
+        .reject_device_login(session.user_id, body.public_id, &body.device_token)
+        .await?;
+
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: rejected.workspace_id.or(session.current_org_id),
+            action: "auth.device_login.rejected".into(),
+            target_type: "device_login_intent".into(),
+            target_id: Some(rejected.public_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: request_user_agent(&req),
+            metadata: serde_json::json!({
+                "display_code": rejected.display_code,
+                "status_reason": rejected.status_reason,
+                "redirect_uri": rejected.redirect_uri,
+                "surface": rejected.surface,
+                "requester_ip": rejected.requester_ip,
+                "requester_user_agent": rejected.requester_user_agent,
+            }),
+        })
+        .await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "ok": true,
+        "status": effective_intent_status(&rejected),
+        "status_reason": rejected.status_reason,
     })))
 }
 
@@ -659,7 +867,17 @@ pub async fn register_trusted_device(
                 device_label: body.device_label.clone(),
                 platform: body.platform.clone(),
                 device_token: body.device_token.clone(),
-                device_public_key: body.device_public_key.clone(),
+                device_public_key: Some(body.device_public_key.clone()),
+                attestation: body.attestation.as_ref().map(|attestation| {
+                    RegisterTrustedDeviceAttestationInput {
+                        format: attestation.format.clone(),
+                        key_id: attestation.key_id.clone(),
+                        app_id: attestation.app_id.clone(),
+                        environment: attestation.environment.clone(),
+                        challenge_token: attestation.challenge_token.clone(),
+                        statement: attestation.statement.clone(),
+                    }
+                }),
             },
         )
         .await?;
@@ -676,11 +894,85 @@ pub async fn register_trusted_device(
             metadata: serde_json::json!({
                 "platform": device.platform,
                 "device_label": device.device_label,
+                "attestation_status": device.attestation_status,
+                "attestation_format": device.attestation_format,
+                "push_capable": device.push_token.is_some(),
             }),
         })
         .await;
 
     Ok(HttpResponse::Ok().json(to_response(device)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/identity/me/devices/attestation-challenge",
+    tag = "browser",
+    request_body = CreateDeviceAttestationChallengeRequest,
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "One-time attestation challenge issued"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+    ),
+)]
+pub async fn create_trusted_device_attestation_challenge(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<CreateDeviceAttestationChallengeRequest>,
+) -> Result<HttpResponse, AppError> {
+    let session = extract_session(&req)?;
+    let challenge = create_device_attestation_challenge(
+        session.user_id,
+        CreateDeviceAttestationChallengeInput {
+            format: body.format.clone(),
+            key_id: body.key_id.clone(),
+            app_id: body.app_id.clone(),
+            environment: body.environment.clone(),
+            device_public_key: body.device_public_key.clone(),
+        },
+    )?;
+    let redis_key = device_attestation_challenge_redis_key(&challenge.token)?;
+    let payload = serde_json::to_string(&challenge.record).map_err(|error| {
+        AppError::Internal(format!(
+            "Failed to serialize device attestation challenge payload: {}",
+            error
+        ))
+    })?;
+    let mut redis = state.redis.clone();
+    let _: () = redis::cmd("SETEX")
+        .arg(&redis_key)
+        .arg(device_attestation_challenge_ttl_seconds())
+        .arg(payload)
+        .query_async(&mut redis)
+        .await?;
+
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "identity.device.attestation_challenge_issued".into(),
+            target_type: "trusted_device_attestation".into(),
+            target_id: Some(challenge.token.clone()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: request_user_agent(&req),
+            metadata: serde_json::json!({
+                "format": challenge.record.format,
+                "app_id": challenge.record.app_id,
+                "environment": challenge.record.environment,
+                "expires_at": challenge.expires_at,
+            }),
+        })
+        .await;
+
+    Ok(
+        HttpResponse::Ok().json(CreateDeviceAttestationChallengeResponse {
+            ok: true,
+            challenge_token: challenge.token,
+            challenge: challenge.challenge,
+            expires_at: challenge.expires_at,
+        }),
+    )
 }
 
 #[utoipa::path(
@@ -703,6 +995,57 @@ pub async fn list_trusted_devices(
         .await?;
 
     Ok(HttpResponse::Ok().json(devices.into_iter().map(to_response).collect::<Vec<_>>()))
+}
+
+#[utoipa::path(
+    put,
+    path = "/v1/identity/me/devices/{id}/push-token",
+    tag = "browser",
+    request_body = UpdateTrustedDevicePushTokenRequest,
+    params(("id" = Uuid, Path, description = "Trusted device ID")),
+    security(("session_cookie" = [])),
+    responses(
+        (status = 200, description = "Trusted device push token updated or cleared"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "No valid session cookie"),
+        (status = 404, description = "Trusted device not found"),
+    ),
+)]
+pub async fn update_trusted_device_push_token(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateTrustedDevicePushTokenRequest>,
+) -> Result<HttpResponse, AppError> {
+    let session = extract_session(&req)?;
+    let device_id = path.into_inner();
+    let device = device_login_service(&state)
+        .update_trusted_device_push_token(
+            session.user_id,
+            device_id,
+            UpdateTrustedDevicePushTokenInput {
+                push_token: body.push_token.clone(),
+            },
+        )
+        .await?;
+
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: session.current_org_id,
+            action: "identity.device.push_token_updated".into(),
+            target_type: "trusted_device".into(),
+            target_id: Some(device_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: request_user_agent(&req),
+            metadata: serde_json::json!({
+                "push_capable": device.push_token.is_some(),
+                "platform": device.platform,
+            }),
+        })
+        .await;
+
+    Ok(HttpResponse::Ok().json(to_response(device)))
 }
 
 #[utoipa::path(
@@ -754,20 +1097,54 @@ pub async fn revoke_trusted_device(
 pub fn auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/device-login")
-            .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(20, 60))
-            .wrap(
-                crate::http::middleware::rate_limit::RateLimit::global_per_ip(
-                    "device_login",
-                    60,
-                    60,
-                ),
+            .service(
+                web::resource("/start")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(10, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_start",
+                            30,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(start_device_login)),
             )
-            .route("/start", web::post().to(start_device_login))
-            .route(
-                "/{public_id}/status",
-                web::get().to(get_device_login_status),
+            .service(
+                web::resource("/{public_id}/status")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(120, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_status",
+                            600,
+                            60,
+                        ),
+                    )
+                    .route(web::get().to(get_device_login_status)),
             )
-            .route("/complete", web::post().to(complete_device_login)),
+            .service(
+                web::resource("/complete")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_complete",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(complete_device_login)),
+            )
+            .service(
+                web::resource("/cancel")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_cancel",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(cancel_device_login)),
+            ),
     );
 }
 
@@ -775,18 +1152,95 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/me/devices")
             .wrap(RequireAuth)
-            .route("", web::post().to(register_trusted_device))
-            .route("", web::get().to(list_trusted_devices))
-            .route("/{id}", web::delete().to(revoke_trusted_device)),
+            .service(
+                web::resource("/attestation-challenge")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(10, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "trusted_device_attestation_challenge",
+                            30,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(create_trusted_device_attestation_challenge)),
+            )
+            .service(
+                web::resource("")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(10, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "trusted_device_register",
+                            30,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(register_trusted_device))
+                    .route(web::get().to(list_trusted_devices)),
+            )
+            .service(
+                web::resource("/{id}")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "trusted_device_revoke",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::delete().to(revoke_trusted_device)),
+            )
+            .service(
+                web::resource("/{id}/push-token")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "trusted_device_push_token",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::put().to(update_trusted_device_push_token)),
+            ),
     );
 
     cfg.service(
         web::scope("/device-login")
             .wrap(RequireAuth)
-            .route(
-                "/intents/{public_id}",
-                web::get().to(get_device_login_intent),
+            .service(
+                web::resource("/intents/{public_id}")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(120, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_intent_preview",
+                            600,
+                            60,
+                        ),
+                    )
+                    .route(web::get().to(get_device_login_intent)),
             )
-            .route("/approve", web::post().to(approve_device_login)),
+            .service(
+                web::resource("/approve")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_approve",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(approve_device_login)),
+            )
+            .service(
+                web::resource("/reject")
+                    .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(30, 60))
+                    .wrap(
+                        crate::http::middleware::rate_limit::RateLimit::global_per_ip(
+                            "device_login_reject",
+                            120,
+                            60,
+                        ),
+                    )
+                    .route(web::post().to(reject_device_login)),
+            ),
     );
 }

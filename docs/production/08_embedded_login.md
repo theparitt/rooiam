@@ -13,11 +13,11 @@ The security model is the same in both cases:
 
 ## 1. Recommended Contract
 
-The hosted login widget should be embedded with app identity only:
+The hosted login widget should be embedded with workspace + client identity only:
 
 ```html
 <iframe
-  src="https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>&app=Acme%20Portal"
+  src="https://login.example.com/login-widget?workspace_id=<workspace-id>&client_id=<client-id>"
   width="420"
   height="520"
   frameborder="0"
@@ -26,8 +26,11 @@ The hosted login widget should be embedded with app identity only:
 ```
 
 Do not pass a browser-chosen `redirect_uri` in the widget URL.
+Do not pass `app` in the widget URL.
 
-Rooiam resolves the final app callback from the registered app configuration and stores it inside the hosted-widget login transaction.
+Rooiam resolves the final app callback and app display context from the
+registered app configuration and stores that inside the hosted-widget login
+transaction.
 
 The hosted-widget login transaction is short-lived:
 

@@ -18,7 +18,7 @@ The hosted login widget is an iframe-embeddable login UI served by `rooiam-serve
 ## Widget URL
 
 ```
-{server_origin}/login-widget?workspace_id={uuid}&workspace={slug}&client_id={client_id}&app={app_name}
+{server_origin}/login-widget?workspace_id={uuid}&workspace={slug}&client_id={client_id}
 ```
 
 ### Required Parameters
@@ -28,8 +28,6 @@ The hosted login widget is an iframe-embeddable login UI served by `rooiam-serve
 | `workspace_id` | Workspace UUID (from Rooiam admin) |
 | `workspace` | Workspace slug (alternative to workspace_id) |
 | `client_id` | OAuth client ID registered in the workspace |
-| `app` | Application name (shown in widget UI) |
-
 ### Optional Parameters
 
 | Parameter | Default | Description |
@@ -100,7 +98,7 @@ ROOIAM_SERVER_URL=https://api.rooiam.com
 ### Widget URL Example
 
 ```
-https://api.rooiam.com/login-widget?workspace_id=7089049f-48e6-4e66-a6f1-a3aca5ddeb1c&workspace=myworkspace&client_id=ckk366a21YO9nLAqOP5NHhakGvCGbcZz0m9TYXcN3DA&app=MyApp
+https://api.rooiam.com/login-widget?workspace_id=7089049f-48e6-4e66-a6f1-a3aca5ddeb1c&workspace=myworkspace&client_id=ckk366a21YO9nLAqOP5NHhakGvCGbcZz0m9TYXcN3DA
 ```
 
 ### OAuth Flow (Production)
@@ -144,7 +142,7 @@ ROOIAM_ENDUSER_URL=https://candycloud.rooiam.com    # downstream demo end-user a
 ### Widget URL Example
 
 ```
-https://demo-api.rooiam.com/login-widget?workspace_id=65fac08e-7488-4e77-918f-52a6ed9d25c0&workspace=mintmallow&client_id=demo-mintmallow-portal-spa&app=MintMallow+Portal
+https://demo-api.rooiam.com/login-widget?workspace_id=65fac08e-7488-4e77-918f-52a6ed9d25c0&workspace=mintmallow&client_id=demo-mintmallow-portal-spa
 ```
 
 ### OAuth Flow (Demo)
@@ -257,6 +255,7 @@ url.searchParams.set('provider', provider);
 ## Security Rules Summary
 
 1. **Never pass `redirect_uri` in widget URL** - Server always uses redirect_uri from registered OAuth client
-2. **Always validate embed origin** - Embed origin must be in Allowed Embed Origins
-3. **widget_login_context is short-lived** - 15 minute TTL, single-use
-4. **Demo mode bypasses real OAuth** - No actual Google/Microsoft credentials needed
+2. **Do not pass `app` in widget URL** - The widget should derive app display context from the registered OAuth client / branding, not from a browser-composed query string
+3. **Always validate embed origin** - Embed origin must be in Allowed Embed Origins
+4. **widget_login_context is short-lived** - 15 minute TTL, single-use
+5. **Demo mode bypasses real OAuth** - No actual Google/Microsoft credentials needed

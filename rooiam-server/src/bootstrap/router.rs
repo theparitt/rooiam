@@ -10,12 +10,10 @@ use crate::bootstrap::state::AppState;
 
 const SERVICE_NAME: &str = "rooiam-server";
 const PROJECT_SLUG: &str = "rooiam";
-const SERVICE_ENVIRONMENT_VAR: &str = "ROOIAM_SERVICE_ENVIRONMENT";
 const METRICS_ENABLED_VAR: &str = "ROOIAM_METRICS_ENABLED";
 const METRICS_TOKEN_VAR: &str = "ROOIAM_METRICS_TOKEN";
 const FORCE_CHECK_FAILURES_VAR: &str = "ROOIAM_MKS1_FORCE_CHECK_FAILURES";
 const MEERKATEER_TIMEOUT_MS_VAR: &str = "ROOIAM_MEERKATEER_TIMEOUT_MS";
-const DEFAULT_SERVICE_ENVIRONMENT: &str = "development";
 const INTERFACE_NAME: &str = "meerkateer";
 const INTERFACE_VERSION: &str = "1";
 const DEFAULT_MEERKATEER_TIMEOUT_MS: u64 = 3000;
@@ -29,6 +27,8 @@ struct HealthResponse {
     status: &'static str,
     service: &'static str,
     project: &'static str,
+    mode: String,
+    deploy_target: String,
     environment: String,
     interface: &'static str,
     interface_version: &'static str,
@@ -63,6 +63,8 @@ struct ReadyResponse {
     ready: bool,
     service: &'static str,
     project: &'static str,
+    mode: String,
+    deploy_target: String,
     environment: String,
     interface: &'static str,
     interface_version: &'static str,
@@ -76,6 +78,8 @@ struct MeerkateerMetadataResponse {
     interface_version: &'static str,
     service: &'static str,
     project: &'static str,
+    mode: String,
+    deploy_target: String,
     environment: String,
     runtime: &'static str,
     version: &'static str,
@@ -116,23 +120,6 @@ fn build_info() -> BuildInfo {
         built_at_utc: BUILD_TIME_UTC.unwrap_or("unknown"),
         git_sha: GIT_SHA.unwrap_or("unknown"),
         git_branch: GIT_BRANCH.unwrap_or("unknown"),
-    }
-}
-
-fn service_environment() -> String {
-    match std::env::var(SERVICE_ENVIRONMENT_VAR) {
-        Ok(value) => match value.trim() {
-            "development" | "staging" | "production" | "test" | "local" => value.trim().to_string(),
-            invalid => {
-                tracing::warn!(
-                    env_var = SERVICE_ENVIRONMENT_VAR,
-                    invalid_value = invalid,
-                    "Invalid service environment for MKS-1; falling back to default"
-                );
-                DEFAULT_SERVICE_ENVIRONMENT.to_string()
-            }
-        },
-        Err(_) => DEFAULT_SERVICE_ENVIRONMENT.to_string(),
     }
 }
 
@@ -292,13 +279,17 @@ async fn redis_check(state: &AppState) -> CheckResult {
 async fn health_check(state: web::Data<AppState>) -> HttpResponse {
     let db = database_check(state.get_ref()).await;
     let redis = redis_check(state.get_ref()).await;
+    let mode = state.config.mode.label().to_string();
+    let deploy_target = state.config.deploy_target.label().to_string();
 
     let all_ok = db.ok && redis.ok;
     let body = HealthResponse {
         status: if all_ok { "ok" } else { "degraded" },
         service: SERVICE_NAME,
         project: PROJECT_SLUG,
-        environment: service_environment(),
+        mode: mode.clone(),
+        deploy_target,
+        environment: mode,
         interface: INTERFACE_NAME,
         interface_version: INTERFACE_VERSION,
         version: VERSION,
@@ -326,13 +317,17 @@ async fn health_check(state: web::Data<AppState>) -> HttpResponse {
 async fn ready_check(state: web::Data<AppState>) -> HttpResponse {
     let db = database_check(state.get_ref()).await;
     let redis = redis_check(state.get_ref()).await;
+    let mode = state.config.mode.label().to_string();
+    let deploy_target = state.config.deploy_target.label().to_string();
 
     let ready = db.ok && redis.ok;
     let body = ReadyResponse {
         ready,
         service: SERVICE_NAME,
         project: PROJECT_SLUG,
-        environment: service_environment(),
+        mode: mode.clone(),
+        deploy_target,
+        environment: mode,
         interface: INTERFACE_NAME,
         interface_version: INTERFACE_VERSION,
         checks: HealthChecks {
@@ -431,7 +426,7 @@ async fn metrics(req: HttpRequest, state: web::Data<AppState>) -> HttpResponse {
         .body(out)
 }
 
-async fn meerkateer_metadata() -> HttpResponse {
+async fn meerkateer_metadata(state: web::Data<AppState>) -> HttpResponse {
     let push_capabilities = crate::shared::meerkateer::push_capabilities_enabled();
 
     HttpResponse::Ok().json(MeerkateerMetadataResponse {
@@ -439,7 +434,9 @@ async fn meerkateer_metadata() -> HttpResponse {
         interface_version: INTERFACE_VERSION,
         service: SERVICE_NAME,
         project: PROJECT_SLUG,
-        environment: service_environment(),
+        mode: state.config.mode.label().to_string(),
+        deploy_target: state.config.deploy_target.label().to_string(),
+        environment: state.config.mode.label().to_string(),
         runtime: "rust",
         version: VERSION,
         build: build_info(),
@@ -496,14 +493,20 @@ pub fn register_routes(
                     web::scope("/auth")
                         .wrap(RateLimit::per_endpoint(rl.auth_per_endpoint, 60))
                         .wrap(RateLimit::global_per_ip("auth", rl.auth_per_ip, 60))
-                        .configure(crate::modules::auth::handlers::routes)
+                        .configure(crate::modules::auth::handlers::routes),
+                )
+                .service(
+                    web::scope("/auth")
                         .configure(crate::modules::device_login::handlers::auth_routes),
                 )
                 .service(
                     web::scope("/identity")
                         .wrap(RateLimit::per_endpoint(rl.identity_per_endpoint, 60))
                         .wrap(RateLimit::global_per_ip("identity", rl.identity_per_ip, 60))
-                        .configure(crate::modules::identity::handlers::routes)
+                        .configure(crate::modules::identity::handlers::routes),
+                )
+                .service(
+                    web::scope("/identity")
                         .configure(crate::modules::device_login::handlers::routes),
                 )
                 .service(

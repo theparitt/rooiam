@@ -39,6 +39,7 @@ Use it in this order:
 19. [Operator Runbooks](./19_operator_runbooks.md)
 20. [Operator Guides](./20_operator_guides.md)
 21. [Rate Limits And Abuse Protection](./21_rate_limits_and_abuse_protection.md)
+22. [API And SDK Smoke Checklist](./22_api_and_sdk_smoke_checklist.md)
 
 ## Running a Public Demo Instance Alongside Production
 
