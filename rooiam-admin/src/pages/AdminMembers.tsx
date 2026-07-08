@@ -192,7 +192,7 @@ export default function AdminMembers() {
                             >
                                 <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                                     <div className="w-10 h-10 rounded-2xl overflow-hidden border border-border bg-white shadow-sm shrink-0 text-sm flex items-center justify-center">
-                                        <img src="/rooiam-app-white.svg" alt={user.display_name || user.email} className="h-full w-full object-cover scale-[1.06]" />
+                                        <img src={resolveApiAssetUrl(user.avatar_url) || '/rooiam-app-white.svg'} alt={user.display_name || user.email} className="h-full w-full object-cover scale-[1.06]" onError={e => { (e.currentTarget as HTMLImageElement).src = '/rooiam-app-white.svg' }} />
                                     </div>
                                     <div className="min-w-0">
                                         <p className="font-bold text-sm flex items-center gap-2 flex-wrap">

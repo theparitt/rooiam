@@ -2853,7 +2853,13 @@ async fn current_portal(
         available_roles,
         max_logo_bytes: state.config.server.max_logo_bytes,
         demo_mode: crate::shared::demo_seed::demo_seed_enabled(),
-        max_workspaces_allowed: workspace_governance.effective_max_workspaces(),
+        max_workspaces_allowed:
+            crate::shared::workspace_governance::effective_max_workspaces_for_user(
+                &state.db,
+                &workspace_governance,
+                session.user_id,
+            )
+            .await?,
         max_apps_per_workspace: workspace_governance.effective_max_apps(),
         max_redirect_uris_per_app: effective_app_registration_governance.max_redirect_uris_per_app,
         max_allowed_embed_origins_per_app: effective_app_registration_governance

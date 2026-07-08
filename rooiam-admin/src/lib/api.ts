@@ -54,6 +54,8 @@ export const api = {
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => apiFetch<T>(path, { method: 'DELETE' }),
 }
 
@@ -675,6 +677,14 @@ export type AdminSession = {
   created_at: string
 }
 
+export type AdminUserWorkspaceLimit = {
+  override_limit: number | null
+  platform_limit: number
+  effective_limit: number
+  current_workspaces: number
+  override_ceiling: number
+}
+
 export const sysAdminApi = {
   users: (params?: { page?: number; page_size?: number; search?: string; role?: 'all' | 'platform' | 'workspace_admin' | 'user' }) =>
     api.get<PaginatedResult<AdminUser>>(`/admin/users?${new URLSearchParams(
@@ -688,6 +698,10 @@ export const sysAdminApi = {
   userDetail: (userId: string) => api.get<AdminUserDetail>(`/admin/users/${userId}`),
   updateUserStatus: (userId: string, status: 'active' | 'suspended') =>
     api.patch<AdminUser>(`/admin/users/${userId}/status`, { status }),
+  userWorkspaceLimit: (userId: string) =>
+    api.get<AdminUserWorkspaceLimit>(`/admin/users/${userId}/workspace-limit`),
+  updateUserWorkspaceLimit: (userId: string, limit: number | null) =>
+    api.put<AdminUserWorkspaceLimit>(`/admin/users/${userId}/workspace-limit`, { limit }),
   userSessions: (userId: string) => api.get<AdminSession[]>(`/admin/users/${userId}/sessions`),
   revokeUserSessions: (userId: string) => api.delete<{ ok: boolean; revoked_count: number }>(`/admin/users/${userId}/sessions`),
   userAuditLogs: (userId: string, params?: { page?: number; page_size?: number; search?: string; date_from?: string; date_to?: string }) =>

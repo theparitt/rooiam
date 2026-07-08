@@ -910,6 +910,133 @@ async fn update_user_role(
     Ok(HttpResponse::Ok().json(updated))
 }
 
+// ---------- per-user workspace limit override ----------
+
+#[derive(Serialize)]
+pub struct AdminUserWorkspaceLimit {
+    /// Admin-set override for this user; null means the platform policy applies.
+    pub override_limit: Option<i32>,
+    /// Platform-wide limit (operator setting clamped to the hard cap).
+    pub platform_limit: i32,
+    /// The limit actually applied to this user.
+    pub effective_limit: i32,
+    /// Active workspaces the user currently belongs to.
+    pub current_workspaces: i64,
+    /// Maximum value accepted for an override.
+    pub override_ceiling: i32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateUserWorkspaceLimitRequest {
+    /// New override; null clears the override (user returns to platform policy).
+    pub limit: Option<i32>,
+}
+
+async fn load_user_workspace_limit(
+    state: &AppState,
+    user_id: Uuid,
+) -> Result<AdminUserWorkspaceLimit, AppError> {
+    let governance =
+        crate::shared::workspace_governance::load_platform_workspace_governance(&state.db).await?;
+    let override_limit =
+        crate::shared::workspace_governance::user_max_workspaces_override(&state.db, user_id)
+            .await?;
+    let effective_limit = crate::shared::workspace_governance::effective_max_workspaces_for_user(
+        &state.db,
+        &governance,
+        user_id,
+    )
+    .await?;
+    let current_workspaces: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM organization_members om
+        JOIN organizations o ON o.id = om.organization_id
+        WHERE om.user_id = $1 AND om.status = 'active' AND o.status = 'active'
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(AdminUserWorkspaceLimit {
+        override_limit,
+        platform_limit: governance.effective_max_workspaces(),
+        effective_limit,
+        current_workspaces,
+        override_ceiling: crate::shared::workspace_governance::PER_USER_MAX_WORKSPACES_CEILING,
+    })
+}
+
+async fn ensure_user_exists(state: &AppState, user_id: Uuid) -> Result<(), AppError> {
+    let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::NotFound("Member not found.".into()));
+    }
+    Ok(())
+}
+
+/// GET /admin/users/{user_id}/workspace-limit
+async fn get_user_workspace_limit(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    let actor = extract_session(&req)?;
+    ensure_platform_staff_by_user_id(actor.user_id, &state).await?;
+
+    let target_user_id = path.into_inner();
+    ensure_user_exists(&state, target_user_id).await?;
+    let payload = load_user_workspace_limit(&state, target_user_id).await?;
+    Ok(HttpResponse::Ok().json(payload))
+}
+
+/// PUT /admin/users/{user_id}/workspace-limit — set or clear (limit: null).
+async fn update_user_workspace_limit(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateUserWorkspaceLimitRequest>,
+) -> Result<HttpResponse, AppError> {
+    let actor = extract_session(&req)?;
+    ensure_platform_staff_by_user_id(actor.user_id, &state).await?;
+
+    let target_user_id = path.into_inner();
+    ensure_user_exists(&state, target_user_id).await?;
+
+    crate::shared::workspace_governance::set_user_max_workspaces_override(
+        &state.db,
+        target_user_id,
+        body.limit,
+    )
+    .await?;
+
+    let platform_org_id = get_platform_org_id(&state.db).await;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(actor.user_id),
+            organization_id: platform_org_id,
+            action: "admin.user.workspace_limit.updated".into(),
+            target_type: "user".into(),
+            target_id: Some(target_user_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({ "limit": body.limit }),
+        })
+        .await;
+
+    let payload = load_user_workspace_limit(&state, target_user_id).await?;
+    Ok(HttpResponse::Ok().json(payload))
+}
+
 async fn get_organization_detail(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -2681,6 +2808,14 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
                 web::patch().to(update_user_status),
             )
             .route("/users/{user_id}/role", web::patch().to(update_user_role))
+            .route(
+                "/users/{user_id}/workspace-limit",
+                web::get().to(get_user_workspace_limit),
+            )
+            .route(
+                "/users/{user_id}/workspace-limit",
+                web::put().to(update_user_workspace_limit),
+            )
             .route(
                 "/users/{user_id}/sessions",
                 web::get().to(list_user_sessions),

@@ -25,7 +25,13 @@ impl OrganizationService {
         slug: &str,
     ) -> Result<Organization, AppError> {
         let governance = load_platform_workspace_governance(&self.db).await?;
-        let workspace_limit = governance.effective_max_workspaces();
+        let workspace_limit =
+            crate::shared::workspace_governance::effective_max_workspaces_for_user(
+                &self.db,
+                &governance,
+                owner_user_id,
+            )
+            .await?;
         let existing = self.repo.count_user_organizations(owner_user_id).await?;
         if existing >= i64::from(workspace_limit) {
             return Err(AppError::Validation(format!(

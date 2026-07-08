@@ -1,5 +1,6 @@
 import React from 'react'
 import { Loader2, ShieldCheck } from 'lucide-react'
+import { resolveApiAssetUrl } from '../../lib/api-base'
 import type { OrganizationMember, OrganizationRole } from '../../lib/portal-types'
 import PortalPill from './PortalPill'
 import PortalWorkspaceRolePill from './PortalWorkspaceRolePill'
@@ -45,7 +46,7 @@ export default function PortalMemberRow({
     onOpenDetail,
     roleChangeBlockedReason,
 }: Props) {
-    const avatarSrc = '/rooiam-app-white.svg'
+    const avatarSrc = resolveApiAssetUrl(member.avatar_url) || '/rooiam-app-white.svg'
     const name = member.display_name || member.email || member.user_id
     const ownerLocked = member.role_codes?.includes('owner')
     const roleDraftChanged = roleDraft !== (member.role_codes?.find(c => c !== 'owner') || 'member')

@@ -1,6 +1,6 @@
 import React from 'react'
 import { ArrowLeft, Clock3, Loader2, ShieldCheck, UserRound } from 'lucide-react'
-import { apiFetch, getApiBase } from '../../lib/api-base'
+import { apiFetch, getApiBase, resolveApiAssetUrl } from '../../lib/api-base'
 import { portalRoutes } from '../../lib/routes'
 import type { Organization, OrganizationActivityItem, OrganizationMember } from '../../lib/portal-types'
 import PortalAuditEventItem from '../../components/portal/PortalAuditEventItem'
@@ -101,7 +101,7 @@ export default function PortalMemberDetail({
         )
     }
 
-    const avatarSrc = '/rooiam-app-white.svg'
+    const avatarSrc = resolveApiAssetUrl(member.avatar_url) || '/rooiam-app-white.svg'
     const name = member.display_name || member.email || member.user_id
 
     return (

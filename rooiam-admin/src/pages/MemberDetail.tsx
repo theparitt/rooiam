@@ -4,7 +4,7 @@ import { ArrowLeft, Building2, ExternalLink, Loader2, LogOut, Monitor, PauseCirc
 
 import { resolveApiAssetUrl } from '@/lib/api-base'
 import { sysAdminApi } from '@/lib/api'
-import type { AdminUserDetail, AdminSession } from '@/lib/api'
+import type { AdminUserDetail, AdminSession, AdminUserWorkspaceLimit } from '@/lib/api'
 import { useAuthStore } from '@/lib/store'
 import PageHeader from '@/components/ui/PageHeader'
 import SectionHeader from '@/components/ui/SectionHeader'
@@ -41,6 +41,9 @@ export default function MemberDetail() {
     const [sessions, setSessions] = useState<AdminSession[] | null>(null)
     const [sessionsLoading, setSessionsLoading] = useState(false)
     const [revoking, setRevoking] = useState(false)
+    const [wsLimit, setWsLimit] = useState<AdminUserWorkspaceLimit | null>(null)
+    const [limitDraft, setLimitDraft] = useState<number | null>(null)
+    const [limitBusy, setLimitBusy] = useState(false)
     const [membershipSearch, setMembershipSearch] = useState('')
     const [membershipPage, setMembershipPage] = useState(1)
     const [activityPage, setActivityPage] = useState(1)
@@ -56,6 +59,10 @@ export default function MemberDetail() {
             .then(setDetail)
             .catch(err => setError(err instanceof Error ? err.message : 'Could not load member details.'))
             .finally(() => setLoading(false))
+
+        sysAdminApi.userWorkspaceLimit(memberId)
+            .then(value => { setWsLimit(value); setLimitDraft(value.effective_limit) })
+            .catch(() => setWsLimit(null))
     }, [memberId])
 
     useEffect(() => {
@@ -139,6 +146,46 @@ export default function MemberDetail() {
         }
     }
 
+    const clampLimit = (n: number) => {
+        if (!Number.isFinite(n)) return 1
+        const ceiling = wsLimit?.override_ceiling ?? 100
+        return Math.min(Math.max(Math.round(n), 1), ceiling)
+    }
+
+    const adjustLimit = (delta: number) => {
+        setLimitDraft(prev => clampLimit((prev ?? wsLimit?.effective_limit ?? 1) + delta))
+    }
+
+    const handleLimitSave = async () => {
+        if (!memberId || !wsLimit || limitDraft == null) return
+        setLimitBusy(true)
+        try {
+            const updated = await sysAdminApi.updateUserWorkspaceLimit(memberId, limitDraft)
+            setWsLimit(updated)
+            setLimitDraft(updated.effective_limit)
+            toast.success(`Workspace limit set to ${updated.effective_limit}.`)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not update workspace limit.')
+        } finally {
+            setLimitBusy(false)
+        }
+    }
+
+    const handleLimitClear = async () => {
+        if (!memberId) return
+        setLimitBusy(true)
+        try {
+            const updated = await sysAdminApi.updateUserWorkspaceLimit(memberId, null)
+            setWsLimit(updated)
+            setLimitDraft(updated.effective_limit)
+            toast.success('Override cleared — platform default applies.')
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not clear workspace limit.')
+        } finally {
+            setLimitBusy(false)
+        }
+    }
+
     return (
         <div className="space-y-5 sm:space-y-6 animate-slide-up">
             <div className="flex items-center gap-3">
@@ -197,7 +244,7 @@ export default function MemberDetail() {
                             />
                             <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
                                 <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-border bg-white shadow-sm">
-                                    <img src="/rooiam-app-white.svg" alt={detail.user.display_name || detail.user.email} className="h-full w-full object-cover scale-[1.06]" />
+                                    <img src={resolveApiAssetUrl(detail.user.avatar_url) || '/rooiam-app-white.svg'} alt={detail.user.display_name || detail.user.email} className="h-full w-full object-cover scale-[1.06]" onError={e => { (e.currentTarget as HTMLImageElement).src = '/rooiam-app-white.svg' }} />
                                 </div>
                                 <div className="min-w-0 flex-1 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -261,6 +308,81 @@ export default function MemberDetail() {
                             </div>
                         </section>
                     </div>
+
+                    {wsLimit ? (
+                        <section className="glass-card rounded-4xl p-5 sm:p-6">
+                            <SectionHeader
+                                title="Workspace Limit"
+                                subtitle="How many workspaces this member can create."
+                                icon={Building2}
+                            />
+                            <div className="mt-5 space-y-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* stepper: − [ n ] + */}
+                                    <div className="inline-flex items-center overflow-hidden rounded-2xl border-2 border-border bg-card">
+                                        <button
+                                            type="button"
+                                            onClick={() => adjustLimit(-1)}
+                                            disabled={limitBusy || (limitDraft ?? 1) <= 1}
+                                            aria-label="Decrease limit"
+                                            className="flex h-11 w-11 items-center justify-center text-xl font-black text-muted-foreground transition-colors hover:bg-muted/40 disabled:opacity-40"
+                                        >
+                                            −
+                                        </button>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={wsLimit.override_ceiling}
+                                            value={limitDraft ?? ''}
+                                            onChange={e => {
+                                                const raw = e.target.value
+                                                if (raw === '') { setLimitDraft(null); return }
+                                                const n = Number.parseInt(raw, 10)
+                                                if (Number.isFinite(n)) setLimitDraft(clampLimit(n))
+                                            }}
+                                            className="w-16 border-x-2 border-border bg-transparent py-2.5 text-center text-base font-black outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => adjustLimit(1)}
+                                            disabled={limitBusy || (limitDraft ?? 0) >= wsLimit.override_ceiling}
+                                            aria-label="Increase limit"
+                                            className="flex h-11 w-11 items-center justify-center text-xl font-black text-muted-foreground transition-colors hover:bg-muted/40 disabled:opacity-40"
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                    <span className="text-xs font-bold text-muted-foreground">
+                                        in use <span className="text-foreground">{wsLimit.current_workspaces} / {wsLimit.effective_limit}</span>
+                                    </span>
+                                    <Pill tone={wsLimit.override_limit != null ? 'purple' : 'gray'}>
+                                        {wsLimit.override_limit != null ? 'override' : 'platform default'}
+                                    </Pill>
+                                    {limitDraft != null && limitDraft !== wsLimit.effective_limit ? (
+                                        <button
+                                            type="button"
+                                            onClick={handleLimitSave}
+                                            disabled={limitBusy}
+                                            className="ml-auto inline-flex items-center gap-1.5 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-xs font-bold text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-50"
+                                        >
+                                            {limitBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                                            Save
+                                        </button>
+                                    ) : null}
+                                </div>
+                                {wsLimit.override_limit != null ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleLimitClear}
+                                        disabled={limitBusy}
+                                        className="text-xs font-bold text-rose-600 transition-colors hover:text-rose-700 disabled:opacity-50"
+                                    >
+                                        Reset to platform default ({wsLimit.platform_limit})
+                                    </button>
+                                ) : null}
+                            </div>
+                        </section>
+                    ) : null}
 
                     <section className="glass-card rounded-4xl p-5 sm:p-6">
                         <SectionHeader

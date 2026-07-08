@@ -5,6 +5,7 @@ import PortalCodeBlockField from '../../components/portal/PortalCodeBlockField'
 import PortalContentCard from '../../components/portal/PortalContentCard'
 import PortalDangerActionButton from '../../components/portal/PortalDangerActionButton'
 import PortalDangerZoneCard from '../../components/portal/PortalDangerZoneCard'
+import PortalHelpTooltip from '../../components/portal/PortalHelpTooltip'
 import PortalInlineMessage from '../../components/portal/PortalInlineMessage'
 import PortalPageHeader from '../../components/portal/PortalPageHeader'
 import PortalPill from '../../components/portal/PortalPill'
@@ -248,7 +249,7 @@ export default function PortalWorkspaceAppOverview({
             {canManageApps ? (
                 <PortalContentCard
                     title="Edit App"
-                    subtitle="Update the app label, exact callback URLs, and the website origins allowed to embed the hosted login widget."
+                    subtitle="Update the label, callback URLs, and sites allowed to embed the login widget."
                     icon={Save}
                 >
                     <form className="space-y-4" onSubmit={handleSave}>
@@ -264,14 +265,13 @@ export default function PortalWorkspaceAppOverview({
                                     : `${normalizedAllowedEmbedOrigins.length} allowed embed origins for this app.`}
                             </PortalInlineMessage>
                         </div>
-                        <PortalInlineMessage tone={suggestedEmbedOrigins.length > 1 ? 'warning' : 'info'}>
-                            {suggestedEmbedOrigins.length > 1
-                                ? 'This app currently spans multiple sites. Rooiam will route each hosted-widget login to the callback whose origin matches the current site. If these are separate products or environments, prefer separate app registrations to reduce confusion and misconfiguration risk.'
-                                : 'Rooiam treats redirect URIs and allowed embed origins as separate controls. The widget only loads from listed origins, and the final app callback must use the same origin as the embedding site.'}
-                        </PortalInlineMessage>
-                        {requiresMultiOriginConfirmation ? (
+                        <div className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                            How hosted-widget embedding works
+                            <PortalHelpTooltip text="Redirect URIs are where users land after login. Allowed embed origins are the sites permitted to show the login widget. The widget only loads on listed origins, and the callback must use the same origin as the site. Keep host pages free of XSS, use a strict Content Security Policy, and prefer one app per site or environment." />
+                        </div>
+                        {suggestedEmbedOrigins.length > 1 ? (
                             <PortalInlineMessage tone="warning">
-                                This app spans multiple site origins. Confirm that this shared app setup is intentional before saving changes.
+                                This app spans multiple sites — Rooiam routes each login to the callback matching the current site. Prefer separate apps for separate products or environments.
                             </PortalInlineMessage>
                         ) : null}
                         {invalidRedirectUris.length > 0 ? (
@@ -294,12 +294,6 @@ export default function PortalWorkspaceAppOverview({
                                 Some callback origins are not in the allowed embed-origin list yet. The hosted widget will stay blocked for those sites until you add them explicitly.
                             </PortalInlineMessage>
                         ) : null}
-                        <PortalInlineMessage tone="info">
-                            Hosted-widget checklist: keep the host page free of XSS, use a strict Content Security Policy, prefer one app per site or environment, and use <span className="font-black">https://</span> outside localhost. Rooiam validates widget origin and app callback selection, but it cannot protect a host page that is already compromised.
-                        </PortalInlineMessage>
-                        <PortalInlineMessage tone="info">
-                            Production-ready app checklist: every real embedding site should have both an allowed embed origin and a redirect URI on the same origin. Prefer one app per real site or environment when possible.
-                        </PortalInlineMessage>
                         <div>
                             <label className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
                                 App Name
@@ -313,23 +307,26 @@ export default function PortalWorkspaceAppOverview({
                         </div>
                         <div className="grid gap-4 lg:grid-cols-2">
                             <div>
-                                <label className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
-                                    Redirect URIs
-                                </label>
+                                <div className="mb-2 flex items-center">
+                                    <label className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
+                                        Redirect URIs
+                                    </label>
+                                    <PortalHelpTooltip text="Exact callback URLs, one per line — where users land after login. Rooiam picks the callback whose origin matches the site the user signed in from. Use https:// everywhere except localhost." />
+                                </div>
                                 <PortalTextareaField
                                     value={draftRedirectUris}
                                     onChange={setDraftRedirectUris}
                                     rows={5}
                                     placeholder={'https://app.example.com/callback\nhttp://localhost:5180/callback'}
                                 />
-                                <p className="mt-2 text-xs font-semibold text-muted-foreground">
-                                    Add one exact callback URL per line. Rooiam uses these after login finishes and matches the current embedding site to the callback with the same origin. Use <span className="font-black">https://</span> for normal sites. Plain <span className="font-black">http://</span> should only be used for localhost or loopback development.
-                                </p>
                             </div>
                             <div>
-                                <label className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
-                                    Allowed Embed Origins
-                                </label>
+                                <div className="mb-2 flex items-center">
+                                    <label className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
+                                        Allowed Embed Origins
+                                    </label>
+                                    <PortalHelpTooltip text="Site origins (like https://app.example.com — not full paths) allowed to show the login widget. For a multi-site app, list each site; the widget only loads on these origins. Use https:// except on localhost." />
+                                </div>
                                 <PortalTextareaField
                                     value={draftAllowedEmbedOrigins}
                                     onChange={setDraftAllowedEmbedOrigins}
@@ -354,9 +351,6 @@ export default function PortalWorkspaceAppOverview({
                                         </button>
                                     ) : null}
                                 </div>
-                                <p className="mt-2 text-xs font-semibold text-muted-foreground">
-                                    Add one site origin per line. Use origins like <span className="font-black">https://app.example.com</span>, not callback paths. If this app supports multiple sites, list each site origin here and Rooiam will only load the widget when the current site and callback origin match. Plain <span className="font-black">http://</span> should only be used for localhost or loopback development.
-                                </p>
                             </div>
                         </div>
                         {requiresMultiOriginConfirmation ? (
@@ -367,8 +361,9 @@ export default function PortalWorkspaceAppOverview({
                                     onChange={event => setMultiOriginConfirmed(event.target.checked)}
                                     className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                                 />
-                                <span>
-                                    I confirm this app is intentionally shared across multiple origins, and I want Rooiam to route each hosted-widget sign-in by matching the current site origin to the registered callback origin.
+                                <span className="flex items-center">
+                                    I confirm this app is intentionally shared across multiple sites.
+                                    <PortalHelpTooltip text="Rooiam will route each hosted-widget sign-in by matching the current site origin to the registered callback with the same origin." />
                                 </span>
                             </label>
                         ) : null}

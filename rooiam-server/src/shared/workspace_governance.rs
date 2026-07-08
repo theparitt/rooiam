@@ -12,7 +12,7 @@ pub const HARD_CAP_REDIRECT_URIS_PER_APP: i32 = 25;
 pub const HARD_CAP_ALLOWED_EMBED_ORIGINS_PER_APP: i32 = 25;
 
 // Fallback defaults applied when the operator has not configured a limit.
-pub const DEFAULT_MAX_WORKSPACES_PER_USER: i32 = 3;
+pub const DEFAULT_MAX_WORKSPACES_PER_USER: i32 = 5;
 pub const DEFAULT_MAX_APPS_PER_WORKSPACE: i32 = 5;
 pub const DEFAULT_MAX_REDIRECT_URIS_PER_APP: i32 = 5;
 pub const DEFAULT_MAX_ALLOWED_EMBED_ORIGINS_PER_APP: i32 = 5;
@@ -52,6 +52,57 @@ pub struct TenantWorkspaceAppRegistrationGovernance {
 pub struct EffectiveWorkspaceAppRegistrationGovernance {
     pub max_redirect_uris_per_app: i32,
     pub max_allowed_embed_origins_per_app: i32,
+}
+
+// Ceiling for per-user workspace limit overrides set by platform staff from
+// the admin console. A per-user override is a deliberate, targeted action for
+// one account, so it may exceed the platform hard cap — but never this.
+pub const PER_USER_MAX_WORKSPACES_CEILING: i32 = 100;
+
+fn user_max_workspaces_key(user_id: Uuid) -> String {
+    format!("user:{}:max_workspaces_per_user", user_id)
+}
+
+/// Per-user workspace limit override (admin-managed). Stored in
+/// `system_settings` under `user:{user_id}:max_workspaces_per_user`,
+/// following the same scoped-key idiom as the `org:{id}:...` settings.
+pub async fn user_max_workspaces_override(
+    db: &PgPool,
+    user_id: Uuid,
+) -> Result<Option<i32>, AppError> {
+    Ok(get_system_i32(db, &user_max_workspaces_key(user_id))
+        .await?
+        .map(|v| v.clamp(1, PER_USER_MAX_WORKSPACES_CEILING)))
+}
+
+/// Set (Some) or clear (None) the per-user workspace limit override.
+pub async fn set_user_max_workspaces_override(
+    db: &PgPool,
+    user_id: Uuid,
+    limit: Option<i32>,
+) -> Result<(), AppError> {
+    if let Some(limit) = limit {
+        if !(1..=PER_USER_MAX_WORKSPACES_CEILING).contains(&limit) {
+            return Err(AppError::Validation(format!(
+                "Per-user workspace limit must be between 1 and {}.",
+                PER_USER_MAX_WORKSPACES_CEILING
+            )));
+        }
+    }
+    set_system_optional_i32(db, &user_max_workspaces_key(user_id), limit).await
+}
+
+/// The workspace limit that actually applies to one user: the admin-set
+/// per-user override if present, otherwise the platform policy.
+pub async fn effective_max_workspaces_for_user(
+    db: &PgPool,
+    governance: &PlatformWorkspaceGovernance,
+    user_id: Uuid,
+) -> Result<i32, AppError> {
+    Ok(match user_max_workspaces_override(db, user_id).await? {
+        Some(limit) => limit,
+        None => governance.effective_max_workspaces(),
+    })
 }
 
 impl PlatformWorkspaceGovernance {

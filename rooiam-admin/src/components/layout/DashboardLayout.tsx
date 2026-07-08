@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/lib/store'
 import { LayoutDashboard, Users, Building2, LogOut, Settings, Database, AppWindow, Menu, X, ShieldCheck, ShieldAlert, UserCircle, KeyRound, Monitor, Link2, Scale, Clock3 } from 'lucide-react'
 import { authApi } from '@/lib/api'
+import { resolveApiAssetUrl } from '@/lib/api-base'
 import { adminRoutes } from '@/lib/routes'
 import DemoBadge from '@/components/DemoBadge'
 
@@ -84,7 +85,7 @@ export default function DashboardLayout()
     ]
 
     const displayName = user?.display_name || 'Admin'
-    const avatarSrc = '/rooiam-app-white.svg'
+    const avatarSrc = resolveApiAssetUrl(user?.avatar_url) || '/rooiam-app-white.svg'
     const showDemoBadge = ['admin@rooiam.demo', 'owner@rooiam.demo'].includes(user?.email?.trim().toLowerCase() || '')
     const accessLabel = user?.is_platform_owner
         ? 'Platform Owner'

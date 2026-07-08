@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, Loader2, Search, Users, Building2 } from 'lucide-react'
 import { sysAdminApi } from '@/lib/api'
+import { resolveApiAssetUrl } from '@/lib/api-base'
 import type { AdminTenantMember, PaginatedResult } from '@/lib/api'
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -184,7 +185,7 @@ export default function TenantMembers()
                                     title={`Open member details for ${member.email || member.display_name || member.user_id}`}
                                 >
                                     <div className="w-10 h-10 rounded-2xl overflow-hidden border border-border bg-white shadow-sm shrink-0 text-sm flex items-center justify-center">
-                                        <img src="/rooiam-app-white.svg" alt={member.display_name || member.email || ''} className="h-full w-full object-cover scale-[1.06]" />
+                                        <img src={resolveApiAssetUrl(member.avatar_url) || '/rooiam-app-white.svg'} alt={member.display_name || member.email || ''} className="h-full w-full object-cover scale-[1.06]" onError={e => { (e.currentTarget as HTMLImageElement).src = '/rooiam-app-white.svg' }} />
                                     </div>
                                     <div className="min-w-0">
                                         <p className="font-bold text-sm flex items-center gap-2 flex-wrap hover:text-primary transition-colors">
