@@ -13,7 +13,8 @@ import PortalPrimarySaveButton from '../../components/portal/PortalPrimarySaveBu
 import PortalSecondaryActionButton from '../../components/portal/PortalSecondaryActionButton'
 import PortalStatTile from '../../components/portal/PortalStatTile'
 import PortalTextareaField from '../../components/portal/PortalTextareaField'
-import { resolveApiAssetUrl } from '../../lib/api-base'
+import PortalWorkspaceAppIntegration from './PortalWorkspaceAppIntegration'
+import { getApiBase, getApiOrigin, resolveApiAssetUrl } from '../../lib/api-base'
 import type { OrgClient, OrganizationActivityItem } from '../../lib/portal-types'
 
 function isLoopbackHostname(hostname: string) {
@@ -53,6 +54,9 @@ type Props = {
     appSaving: boolean
     maxRedirectUrisPerApp: number | null
     maxAllowedEmbedOriginsPerApp: number | null
+    workspaceId: string
+    workspaceSlug: string
+    onOpenWidget: () => void
     onBack: () => void
     onSaveApp: (appId: string, payload: { app_name: string; redirect_uris: string[]; allowed_embed_origins: string[]; confirm_multi_origin?: boolean }) => Promise<void>
     onDeleteApp: (appId: string) => void
@@ -84,12 +88,16 @@ export default function PortalWorkspaceAppOverview({
     appSaving,
     maxRedirectUrisPerApp,
     maxAllowedEmbedOriginsPerApp,
+    workspaceId,
+    workspaceSlug,
+    onOpenWidget,
     onBack,
     onSaveApp,
     onDeleteApp,
     onRotateAppSecret,
     onToggleAppStatus,
 }: Props) {
+    const [view, setView] = useState<'overview' | 'integration'>('overview')
     const appIconSrc = resolveApiAssetUrl(app.client.app_icon_url)
     const [draftName, setDraftName] = useState(app.client.app_name)
     const [draftRedirectUris, setDraftRedirectUris] = useState(app.redirect_uris.join('\n'))
@@ -184,6 +192,32 @@ export default function PortalWorkspaceAppOverview({
                 }
             />
 
+            <div className="inline-flex rounded-full border border-border bg-muted/40 p-1">
+                {([['overview', 'Overview'], ['integration', 'Integration']] as const).map(([id, label]) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => setView(id)}
+                        className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${
+                            view === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {view === 'integration' ? (
+                <PortalWorkspaceAppIntegration
+                    app={app}
+                    workspaceId={workspaceId}
+                    workspaceSlug={workspaceSlug}
+                    apiOrigin={getApiOrigin()}
+                    apiBase={getApiBase()}
+                    onOpenWidget={onOpenWidget}
+                />
+            ) : (
+            <>
             <div className="rounded-4xl border border-border bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
@@ -474,6 +508,8 @@ export default function PortalWorkspaceAppOverview({
                     {appMessage ? <PortalInlineMessage tone="success">{appMessage}</PortalInlineMessage> : null}
                 </PortalDangerZoneCard>
             ) : null}
+            </>
+            )}
         </div>
     )
 }

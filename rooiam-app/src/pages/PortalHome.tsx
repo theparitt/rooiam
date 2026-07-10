@@ -1668,6 +1668,9 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         appSaving={savingAppId === selectedWorkspaceApp.client.id}
                         maxRedirectUrisPerApp={maxRedirectUrisPerApp}
                         maxAllowedEmbedOriginsPerApp={maxAllowedEmbedOriginsPerApp}
+                        workspaceId={currentOrg?.id || ''}
+                        workspaceSlug={currentOrg?.slug || requestedOrgSlug}
+                        onOpenWidget={() => navigate(portalRoutes.workspaceLoginWidget(currentOrg?.slug || requestedOrgSlug))}
                         onBack={() => navigate(portalRoutes.workspaceApps(currentOrg?.slug || requestedOrgSlug))}
                         onSaveApp={saveApp}
                         onDeleteApp={deleteApp}
