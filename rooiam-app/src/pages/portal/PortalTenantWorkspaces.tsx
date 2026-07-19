@@ -71,6 +71,10 @@ export default function PortalTenantWorkspaces({
         })
     }, [portal?.organizations, search])
 
+    const allOrganizations = portal?.organizations ?? []
+    const hasActiveWorkspace = allOrganizations.some(org => org.status === 'active')
+    const showNoActiveWorkspaceNotice = allOrganizations.length > 0 && !hasActiveWorkspace
+
     React.useEffect(() => {
         setPage(1)
     }, [search])
@@ -93,6 +97,12 @@ export default function PortalTenantWorkspaces({
                     />
                 ) : undefined}
             />
+
+            {showNoActiveWorkspaceNotice ? (
+                <PortalHintBox level="warning" className="px-4 py-3">
+                    None of your {WORKSPACE_LABEL_PLURAL_LOWER} are active right now. Resume a suspended {WORKSPACE_LABEL_LOWER} below to keep managing it.
+                </PortalHintBox>
+            ) : null}
 
             {!canCreateWorkspace ? (
                 <PortalReadonlyNotice title="Read-only workspace list">
@@ -184,7 +194,8 @@ export default function PortalTenantWorkspaces({
                             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Status</span>
                         </div>
                         {pagedOrganizations.map(org => {
-                            const active = currentOrg?.id === org.id
+                            const isSuspended = org.status !== 'active'
+                            const active = currentOrg?.id === org.id && !isSuspended
                             const iconSrc = resolveApiAssetUrl(org.icon_url)
                             return (
                                 <div key={org.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_auto] gap-2 sm:gap-4 items-center px-4 sm:px-5 py-3.5 sm:py-4 hover:bg-muted/20 transition-colors border-b">
@@ -223,7 +234,14 @@ export default function PortalTenantWorkspaces({
 
                                     {/* Status / action */}
                                     <div className="flex items-center gap-2 shrink-0">
-                                        {active ? (
+                                        {isSuspended ? (
+                                            <>
+                                                <PortalPill tone="amber" className="gap-1">Suspended</PortalPill>
+                                                <button type="button" onClick={() => onSwitchWorkspace(org.id)} className="cute-badge bg-white shadow-sm text-muted-foreground border cursor-pointer hover:bg-muted/20">
+                                                    Manage
+                                                </button>
+                                            </>
+                                        ) : active ? (
                                             <PortalPill tone="green" className="gap-1">
                                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                                 Active

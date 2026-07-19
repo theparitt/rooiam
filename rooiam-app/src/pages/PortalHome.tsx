@@ -5,7 +5,7 @@ import { apiFetch, getApiBase } from '../lib/api-base'
 import { APP_LABEL_PLURAL, TENANT_LABEL, WORKSPACE_LABEL_PLURAL, WORKSPACE_LOGIN_POLICY_LABEL } from '../lib/domain-labels'
 import { buildTenantLoginPath, buildTenantPortalRedirect } from '../lib/tenant-context'
 import { portalRoutes, portalSectionToPath } from '../lib/routes'
-import { AuthPolicyForm, BrandingForm, DEFAULT_BRAND, DEFAULT_LOGIN_METHOD_ORDER, MeResponse, OrgClient, OrganizationActivityItem, OrganizationInvite, OrganizationMember, OrganizationRole, OrgIpPolicyResponse, PortalResponse, PortalSection, TenantApiKey, TenantIpPolicy } from '../lib/portal-types'
+import { AuthPolicyForm, BrandingForm, DEFAULT_BRAND, DEFAULT_LOGIN_METHOD_ORDER, MeResponse, Organization, OrgClient, OrganizationActivityItem, OrganizationInvite, OrganizationMember, OrganizationRole, OrgIpPolicyResponse, PortalResponse, PortalSection, TenantApiKey, TenantIpPolicy } from '../lib/portal-types'
 import { MY_SECTION_FROM_PATH, TENANT_SECTION_FROM_PATH, WORKSPACE_SECTION_FROM_PATH } from '../lib/portal-sections'
 import { normalizeLoginMethodOrder, normalizeWorkspaceIconContainer } from '../lib/login-style'
 import PortalShell from '../components/portal/PortalShell'
@@ -264,6 +264,36 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
             }
         })
     }
+    const findUsableWorkspace = (excludeOrgId?: string): Organization | null =>
+        (portalState?.organizations ?? []).find(
+            org => org.id !== excludeOrgId && org.status === 'active' && !org.platform_locked,
+        ) ?? null
+    const handleActiveWorkspaceSuspended = async (suspendedOrgId: string) =>
+    {
+        // A suspended workspace must not remain the active/viewed workspace: its login-facing
+        // surfaces (login widget/preview) reject a suspended workspace, so the console would
+        // error while pointed at it. Reflect the new status locally, then move the operator to
+        // another still-usable workspace — or, when none remain, drop it as current and show
+        // the workspace list so the "no active workspace" state is surfaced instead.
+        setPortalState(current => current ? {
+            ...current,
+            current_org: current.current_org && current.current_org.id === suspendedOrgId
+                ? { ...current.current_org, status: 'suspended' }
+                : current.current_org,
+            organizations: current.organizations.map(org =>
+                org.id === suspendedOrgId ? { ...org, status: 'suspended' } : org,
+            ),
+        } : current)
+
+        const nextActive = findUsableWorkspace(suspendedOrgId)
+        if (nextActive) {
+            await switchWorkspace(nextActive.id)
+        } else {
+            setPortalState(current => current ? { ...current, current_org: null } : current)
+            setActiveSection('workspaces')
+            navigate(portalRoutes.tenantWorkspaces())
+        }
+    }
     const navItems = hasWorkspaces
         ? [
             { id: 'overview' as PortalSection, label: 'Overview', icon: LayoutDashboard, group: 'Workspace' },
@@ -376,18 +406,24 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                     throw new Error(portalData?.error?.message || 'Could not load the workspace owner and admin area.')
                 }
 
-                // Auto-select first workspace if none is active
+                // Auto-select the first usable (active) workspace if none is active. A
+                // suspended workspace is skipped so the console never opens onto a workspace it
+                // can't operate.
                 if (!portalData.current_org && Array.isArray(portalData.organizations) && portalData.organizations.length > 0 && !requestedOrgSlug) {
-                    const firstOrg = portalData.organizations[0]
-                    const autoSwitchRes = await apiFetch(`${API}/orgs/switch`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ organization_id: firstOrg.id }),
-                    })
-                    if (autoSwitchRes.ok) {
-                        const refreshedPortalRes = await apiFetch(`${API}/orgs/current/portal`)
-                        if (refreshedPortalRes.ok) {
-                            portalData = await refreshedPortalRes.json().catch(() => portalData)
+                    const firstUsable = (portalData.organizations as Organization[]).find(
+                        org => org.status === 'active' && !org.platform_locked,
+                    )
+                    if (firstUsable) {
+                        const autoSwitchRes = await apiFetch(`${API}/orgs/switch`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ organization_id: firstUsable.id }),
+                        })
+                        if (autoSwitchRes.ok) {
+                            const refreshedPortalRes = await apiFetch(`${API}/orgs/current/portal`)
+                            if (refreshedPortalRes.ok) {
+                                portalData = await refreshedPortalRes.json().catch(() => portalData)
+                            }
                         }
                     }
                 }
@@ -419,6 +455,37 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         }
 
                         portalData = refreshedPortalData
+                    }
+                }
+
+                // If the resolved active workspace is suspended and the operator did not
+                // explicitly open it (e.g. to resume it via its Danger Zone), do not keep it as
+                // the active workspace — it cannot be operated. Move to another usable workspace,
+                // or present the "no active workspace" state.
+                if (
+                    portalData.current_org &&
+                    portalData.current_org.status !== 'active' &&
+                    portalData.current_org.slug !== requestedOrgSlug
+                ) {
+                    const usable = Array.isArray(portalData.organizations)
+                        ? (portalData.organizations as Organization[]).find(
+                            org => org.status === 'active' && !org.platform_locked,
+                        )
+                        : undefined
+                    if (usable) {
+                        const switchRes = await apiFetch(`${API}/orgs/switch`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ organization_id: usable.id }),
+                        })
+                        if (switchRes.ok) {
+                            const refreshedPortalRes = await apiFetch(`${API}/orgs/current/portal`)
+                            if (refreshedPortalRes.ok) {
+                                portalData = await refreshedPortalRes.json().catch(() => portalData)
+                            }
+                        }
+                    } else {
+                        portalData = { ...portalData, current_org: null }
                     }
                 }
 
@@ -769,7 +836,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
             !portalState?.current_org
             || !portalState.permissions?.includes('org:update')
             || clientsLoaded
-            || !['workspace-apps', 'login-widget'].includes(activeSection)
+            || !['workspace-apps', 'workspace-login-widget'].includes(activeSection)
         ) return
         let cancelled = false
         const controller = new AbortController()
@@ -922,7 +989,12 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
 
             const nextOrg = portalState?.organizations.find(org => org.id === organizationId)
             if (nextOrg?.slug) {
-                navigate(portalRoutes.workspaceOverview(nextOrg.slug))
+                // A suspended workspace can't be operated normally — its login-facing surfaces
+                // reject it — so the only useful destination is its Danger Zone (to resume it).
+                const destination = nextOrg.status === 'active'
+                    ? portalRoutes.workspaceOverview(nextOrg.slug)
+                    : portalRoutes.workspaceDangerZone(nextOrg.slug)
+                navigate(destination)
             } else {
                 // Org not in local list yet — reload fully from root
                 window.location.href = portalRoutes.tenantWorkspaces()
@@ -1553,10 +1625,14 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         canTransferOwnership={canTransferOwnership}
                         onWorkspaceStatusUpdated={(status) => {
                             if (!currentOrg) return
-                            updateCurrentWorkspaceInPortalState({
-                                ...currentOrg,
-                                status,
-                            })
+                            if (status === 'suspended') {
+                                void handleActiveWorkspaceSuspended(currentOrg.id)
+                            } else {
+                                updateCurrentWorkspaceInPortalState({
+                                    ...currentOrg,
+                                    status,
+                                })
+                            }
                         }}
                         lastChange={latestDangerZoneChange}
                     />

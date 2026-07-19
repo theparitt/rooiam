@@ -428,7 +428,7 @@ function FlowSteps(props: {
             summary: 'User picks magic link, passkey, or Google / Microsoft. The server sets an HTTP‑only session cookie.',
             details: [
                 { kind: 'send', method: 'POST', label: 'Magic link (example)', code: `${apiBase}/auth/magic-link/start` },
-                { kind: 'send', method: '', label: 'JSON body', code: '{ email, widget_login_context, widget_embed_origin }' },
+                { kind: 'send', method: '', label: 'JSON body', code: '{\n  email: "alice@example.com",\n  widget_login_context: "<context_token>",\n  widget_embed_origin: "https://your-app.com"\n}' },
                 { kind: 'recv', status: '200', label: 'Email sent', code: 'User clicks link → GET /v1/auth/magic-link/verify?token=... → 302 + Set-Cookie: rooiam_session=...' },
                 { kind: 'sdk', label: 'Not your code', code: 'rooiam.startLogin(...) — called by the widget internally' },
                 { kind: 'note', tone: 'amber', label: 'Also supported', code: 'Passkeys → /webauthn/login + OAuth → /v1/oauth/login?provider=google' },
@@ -459,7 +459,7 @@ function FlowSteps(props: {
             details: [
                 { kind: 'send', method: 'POST', label: 'Token endpoint', code: tokenEndpoint },
                 { kind: 'send', method: '', label: 'Form body', code: `grant_type=authorization_code&code=<code>&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&code_verifier=<verifier>${isConfidential ? '&client_secret=<secret>' : ''}` },
-                { kind: 'recv', status: '200', label: 'Token response', code: '{ access_token: "eyJ...", token_type: "Bearer", expires_in: 3600, refresh_token: "rt_...", id_token: "eyJ..." }' },
+                { kind: 'recv', status: '200', label: 'Token response', code: '{\n  access_token: "eyJhbGci...",\n  token_type: "Bearer",\n  expires_in: 3600,\n  refresh_token: "rt_abc123...",\n  id_token: "eyJhbGci..."\n}' },
                 { kind: 'sdk', label: 'Exchange function', code: 'rooiam.oidc.exchangeCode({ code, redirectUri, clientId, codeVerifier })\n→ { access_token, token_type, expires_in, refresh_token?, id_token? }' },
                 { kind: 'note', tone: 'sky', label: 'Refresh rotation', code: 'Each refresh issues a new pair & revokes the old one. Reusing a revoked token revokes the whole family.' },
             ],
@@ -469,9 +469,9 @@ function FlowSteps(props: {
             summary: 'Read user claims from the token. Send it to your backend for verification, then mint your own session keyed on sub.',
             details: [
                 { kind: 'sdk', label: 'Browser: userinfo', code: 'rooiam.oidc.userinfo(accessToken) → { sub, email, email_verified, name, picture }' },
-                { kind: 'recv', status: '200', label: 'Userinfo response', code: '{ sub: "usr_abc123", email: "alice@example.com", email_verified: true, name: "Alice" }' },
+                { kind: 'recv', status: '200', label: 'Userinfo response', code: '{\n  sub: "usr_abc123",\n  email: "alice@example.com",\n  email_verified: true,\n  name: "Alice",\n  picture: "https://avatar.example.com/alice.png"\n}' },
                 { kind: 'sdk', label: 'Backend: introspect', code: `rooiam.oidc.introspect({ token, clientId })\n→ { active: true, sub, scope, exp, iss, ... }` },
-                { kind: 'recv', label: 'Introspect response', code: '{ active: true, sub: "usr_abc123", scope: "openid profile email", exp: 1718400000 }' },
+                { kind: 'recv', label: 'Introspect response', code: '{\n  active: true,\n  sub: "usr_abc123",\n  scope: "openid profile email",\n  exp: 1718400000,\n  iss: "https://auth.example.com",\n  aud: "<client_id>"\n}' },
                 { kind: 'note', tone: 'emerald', label: 'Done', code: 'Use sub as the stable user ID. Create your own session. RooIAM owns identity — your app owns everything else.' },
             ],
         },
