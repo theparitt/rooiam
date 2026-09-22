@@ -2196,3 +2196,34 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
   </script>
 </body>
 </html>"#;
+
+#[cfg(test)]
+mod widget_sdk_contract_tests {
+    use super::*;
+
+    #[test]
+    fn sdk_generated_widget_queries_match_strict_server_contract() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../rooiam-sdk/spec/widget-contract.json"
+        ))
+        .unwrap();
+        for fixture in fixtures.as_array().unwrap() {
+            let query = fixture["query"].as_str().unwrap();
+            let parsed = web::Query::<HostedLoginWidgetQuery>::from_query(query).unwrap();
+            assert_eq!(
+                parsed.client_id.as_deref(),
+                fixture["options"]["clientId"].as_str()
+            );
+            assert_eq!(
+                parsed.workspace_id.as_deref(),
+                fixture["options"]["workspaceId"].as_str()
+            );
+            for obsolete in ["app", "return_to", "redirect_uri"] {
+                assert!(web::Query::<HostedLoginWidgetQuery>::from_query(&format!(
+                    "{query}&{obsolete}=untrusted"
+                ))
+                .is_err());
+            }
+        }
+    }
+}

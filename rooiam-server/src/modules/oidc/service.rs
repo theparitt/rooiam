@@ -68,7 +68,7 @@ pub struct OIDCService {
     config: Arc<AppConfig>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -499,6 +499,18 @@ impl OIDCService {
             ))
         })?;
 
+        // Serialize the whole family, including reuse of an ancestor while a descendant
+        // is rotating. Acquire this before row locks and re-read after waiting so a
+        // committed replacement is visible to the reuse-revocation UPDATE.
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended(family_id::text, 0)) FROM oauth_refresh_tokens WHERE token_hash = $1 AND oauth_client_id = $2",
+        )
+        .bind(&token_hash)
+        .bind(client_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to lock refresh token family: {}", e)))?;
+
         #[derive(sqlx::FromRow)]
         struct RefreshTokenRecord {
             id: Uuid,
@@ -515,6 +527,7 @@ impl OIDCService {
             SELECT id, family_id, oauth_client_id, user_id, session_id, scopes, expires_at, revoked_at
             FROM oauth_refresh_tokens
             WHERE token_hash = $1
+            FOR UPDATE
             "#
         )
         .bind(&token_hash)
@@ -522,6 +535,12 @@ impl OIDCService {
         .await
         .map_err(|e| AppError::Internal(format!("Failed to load refresh token: {}", e)))?
         .ok_or_else(|| AppError::Validation("Invalid refresh token".into()))?;
+
+        if record.oauth_client_id != client_id {
+            return Err(AppError::Validation(
+                "Refresh token issued to another client".into(),
+            ));
+        }
 
         // Reuse detection: if already revoked, revoke the entire family (all tokens from the same
         // authorization grant) to contain the damage from a stolen token.
@@ -541,12 +560,6 @@ impl OIDCService {
             })?;
             return Err(AppError::Validation(
                 "Refresh token already used — all tokens in this session have been revoked".into(),
-            ));
-        }
-
-        if record.oauth_client_id != client_id {
-            return Err(AppError::Validation(
-                "Refresh token issued to another client".into(),
             ));
         }
 

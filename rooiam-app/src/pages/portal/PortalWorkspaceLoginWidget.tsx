@@ -1,3 +1,4 @@
+import { buildHostedLoginUrl } from '@rooiam/sdk-browser'
 import React from 'react'
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Code2, Eye, Monitor, Sparkles } from 'lucide-react'
 import PortalPageHeader from '../../components/portal/PortalPageHeader'
@@ -31,20 +32,6 @@ type Props = {
     saveMessage: string
     onSaveBranding: (e: React.FormEvent) => void | Promise<void>
     demoMode?: boolean
-}
-
-function buildHostedLoginPreviewUrl(apiOrigin: string, workspaceId: string, clientId?: string | null): string {
-    // Keep this builder intentionally narrow. The server-side /login-widget
-    // preview contract only accepts preview, workspace_id, workspace, org,
-    // and client_id. Requests that append extra styling or auth-policy params
-    // are rejected by the server with HTTP 400.
-    const previewUrlObject = new URL(`${apiOrigin}/login-widget`)
-    previewUrlObject.searchParams.set('preview', '1')
-    previewUrlObject.searchParams.set('workspace_id', workspaceId)
-    if (clientId?.trim()) {
-        previewUrlObject.searchParams.set('client_id', clientId.trim())
-    }
-    return previewUrlObject.toString()
 }
 
 export default function PortalWorkspaceLoginWidget({
@@ -107,13 +94,16 @@ export default function PortalWorkspaceLoginWidget({
     )
     const widgetApp = React.useMemo(() => {
         if (selectedApp) return selectedApp
+        if (requestedClientId?.trim()) {
+            return availableApps.find(entry => entry.client.client_id === requestedClientId.trim()) || null
+        }
         const normalizedRequestedName = requestedAppName.trim().toLowerCase()
         const byName = normalizedRequestedName
             ? availableApps.find(entry => entry.client.app_name.trim().toLowerCase() === normalizedRequestedName) || null
             : null
         if (byName) return byName
         return availableApps.length === 1 ? availableApps[0] : null
-    }, [availableApps, requestedAppName, selectedApp])
+    }, [availableApps, requestedAppName, requestedClientId, selectedApp])
     // In preview mode the server renders branding from the DB, so branding
     // edits do not change the iframe URL. The local form state still drives
     // page UI such as labels, ordering controls, and preview-sync state.
@@ -122,17 +112,12 @@ export default function PortalWorkspaceLoginWidget({
     const effectiveCardBorderColor = brandingForm.card_border_color || brandColor || '#8d72d9'
 
     const apiOrigin = getApiOrigin()
-    const loginUrlObject = new URL(`${apiOrigin}/login-widget`)
-    loginUrlObject.searchParams.set('workspace_id', currentOrg.id)
-    loginUrlObject.searchParams.set('app', companyName)
-    if (requestedClientId?.trim()) {
-        loginUrlObject.searchParams.set('client_id', requestedClientId.trim())
-    }
-    const loginUrl = loginUrlObject.toString()
-    const previewUrl = buildHostedLoginPreviewUrl(apiOrigin, currentOrg.id, requestedClientId)
+    const clientId = widgetApp?.client.client_id || requestedClientId?.trim() || ''
+    const loginUrl = clientId ? buildHostedLoginUrl({ apiOrigin, workspaceId: currentOrg.id, clientId }) : ''
+    const previewUrl = buildHostedLoginUrl({ apiOrigin, workspaceId: currentOrg.id, clientId, preview: true })
     React.useEffect(() => {
         setPreviewSrc(previewUrl)
-    }, [currentOrg.slug])
+    }, [previewUrl])
 
     // Probe the preview URL for its real HTTP status. The iframe can't report it
     // (cross-origin), so a plain GET tells us whether the server accepted the
@@ -204,7 +189,7 @@ export default function PortalWorkspaceLoginWidget({
 <script>
   (function() {
     var iframe = document.createElement('iframe');
-    iframe.src = '${loginUrl}';
+    iframe.src = ${JSON.stringify(loginUrl)};
     iframe.width = '420';
     iframe.height = '520';
     iframe.allow = 'publickey-credentials-get *';
@@ -703,12 +688,13 @@ export default function PortalWorkspaceLoginWidget({
                             )}
                             {mode === 'json' ? (
                                 <p className="text-xs font-medium text-muted-foreground">
-                                    Copy this into <code className="font-black">config.local.json</code> for the examples. Runtime widget embeds use app identity only. The preview iframe is the only place that carries a preview-only redirect.
+                                    Copy this into <code className="font-black">config.local.json</code> for the examples. Runtime widget embeds use app identity only. Preview mode does not change the registered callback.
                                 </p>
                             ) : null}
                             <button
                                 type="button"
                                 onClick={handleCopy}
+                                disabled={!clientId}
                                 className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-xs font-bold hover:bg-muted/30"
                             >
                                 <Code2 className="w-3.5 h-3.5" />

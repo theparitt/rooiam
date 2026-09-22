@@ -15,7 +15,8 @@
         "deploy": "npm run build:prod-online && wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
         "deploy:demo": "npm run build:demo-online && wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
         "pages:dev": "wrangler pages dev dist",
-        "pages:deploy": "wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true"
+        "pages:deploy": "wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
+        "test:integration": "node scripts/test-integration-snippets.mjs"
     },
     "dependencies": {
         "@rooiam/sdk-browser": "file:../rooiam-sdk/packages/js-browser",

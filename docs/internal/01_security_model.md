@@ -87,14 +87,21 @@ Source: `modules/oidc/service.rs` — `oidc_signing_material`.
 
 ## OIDC Authorize: Direct Session Cookie Verification
 
-The `GET /v1/oidc/authorize` endpoint intentionally does **not** use the `RequireAuth` middleware. Because unauthenticated users must receive a redirect to `/login` rather than a 401, the handler replicates session verification inline:
+The `GET /v1/oidc/authorize` endpoint verifies the session inline rather than
+using `RequireAuth`, so protocol errors can be returned to a validated client:
 
-1. Read the `rooiam_session` HttpOnly cookie.
-2. Call `SessionService::verify_opaque_session` directly.
-3. On failure or missing cookie: redirect to `{frontend_url}/login?return_to={current_url}`.
-4. On success: proceed to validate the OIDC client and issue an authorization code.
+1. Validate the active client, exact registered callback, response type and S256 PKCE.
+2. Read and verify the `rooiam_sid` HttpOnly cookie.
+3. If missing, expired or invalid, redirect only to that callback with
+   `error=login_required` and the original opaque `state`. Never redirect to a
+   widget with a caller-supplied resume URL. Invalid clients/callbacks get a local
+   error response without a `Location` header.
+4. With a valid session, issue a code bound to the client, callback and PKCE.
 
-This design means the OIDC scope is not wrapped by `RequireAuth`; the security guarantee is equivalent but the failure mode is a redirect instead of a 401.
+The downstream app signs the user in with the identity-only hosted widget,
+then its callback starts authorization. On `login_required`, it validates state
+and offers a fresh widget sign-in; it must not loop through authorize automatically.
+Infrastructure errors are not disguised as missing sessions.
 
 ---
 

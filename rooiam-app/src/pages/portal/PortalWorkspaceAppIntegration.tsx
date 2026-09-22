@@ -1,3 +1,4 @@
+import { buildHostedLoginUrl } from '@rooiam/sdk-browser'
 import React from 'react'
 import { KeyRound, Server, MonitorSmartphone, ListChecks, ArrowRight, ExternalLink, FlaskConical, Play, Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react'
 import PortalCodeBlockField from '../../components/portal/PortalCodeBlockField'
@@ -40,13 +41,13 @@ export default function PortalWorkspaceAppIntegration({
     const tokenEndpoint = `${apiBase}/oidc/token`
     const userinfoEndpoint = `${apiBase}/oidc/userinfo`
     const introspectEndpoint = `${apiBase}/oidc/introspect`
-    const widgetUrl = `${apiOrigin}/login-widget?workspace_id=${workspaceId}&workspace=${encodeURIComponent(workspaceSlug)}&client_id=${clientId}`
+    const widgetUrl = buildHostedLoginUrl({ apiOrigin, workspaceId, clientId })
     // Preview variant — the ONLY widget URL this portal is allowed to load.
     // The real widgetUrl enforces the embed-origin allowlist against the
     // *requesting* site, so calling it from here (app.rooiam.com) always 403s
     // even when the config is correct. preview=1 uses the platform's preview
     // origins instead, so it validates that the workspace + branding resolve.
-    const widgetPreviewUrl = `${apiOrigin}/login-widget?preview=1&workspace_id=${workspaceId}&client_id=${clientId}`
+    const widgetPreviewUrl = buildHostedLoginUrl({ apiOrigin, workspaceId, clientId, preview: true })
 
     const notReady = app.redirect_uris.length === 0 || app.allowed_embed_origins.length === 0
     const paused = app.client.status !== 'active'

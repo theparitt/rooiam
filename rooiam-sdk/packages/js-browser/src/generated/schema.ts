@@ -1271,6 +1271,14 @@ export interface components {
             workspace_name: string;
             workspace_slug: string;
         };
+        TokenResponse: {
+            access_token: string;
+            /** Format: int64 */
+            expires_in: number;
+            id_token?: string | null;
+            refresh_token?: string | null;
+            token_type: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -2092,7 +2100,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Redirect: to login if no session, else back to the client's redirect_uri with an authorization code (or an error) */
+            /** @description Redirect to the validated client callback with an authorization code, or login_required and state when the IAM session is missing or invalid */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -2214,7 +2222,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
             };
             /** @description OAuth error (invalid_grant, invalid_request, etc.) */
             400: {

@@ -177,6 +177,16 @@ fn map_authorize_error(err: &AppError) -> (&'static str, String) {
     }
 }
 
+fn login_required_redirect(query: &AuthorizeRequest) -> Result<HttpResponse, AppError> {
+    // Call only after validating this exact redirect URI for the active client.
+    oauth_authorize_error_redirect(
+        &query.redirect_uri,
+        query.state.as_deref(),
+        "login_required",
+        "Sign in with the hosted login widget, then restart authorization from your app callback.",
+    )
+}
+
 fn oauth_authorize_error_redirect(
     redirect_uri: &str,
     state: Option<&str>,
@@ -253,7 +263,7 @@ pub async fn jwks_with_state(state: web::Data<AppState>) -> Result<HttpResponse,
     tag = "oidc",
     params(AuthorizeRequest),
     responses(
-        (status = 302, description = "Redirect: to login if no session, else back to the client's redirect_uri with an authorization code (or an error)"),
+        (status = 302, description = "Redirect to the validated client callback with an authorization code, or login_required and state when the IAM session is missing or invalid"),
         (status = 400, description = "Invalid authorize request (bad client_id/redirect_uri/response_type)"),
     ),
 )]
@@ -328,98 +338,6 @@ pub async fn authorize(
     }
 
     let runtime_config = load_runtime_app_config(state.get_ref()).await?;
-    let hosted_login_url = format!(
-        "{}/login-widget",
-        runtime_config.server.issuer_url.trim_end_matches('/')
-    );
-    let path_and_query = req
-        .uri()
-        .path_and_query()
-        .map(|value| value.as_str())
-        .unwrap_or("");
-    let oidc_authorize_resume_url = format!(
-        "{}{}",
-        runtime_config.server.issuer_url.trim_end_matches('/'),
-        path_and_query
-    );
-
-    // Look up the org slug for this client so the login page can load the correct
-    // workspace auth policy (e.g. passkey disabled for mintmallow). Best-effort:
-    // if the lookup fails we still redirect to login without an org param.
-    let client_org_slug: Option<String> = sqlx::query_scalar(
-        "SELECT o.slug FROM oauth_clients c JOIN organizations o ON o.id = c.org_id WHERE c.client_id = $1"
-    )
-    .bind(&query.client_id)
-    .fetch_optional(&state.db)
-    .await
-    .unwrap_or(None);
-
-    // Build a login redirect URL with the org slug appended when available.
-    // Build the login widget redirect URL.
-    //
-    // REQUIRED params — must always be present:
-    //   - return_to  : the OIDC authorize URL to resume after login completes
-    //   - client_id  : the OAuth client ID — the widget uses this to load app config,
-    //                  allowed embed origins, and widget_login_context. Without it,
-    //                  the widget cannot start any OAuth or magic link flow.
-    //
-    // Optional params:
-    //   - org        : workspace slug — pre-loads the correct workspace branding and
-    //                  auth policy (e.g. passkey enabled/disabled for that workspace)
-    let build_login_redirect = |base: &str| -> Result<String, AppError> {
-        let mut url = Url::parse(base)
-            .map_err(|_| AppError::Internal("Invalid hosted login URL configured".into()))?;
-        url.query_pairs_mut()
-            .append_pair("return_to", &oidc_authorize_resume_url);
-        url.query_pairs_mut()
-            .append_pair("client_id", &query.client_id);
-        if let Some(slug) = &client_org_slug {
-            url.query_pairs_mut().append_pair("org", slug);
-        }
-        Ok(url.to_string())
-    };
-
-    // 1. Validate the session cookie directly — RequireAuth middleware is not applied on the OIDC
-    //    scope because unauthenticated users must be redirected to login, not receive a 401.
-    //    We replicate the session-verification logic here so signed-in users get an auth code
-    //    without a new login prompt.
-    //
-    //    Important contract:
-    //    - `/oidc/authorize` is the app's OIDC authorization flow.
-    //    - `/login-widget` is only the hosted sign-in surface used when no Rooiam session exists.
-    //    - the hosted widget does not become the app callback; after login, Rooiam resumes this
-    //      authorize request and still redirects to the app's registered `redirect_uri`.
-    let session = {
-        let cookie_value = req
-            .cookie(ROOIAM_SESSION_COOKIE)
-            .map(|c| c.value().to_string());
-        match cookie_value {
-            Some(token) => {
-                let session_repo = SessionRepository::new(state.db.clone());
-                let session_service = SessionService::new(session_repo, state.db.clone());
-                match session_service.verify_opaque_session(&token).await {
-                    Ok(s) => s,
-                    Err(_) => {
-                        // Session cookie present but invalid/expired.
-                        // Redirect to the hosted sign-in surface so the user can authenticate, then resume the
-                        // OIDC authorize request on the trusted issuer. This is not an app callback redirect.
-                        return Ok(HttpResponse::Found()
-                            .insert_header(("Location", build_login_redirect(&hosted_login_url)?))
-                            .finish());
-                    }
-                }
-            }
-            None => {
-                // No session cookie.
-                // Redirect to the hosted sign-in surface so the user can authenticate, then resume the
-                // OIDC authorize request on the trusted issuer. This is not an app callback redirect.
-                return Ok(HttpResponse::Found()
-                    .insert_header(("Location", build_login_redirect(&hosted_login_url)?))
-                    .finish());
-            }
-        }
-    };
-
     let oidc_service = OIDCService::new(state.db.clone(), std::sync::Arc::new(runtime_config));
     let result: Result<HttpResponse, AppError> = async {
         if query.response_type != "code" {
@@ -435,8 +353,8 @@ pub async fn authorize(
         if !redirect_valid {
             AuditService::new(state.db.clone())
                 .log(AuditEvent {
-                    actor_user_id: Some(session.user_id),
-                    organization_id: session.current_org_id,
+                    actor_user_id: None,
+                    organization_id: client.org_id,
                     action: "auth.app_callback_rejected".into(),
                     target_type: "redirect_uri".into(),
                     target_id: Some(query.redirect_uri.clone()),
@@ -483,6 +401,22 @@ pub async fn authorize(
                 ));
             }
         }
+
+        // The hosted widget owns sign-in; the downstream callback owns the
+        // subsequent authorization request. Never send caller-controlled resume
+        // URLs to the widget. Only return errors after exact client/callback and
+        // PKCE validation above, preserving state for the downstream transaction.
+        let session = if let Some(cookie) = req.cookie(ROOIAM_SESSION_COOKIE) {
+            let repo = SessionRepository::new(state.db.clone());
+            let service = SessionService::new(repo, state.db.clone());
+            match service.verify_opaque_session(cookie.value()).await {
+                Ok(session) => session,
+                Err(AppError::Unauthorized) => return login_required_redirect(&query),
+                Err(error) => return Err(error),
+            }
+        } else {
+            return login_required_redirect(&query);
+        };
 
         let scope_list = query
             .scope
@@ -560,7 +494,7 @@ pub async fn authorize(
     tag = "oidc",
     request_body(content = TokenRequest, content_type = "application/x-www-form-urlencoded"),
     responses(
-        (status = 200, description = "Token response: access_token, id_token, optional refresh_token"),
+        (status = 200, description = "Token response: access_token, id_token, optional refresh_token", body = crate::modules::oidc::service::TokenResponse),
         (status = 400, description = "OAuth error (invalid_grant, invalid_request, etc.)"),
         (status = 401, description = "Client authentication failed"),
     ),
@@ -902,3 +836,7 @@ pub fn well_known_routes(cfg: &mut web::ServiceConfig) {
             .route("/jwks.json", web::get().to(jwks_with_state)),
     );
 }
+
+#[cfg(test)]
+#[path = "authorize_tests.rs"]
+mod authorize_tests;

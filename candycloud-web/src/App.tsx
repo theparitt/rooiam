@@ -879,7 +879,17 @@ function Callback() {
     const run = async () => {
       const oidcError = params.get('error')
       if (oidcError) {
-        setError(params.get('error_description') || oidcError)
+        const auth = readOidcAuth()
+        if (!auth || params.getAll('state').length !== 1 || params.get('state') !== auth.state) {
+          setError('The OIDC error state did not match this sign-in request.')
+          return
+        }
+        if (oidcError === 'login_required') {
+          clearOidcAuthorizeStarted()
+          setError('Your RooIAM session has expired. Return to sign-in and use the login widget again.')
+        } else {
+          setError(params.get('error_description') || oidcError)
+        }
         return
       }
 
@@ -983,10 +993,10 @@ function Callback() {
   return (
     <Shell>
       <div className="center-card">
-        <Loader2 className="spinner" />
-        <h1>Completing app sign-in</h1>
-        <p>Rooiam is exchanging the authorization code for tokens and loading the demo app session.</p>
-        {error ? <p className="error-copy">{error}</p> : null}
+        {!error && <Loader2 className="spinner" />}
+        <h1>{error ? 'Sign-in could not complete' : 'Completing app sign-in'}</h1>
+        {!error && <p>Rooiam is exchanging the authorization code for tokens and loading the demo app session.</p>}
+        {error ? <><p className="error-copy" role="alert">{error}</p><button type="button" onClick={() => navigate('/', { replace: true })}>Return to sign-in</button></> : null}
       </div>
     </Shell>
   )

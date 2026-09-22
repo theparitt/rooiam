@@ -38,6 +38,11 @@ type Ok200<T> = T extends { responses: { 200: { content: { 'application/json': i
   : unknown
 type GetOp<P extends keyof paths> = paths[P] extends { get: infer O } ? O : never
 type GetResp<P extends keyof paths> = Ok200<GetOp<P>>
+type PostOp<P extends keyof paths> = paths[P] extends { post: infer O } ? O : never
+type PostResp<P extends keyof paths> = Ok200<PostOp<P>>
+
+export { buildHostedLoginUrl } from './widget.js'
+export type { HostedLoginOptions } from './widget.js'
 
 /** Query params for the public login-bootstrap / auth-methods endpoints. */
 export interface WorkspaceLookupQuery {
@@ -210,7 +215,7 @@ export class RooiamBrowser {
    */
   readonly login = {
     /** POST /webauthn/login/start — get assertion options + challenge_id for a passkey login. */
-    passkeyStart: (input: StartLoginInput): Promise<GetResp<'/v1/webauthn/login/start'>> =>
+    passkeyStart: (input: StartLoginInput): Promise<PostResp<'/v1/webauthn/login/start'>> =>
       this.request('/webauthn/login/start', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -238,7 +243,7 @@ export class RooiamBrowser {
       }),
 
     /** POST /mfa/login/enroll/start — first-login TOTP enrollment context. */
-    mfaEnrollStart: (challengeId: string): Promise<GetResp<'/v1/mfa/login/enroll/start'>> =>
+    mfaEnrollStart: (challengeId: string): Promise<PostResp<'/v1/mfa/login/enroll/start'>> =>
       this.request('/mfa/login/enroll/start', {
         method: 'POST',
         body: JSON.stringify({ challenge_id: challengeId }),
@@ -367,7 +372,7 @@ export class RooiamBrowser {
       this.request('/webauthn/passkeys'),
 
     /** POST /webauthn/register/start — get WebAuthn creation options + a challenge_id. */
-    registerStart: (): Promise<GetResp<'/v1/webauthn/register/start'>> =>
+    registerStart: (): Promise<PostResp<'/v1/webauthn/register/start'>> =>
       this.request('/webauthn/register/start', { method: 'POST' }),
 
     /**
@@ -400,7 +405,7 @@ export class RooiamBrowser {
     status: (): Promise<GetResp<'/v1/mfa/status'>> => this.request('/mfa/status'),
 
     /** POST /mfa/totp/start — get the TOTP secret + otpauth URI + challenge_id. */
-    totpStart: (): Promise<GetResp<'/v1/mfa/totp/start'>> =>
+    totpStart: (): Promise<PostResp<'/v1/mfa/totp/start'>> =>
       this.request('/mfa/totp/start', { method: 'POST' }),
 
     /** POST /mfa/totp/finish — confirm enrollment with a code; returns backup codes. */
@@ -453,7 +458,7 @@ export class RooiamBrowser {
      * Sends `application/x-www-form-urlencoded` per the OAuth2 spec. No client
      * secret (public client); the `code_verifier` proves possession.
      */
-    exchangeCode: (input: TokenExchangeInput): Promise<GetResp<'/v1/oidc/token'>> => {
+    exchangeCode: (input: TokenExchangeInput): Promise<PostResp<'/v1/oidc/token'>> => {
       const form = new URLSearchParams({
         grant_type: 'authorization_code',
         code: input.code,

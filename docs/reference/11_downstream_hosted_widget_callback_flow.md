@@ -58,9 +58,9 @@ api.rooiam.com              = Rooiam IAM   (Rust server, port 5170/5180)
 
 5. User logs in inside the iframe
    └─ Rooiam sets rooiam_sid on api.rooiam.com domain
-   └─ Widget sends postMessage: { type: 'rooiam:navigate', url: '/v1/oidc/authorize?...' }
+   └─ Widget returns to the app's registered callback (no authorization code yet)
 
-6. Frontend navigates top window to:
+6. App callback resumes its stored PKCE transaction by navigating the top window to:
    api.rooiam.com/v1/oidc/authorize?client_id=...&code_challenge=...
                                     &redirect_uri=candycloud.rooiam.com/callback&...
    └─ Rooiam reads rooiam_sid, validates session
@@ -230,3 +230,55 @@ context from the registered OAuth client and workspace branding instead.
 ### Do not store the access token in the browser
 
 The Rooiam access token should live in your app backend's session store (Redis). The frontend only holds the lightweight `candycloud_session` cookie.
+
+## Missing IAM session during authorization
+
+`/v1/oidc/authorize` does not start widget login or accept a `return_to` model.
+It first validates the active client, exact callback and S256 challenge. With
+no valid IAM session it returns `error=login_required` and the original `state`
+to that validated callback. Unknown clients or unregistered callbacks receive
+a local error and are never redirect targets.
+
+Validate the error state against the stored transaction, show a sign-in-again
+message and return to the app's widget page on user action. Do not automatically
+retry authorization in a loop. CandyCloud implements this recovery behavior;
+neither its web app nor its backend sends the obsolete resume parameter.
+
+### Regression checks
+
+Run pure OIDC tests with `SQLX_OFFLINE=true cargo test --lib modules::oidc` from
+`rooiam-server`. The handler integration test uses disposable PostgreSQL and
+Redis (never the production environment):
+
+```bash
+SQLX_OFFLINE=true \
+DATABASE_URL=postgres://user:password@127.0.0.1:5432/rooiam_test \
+ROOIAM_OIDC_TEST_REDIS_URL=redis://127.0.0.1:6379 \
+cargo test --lib authorize_callback_boundary_and_session_recovery -- --ignored
+```
+
+It exercises missing, malformed, expired and revoked sessions; unregistered
+callbacks; unknown clients; mandatory PKCE; and successful code issuance after
+sign-in. SQLx creates isolated test databases and applies migrations.
+
+The refresh regression test forces two requests to overlap while the original
+row is locked. Exactly one replacement can be issued; detecting reuse revokes
+that replacement as well. Client ownership is checked before family revocation.
+Run it with the disposable `DATABASE_URL` above:
+
+```bash
+SQLX_OFFLINE=true cargo test --lib refresh_rotation_serializes_concurrent_requests -- --ignored
+```
+
+Portal widget URLs use the browser SDK's `buildHostedLoginUrl` helper, passing
+`apiOrigin`, `workspaceId`, and `clientId` (plus `preview: true` for previews).
+It never adds `app`, `return_to`, or a caller-supplied redirect. Shared fixtures
+in `rooiam-sdk/spec/widget-contract.json` are tested by both the SDK and the
+server's strict widget query parser.
+
+After changing SDK types or snippets, build the browser SDK, then run
+`npm run test:integration` in `rooiam-app`. This compiles the actual displayed
+TypeScript login template against the built SDK and checks the generated iframe
+query against the shared server fixtures. The server test
+`sdk_token_response_matches_server_openapi` keeps the SDK token response schema
+aligned with the endpoint; `exchangeCode()` uses the POST response type.

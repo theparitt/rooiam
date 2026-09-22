@@ -157,6 +157,7 @@ use utoipa::{Modify, OpenApi};
             crate::modules::device_login::handlers::UpdateTrustedDevicePushTokenRequest,
             crate::modules::device_login::handlers::TrustedDeviceAttestationSummary,
             crate::modules::device_login::handlers::TrustedDeviceResponse,
+            crate::modules::oidc::service::TokenResponse,
             // OIDC DTOs
             crate::modules::oidc::handlers::TokenRequest,
             // browser security self-service DTOs
@@ -224,6 +225,26 @@ impl Modify for SecurityAddon {
                     ))
                     .build(),
             ),
+        );
+    }
+}
+
+#[cfg(test)]
+mod sdk_contract_tests {
+    use super::*;
+
+    #[test]
+    fn sdk_token_response_matches_server_openapi() {
+        let server = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let sdk: serde_json::Value =
+            serde_json::from_str(include_str!("../../rooiam-sdk/spec/openapi.json")).unwrap();
+        assert_eq!(
+            server["components"]["schemas"]["TokenResponse"],
+            sdk["components"]["schemas"]["TokenResponse"]
+        );
+        assert_eq!(
+            server["paths"]["/v1/oidc/token"]["post"]["responses"]["200"],
+            sdk["paths"]["/v1/oidc/token"]["post"]["responses"]["200"]
         );
     }
 }

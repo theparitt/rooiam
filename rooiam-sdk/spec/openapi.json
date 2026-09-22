@@ -837,7 +837,7 @@
                 ],
                 "responses": {
                     "302": {
-                        "description": "Redirect: to login if no session, else back to the client's redirect_uri with an authorization code (or an error)"
+                        "description": "Redirect to the validated client callback with an authorization code, or login_required and state when the IAM session is missing or invalid"
                     },
                     "400": {
                         "description": "Invalid authorize request (bad client_id/redirect_uri/response_type)"
@@ -967,7 +967,14 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Token response: access_token, id_token, optional refresh_token"
+                        "description": "Token response: access_token, id_token, optional refresh_token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenResponse"
+                                }
+                            }
+                        }
                     },
                     "400": {
                         "description": "OAuth error (invalid_grant, invalid_request, etc.)"
@@ -3638,6 +3645,38 @@
                         "type": "string"
                     },
                     "workspace_slug": {
+                        "type": "string"
+                    }
+                }
+            },
+            "TokenResponse": {
+                "type": "object",
+                "required": [
+                    "access_token",
+                    "token_type",
+                    "expires_in"
+                ],
+                "properties": {
+                    "access_token": {
+                        "type": "string"
+                    },
+                    "expires_in": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "id_token": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "refresh_token": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "token_type": {
                         "type": "string"
                     }
                 }

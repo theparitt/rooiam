@@ -35,7 +35,7 @@ It records the current state of the project following a comprehensive documentat
 
 ### OIDC & Protocol Fixes
 
-- **Redirect Logic Corrected**: Fixed an OIDC logic bug where the `return_to` parameter incorrectly pointed the user to the frontend. It now accurately loops back to the issuer API server.
+- **Historical redirect behavior (superseded)**: This snapshot described a resume-URL flow. The current contract is widget sign-in followed by authorization started by the downstream callback; see `docs/reference/11_downstream_hosted_widget_callback_flow.md`.
 - **Root Routing**: Frontend login paths post-auth were adjusted to safely redirect users to the root path (`/`) instead of bouncing them to `/login`.
 
 ---

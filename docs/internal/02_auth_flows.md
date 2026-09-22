@@ -284,15 +284,14 @@ Downstream app → GET /v1/oidc/authorize
   ?response_type=code&client_id=...&redirect_uri=...&scope=openid email profile
    &state=...&nonce=...&code_challenge=...&code_challenge_method=S256
 
-1. Read rooiam_session cookie
-   → missing or invalid → redirect to {frontend_url}/login?return_to={current_url}
-2. Validate response_type = "code"
-3. OIDCService::get_client(client_id) → must exist
-4. OIDCService::validate_redirect_uri(client_id, redirect_uri) → must be registered
-5. OIDCService::create_authorization_code(...)
+1. Validate response_type = "code", active client, exact registered redirect_uri and S256 PKCE.
+2. Read and verify rooiam_sid.
+   → missing/invalid/expired → validated callback?error=login_required&state={state}
+   → invalid client/callback → local error, no redirect
+3. OIDCService::create_authorization_code(...)
    → 32-byte random code → SHA-256 stored; raw code returned
    → expires in 5 minutes
-6. Redirect to redirect_uri?code={raw_code}&state={state}
+4. Redirect to redirect_uri?code={raw_code}&state={state}
 ```
 
 ```

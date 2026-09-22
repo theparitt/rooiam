@@ -1,0 +1,19 @@
+[
+  {
+    "options": {
+      "apiOrigin": "https://api.example.test",
+      "workspaceId": "a6a402c2-019d-407c-846a-b72d62ddfaec",
+      "clientId": "client+/?&="
+    },
+    "query": "workspace_id=a6a402c2-019d-407c-846a-b72d62ddfaec&client_id=client%2B%2F%3F%26%3D"
+  },
+  {
+    "options": {
+      "apiOrigin": "https://api.example.test",
+      "workspaceId": "workspace",
+      "clientId": "client",
+      "preview": true
+    },
+    "query": "preview=1&workspace_id=workspace&client_id=client"
+  }
+]
