@@ -38,10 +38,11 @@ const request = (path, method = 'GET', body) => fetch(base + path, {
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 })
 
-test('demo MFA accepts the actual frontend challenge/code payload', async () => {
+test('demo MFA accepts current code-only and earlier challenge/code payloads', async () => {
   await saveSession('valid', session())
   const result = await request('/mfa/totp/finish', 'POST', { challenge_id: 'demo-totp-challenge', code: '123456' })
   assert.equal(result.status, 200)
+  assert.equal((await request('/mfa/totp/finish', 'POST', { code: '123456' })).status, 200)
   assert.equal((await loadSession('valid')).demo_totp_enabled, true)
   assert.equal((await request('/mfa/totp/finish', 'POST', { code: 'invalid' })).status, 400)
 })

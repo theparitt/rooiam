@@ -1470,7 +1470,8 @@ function Dashboard() {
     setSelfServiceError('')
     setSelfServiceNotice('')
     const apiBase = getApiBase()
-    const payload = { challenge_id: totpChallengeId, code: totpCode }
+    // CandyCloud simulates MFA; the backend only needs the six-digit code.
+    const payload = { code: totpCode.trim() }
     setMfaFinishApiLog(makeLog('POST', `${apiBase}/mfa/totp/finish`, payload, '…', '', { demo: true }))
     try {
       const result = await demoApi.finishTotpEnrollment(payload)
@@ -1480,7 +1481,7 @@ function Dashboard() {
       setTotpUri('')
       setTotpQrCode('')
       setTotpCode('')
-      setSelfServiceNotice('Authenticator app enabled.')
+      setSelfServiceNotice('Demo authenticator simulation enabled.')
       await loadSelfService()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to verify the authenticator code.'

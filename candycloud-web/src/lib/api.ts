@@ -212,7 +212,7 @@ export const demoApi = {
       method: 'POST',
       body: JSON.stringify({}),
     }),
-  finishTotpEnrollment: (payload: { challenge_id: string; code: string }) =>
+  finishTotpEnrollment: (payload: { code: string }) =>
     apiFetch<{ ok: boolean }>('/mfa/totp/finish', {
       method: 'POST',
       body: JSON.stringify(payload),
