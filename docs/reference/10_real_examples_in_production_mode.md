@@ -98,10 +98,10 @@ Recommended order:
 
 ## 5. Docker Path
 
-If you use Docker:
+If you use Docker, first create the env file from the [configuration guide](./05_environment_configuration.md). This starts the production API and infrastructure; run the UIs and examples separately:
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.prod.yml --env-file .env.docker.local.prod up -d --build
 ```
 
 Then set the real example values:

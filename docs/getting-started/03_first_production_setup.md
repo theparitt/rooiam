@@ -126,15 +126,16 @@ Create:
 
 Best starting point:
 
-- copy [rooiam-server/.env.template](/rooiam-server/.env.template)
-- keep `.env.template` unchanged
+- generate configuration with `SQLX_OFFLINE=true cargo run -- setup` from `rooiam-server`
+- runtime env files are untracked; there is no committed `.env.template`
 - put your real values in `rooiam-server/.env`
 
 Recommended command:
 
 ```bash
-cp rooiam-server/.env.template rooiam-server/.env
-nano rooiam-server/.env
+cd rooiam-server
+SQLX_OFFLINE=true cargo run -- setup
+# Choose your output filename; use --env-file with that name at startup.
 ```
 
 Then edit `rooiam-server/.env` and start with:
@@ -272,7 +273,7 @@ Setup wizard note:
 
 Zero-to-first-start recommendation:
 
-1. copy `.env.template` to `.env`
+1. generate a runtime env file with the CLI setup wizard
 2. fill the required runtime values and public URLs
 3. optionally fill SMTP / Google / Microsoft in `.env`
 4. start the server

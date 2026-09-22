@@ -21,20 +21,14 @@ Recommended public host split:
 
 ## ⚙️ Create the Server Environment
 
-Do this first:
-
-1. copy the template file
-2. create the real runtime env file
-3. fill the required production values before the first server start
-
-Recommended command:
+Runtime env files are untracked. Generate configuration with the built-in wizard, or create `rooiam-server/.env` using the example below:
 
 ```bash
-cd rooiam
-cp rooiam-server/.env.template rooiam-server/.env
+cd rooiam-server
+SQLX_OFFLINE=true cargo run -- setup
 ```
 
-Keep `.env.template` unchanged in the repo. Put your real instance values in `rooiam-server/.env`.
+Choose production/public and your intended output file. If it is not `.env`, pass it explicitly at startup with `--env-file`.
 
 Important naming rule:
 
@@ -79,7 +73,7 @@ Then add SMTP and OAuth values in the next chapters.
 
 Recommended workflow:
 
-- copy [rooiam-server/.env.template](/rooiam-server/.env.template)
+- run the configuration wizard or use the example above
 - create `rooiam-server/.env`
 - fill in the real production values for database, redis, allowed origins, and public URLs
 - optionally fill SMTP and Google / Microsoft OAuth here too

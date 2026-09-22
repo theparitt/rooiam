@@ -16,6 +16,14 @@ This repo currently contains:
 - [spec/openapi.json](./spec/openapi.json)
   - OpenAPI source used to generate SDK types
 
+## Current implementation
+
+Package version: `0.1.0`. `spec/openapi.json` is generated from the Rust server annotations and used to generate both TypeScript schemas. Rebuild SDK packages after regenerating their types.
+
+The browser package exports `buildHostedLoginUrl({ apiOrigin, workspaceId, clientId })`. OIDC code exchange has a typed token response; refresh rotation is implemented by the server, while the browser SDK currently has no dedicated refresh helper. Serialize refresh requests and replace the old refresh token after success.
+
+See the [SDK and device-login reference](../docs/reference/13_sdk_and_device_login.md) for current boundaries and server-only capabilities.
+
 ## Start Here
 
 If you are designing a downstream product, read this first:

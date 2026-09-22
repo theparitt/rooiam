@@ -123,7 +123,7 @@ There are **no passwords stored**. This eliminates the largest single attack vec
 
 **Rooiam's defenses:**
 - Sessions are stored server-side (Redis); cookies are opaque references
-- `HttpOnly` + `Secure` + `SameSite=Lax` cookie flags
+- `HttpOnly` cookies with Secure and SameSite selected from deployment configuration; see the [cookie reference](../production/14_session_and_cookie_doctrine.md)
 - Session revocation invalidates the server-side record immediately
 - Suspicious login detection flags sessions from new IPs
 
@@ -233,7 +233,7 @@ When a user hits the rate limit:
 ### Implementation
 
 - Rate limit state is stored in Redis with key: `ratelimit:magic:{workspace_id}:{email_hash}`
-- Uses a sliding window counter
+- Uses Redis counters with an expiry window starting at the first request
 - Workspace-specific limits are stored in workspace settings
 - Platform floor is stored in platform session policy settings
 

@@ -21,14 +21,14 @@ Rooiam answers that question with three separate concepts:
 
 The key design choice is simple:
 
-- the browser does **not** choose the final app callback
+- the hosted widget chooses the callback from app registration; ordinary OIDC authorization requests still send a registered `redirect_uri`
 
 ## 2. Sequence Diagram
 
 ```text
 Customer App
     |
-    | embed /login-widget?workspace_id=...&client_id=...&app=...
+    | embed /login-widget?workspace_id=...&client_id=...
     v
 Rooiam
     |

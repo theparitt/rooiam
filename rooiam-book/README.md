@@ -6,6 +6,18 @@ This book acts as a textbook for computer science students who want to learn how
 
 Instead of just talking about theory, we will use **Rooiam**, a real, open-source IAM server built in Rust, as our main example. By the end of this book, you will understand the deep concepts, algorithms, and actual code needed to build a secure system from scratch. We will use simple language to make these complex topics easy to grasp.
 
+## Version and local use
+
+Reviewed against package version `0.1.0`, commit `c20b9ed` (September 2026). Chapters explain current behavior and link to that source snapshot. SQL summaries and illustrative snippets are not replacement migrations or standalone production implementations.
+
+```bash
+cd rooiam-book
+npm install
+npm run dev
+```
+
+The book runs on `http://localhost:5176`. `npm run build` creates a static export in `out/`. Register every chapter in `src/app/chapters.ts` so it appears in the sidebar and previous/next navigation.
+
 ## How to Read This Book
 
 Each chapter tackles a real-world problem you face when building an app (the "why"), explains the computer science concepts to solve it (the "how"), and then walks you through the actual Rust code and database tables used in Rooiam.
@@ -38,6 +50,10 @@ To ensure that all diagrams (database schemas, flowcharts, and sequence diagrams
 - [Chapter 11: API Keys](./chapter-11-api-keys.md)
   - Machine-to-machine security. We design a system for issued secrets that allow scripts and microservices to talk to each other.
 - [Chapter 12: Corporate Guardrails](./chapter-12-corporate-guardrails.md)
-  - Large-scale management. We implement IP-based policies and global guardrails for enterprise environments.
+  - Tenant control. We examine IP policies, session limits, and platform restrictions.
 - [Chapter 13: Operator Security Playbook](./chapter-13-operator-security-playbook.md)
   - The practical operator view. We explain how hosted-widget security, callback validation, suspicious-login review, and shared responsibility work in production.
+
+## Cloudflare deployment
+
+Run `npm run deploy` from this directory after authenticating Wrangler. It builds and publishes the current checkout to the `rooiam-book` Cloudflare Pages project on production branch `main` (https://book.rooiam.com).

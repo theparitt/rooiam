@@ -70,7 +70,7 @@ But demo mode is not the authoritative mode for the Hurl suite because:
 
 ## Test Users
 
-Defined in [test.vars](/home/theparitt/work/rooiam/test/test.vars) and seeded fresh on every server startup in test mode:
+Defined in [test.vars](./test.vars) and seeded fresh on every server startup in test mode:
 
 | Variable | Email | Org | Role |
 |----------|-------|-----|------|
@@ -166,7 +166,7 @@ The 5-app limit per org is the most common victim of missing cleanup. If test N 
 
 Use `test.vars` variables (`{{rooChocoMemberEmail}}`, `{{rooChocoWorkspace}}`) rather than hardcoded values. Never hardcode `.test` emails or `-test` slugs directly in hurl files.
 
-For editor/manual demo-oriented requests, use the `demo` environment in [00_env.yaml](/home/theparitt/work/rooiam/test/00_env.yaml). Do not add a second Hurl vars file again.
+For editor/manual demo-oriented requests, use the `demo` environment in [00_env.yaml](./00_env.yaml). Do not add a second Hurl vars file again.
 
 ### State isolation between tests
 

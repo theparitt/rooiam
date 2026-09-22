@@ -1,5 +1,7 @@
 # Internal Notes
 
+Dated status reports, roadmaps, and legacy guides in this directory describe their original snapshots, not necessarily current behavior. Use the public documentation for installation and the current handlers/migrations/OpenAPI for implementation details.
+
 This section is for engineering notes that are useful inside the repo but are not part of the normal product setup flow.
 
 Use these pages as internal reference, not as the main operator or tenant docs:

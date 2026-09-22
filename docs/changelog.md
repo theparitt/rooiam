@@ -1,5 +1,15 @@
 # Changelog
 
+## Current checkout — September 2026 (package version 0.1.0)
+
+The package version remains `0.1.0`; these changes do not imply a new release tag.
+
+- Refresh-token rotation serializes the token family and revokes that family on reuse.
+- Browser/server TypeScript SDKs and OpenAPI snapshots are available; widget URL generation uses the shared SDK builder.
+- Trusted-device login includes Apple App Attest and Google Play Integrity verification paths.
+- Default workspace-count limit is five.
+- Documentation now distinguishes the API/infrastructure Compose stacks from separately run frontends and includes fresh-clone env examples.
+
 ## v0.1.0 — March 2026
 
 Initial public release of Rooiam.
@@ -29,8 +39,8 @@ Initial public release of Rooiam.
 - Session management and token revocation endpoints
 
 ### Self-Hosting
-- Single `docker compose up` starts everything (API, frontends, Postgres, Redis)
-- No Rust toolchain required to run
+- Docker API/infrastructure stacks; frontends are deployed separately
+- No host Rust toolchain required to run an image or build the production container
 - Admin panel setup wizard for first-time configuration
 - Environment-based configuration (no hardcoded values)
 

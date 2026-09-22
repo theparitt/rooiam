@@ -1,182 +1,115 @@
 # Quickstart With Docker
 
-Use this path for the easiest way to run Rooiam without installing databases or configuring servers manually.
+The Compose stacks start the Rust API, PostgreSQL, Redis, MinIO (plus bucket initialization), and Mailhog. Run the frontends separately. Deployment env files are untracked, so a fresh clone must create them first.
 
-> [!TIP]
-> **What is Docker?** Docker runs applications inside lightweight, isolated containers. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) first, then one command starts the entire Rooiam ecosystem.
+## Local demo
 
-## The Two Stacks
+Create `.env.docker.local.demo` in the repository root with this **local-only** configuration. These example credentials are for disposable evaluation data.
 
-Rooiam uses **two separate stacks** controlled by compose files and environment files:
-
-| Stack | Compose File | Env File | Purpose |
-|-------|-------------|----------|---------|
-| Production | `docker-compose.yml` | `.env.docker.local.prod` or `.env.docker.public.prod` | Real deployment |
-| Demo | `docker-compose.demo.yml` | `.env.docker.local.demo` or `.env.docker.public.demo` | Demo/preview |
-
-| Axis | Controlled By | Examples |
-|------|--------------|----------|
-| **prod / demo** | compose file | `docker-compose.yml` vs `docker-compose.demo.yml` |
-| **local / public** | env file | `.env.docker.local.prod` vs `.env.docker.public.prod` |
-
----
-
-## 1A. Local Production (for development)
-
-```bash
-docker compose -f docker-compose.yml --env-file .env.docker.local.prod up -d --build
+```env
+ROOIAM_MODE=demo
+ROOIAM_DEMO_DEPLOY_TARGET=local
+ROOIAM_DEMO_HOST=0.0.0.0
+ROOIAM_DEMO_PORT=5170
+ROOIAM_DEMO_SERVER_BIND=127.0.0.1:5180
+ROOIAM_DEMO_COOKIE_SECURE=false
+ROOIAM_DEMO_COOKIE_DOMAIN=
+ROOIAM_DEMO_SERVER_URL=http://localhost:5180
+ROOIAM_DEMO_APP_URL=http://localhost:5182
+ROOIAM_DEMO_ADMIN_URL=http://localhost:5181
+ROOIAM_DEMO_ENDUSER_URL=http://localhost:5184
+ROOIAM_DEMO_CANDYCLOUD_API_URL=http://localhost:5185/v1
+ROOIAM_DEMO_ALLOWED_ORIGINS=http://localhost:5181,http://localhost:5182,http://localhost:5184
+ROOIAM_DEMO_DB_NAME=rooiam_demo
+ROOIAM_DEMO_DB_USER=rooiam
+ROOIAM_DEMO_DB_PASSWORD=local_demo_password
+ROOIAM_DEMO_POSTGRES_BIND=127.0.0.1:15432
+ROOIAM_DEMO_DATABASE_URL=postgres://rooiam:local_demo_password@postgres:5432/rooiam_demo
+ROOIAM_DEMO_REDIS_BIND=127.0.0.1:16379
+ROOIAM_DEMO_REDIS_URL=redis://redis:6379
+ROOIAM_DEMO_STORAGE_ROOT=/data/rooiam
+ROOIAM_DEMO_PUBLIC_MEDIA_BASE=/media
+ROOIAM_DEMO_MINIO_ENDPOINT=http://minio:9000
+ROOIAM_DEMO_MINIO_BUCKET=rooiam
+ROOIAM_DEMO_MINIO_USER=rooiam
+ROOIAM_DEMO_MINIO_PASSWORD=local_demo_minio_password
+ROOIAM_DEMO_MINIO_BIND=127.0.0.1:19000
+ROOIAM_DEMO_MINIO_CONSOLE_BIND=127.0.0.1:19001
+ROOIAM_DEMO_MAILHOG_SMTP_BIND=127.0.0.1:1026
+ROOIAM_DEMO_MAILHOG_UI_BIND=127.0.0.1:8026
+ROOIAM_DEMO_SMTP_HOST=mailhog
+ROOIAM_DEMO_SMTP_PORT=1025
+ROOIAM_DEMO_SMTP_FROM=demo@rooiam.local
+ROOIAM_DEMO_MAILBOX_URL=http://localhost:8026
 ```
 
-Starts: API (`5170`), Admin (`5171`), Portal (`5172`), Landing (`5173`), Docs (`5175`)
-
----
-
-## 1B. Local Demo (fastest preview)
+From the repository root:
 
 ```bash
-docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --build
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d
+curl http://localhost:5180/health
 ```
 
-Starts: Demo API (`5180`), Demo Admin (`5181`), Demo Portal (`5182`), Demo App (`5184`)
-
-With pre-seeded demo accounts and Mailhog for magic links.
-
----
-
-## 1C. Public Production (self-hosted)
+The demo Compose file uses `ghcr.io/theparitt/rooiam-demo-server:latest`; it has no `build` section. To evaluate the source in your checkout, build that image locally first:
 
 ```bash
-cp .env.docker.public.prod .env.temp
-# Edit .env.temp with your real domains, passwords, and credentials
-docker compose -f docker-compose.yml --env-file .env.temp up -d --build
+docker build -t ghcr.io/theparitt/rooiam-demo-server:latest -f Dockerfile.server.prod .
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --pull never
 ```
 
-See [First Production Setup](./03_first_production_setup.md) for full guidance.
+The server runs migrations and seeds demo data at startup. The database name must end in `rooiam_demo`. A healthy response has `status: "ok"`, `mode: "demo"`, and successful database/Redis checks; `version` is the Cargo package version.
 
----
+## Start the frontends
 
-## Local URLs
+Install Node dependencies in each frontend first. Create `rooiam-admin/.env.demo-local.local` and `rooiam-app/.env.demo-local.local`, each containing:
 
-### Production Stack
+```env
+VITE_API_URL=http://localhost:5180/v1
+VITE_DOCS_URL=http://localhost:5175
+```
 
-| URL | Purpose |
-|-----|---------|
-| `http://localhost:5170` | API server (prod) |
-| `http://localhost:5171` | Admin console |
-| `http://localhost:5172` | Tenant portal / login |
-| `http://localhost:5173` | Landing page |
-| `http://localhost:5175` | Docs |
-| `http://localhost:8025` | Mailhog inbox |
-| `http://localhost:9001` | MinIO console |
-
-### Demo Stack
-
-| URL | Purpose |
-|-----|---------|
-| `http://localhost:5180` | API server (demo) |
-| `http://localhost:5181` | Admin (demo) |
-| `http://localhost:5182` | Portal / login (demo) |
-| `http://localhost:5184` | Demo downstream app |
-
----
-
-## Demo Accounts (seeded automatically)
-
-| Email | Password | Role |
-|-------|----------|------|
-| `admin@rooiam.demo` | magic link / demo OAuth | Platform admin |
-| `rooroo@sweetfactory.demo` | magic link / demo OAuth | Tenant owner |
-| `minmin@lovechocolate.user` | magic link / demo OAuth | RooChoco end user |
-
-> [!WARNING]
-> Do not keep demo admin and demo portal signed in at the same time in the same browser.
-> Use separate browsers or private windows.
-
-Magic-link emails go to Mailhog at `http://localhost:8025`.
-
----
-
-## Environment Files
-
-### `.env.docker.local.prod` — Local Production
-
-For development with localhost URLs, Mailhog, and no real OAuth.
-
-### `.env.docker.public.prod` — Public Production
-
-For real deployments with HTTPS domains, real SMTP, and OAuth credentials.
-
-### `.env.docker.local.demo` — Local Demo
-
-For local demo preview with seeded data.
-
-### `.env.docker.public.demo` — Public Demo
-
-For publicly hosted demo instances.
-
-See [Environment Configuration Reference](../reference/05_environment_configuration.md) for full variable documentation.
-
----
-
-## Common Commands
+Run these in separate terminals from the repository root:
 
 ```bash
-# Stop services
-docker compose -f docker-compose.yml down
-
-# Stop demo services
-docker compose -f docker-compose.demo.yml down
-
-# Wipe volumes (full reset)
-docker compose -f docker-compose.yml down -v
-docker compose -f docker-compose.demo.yml down -v
-
-# Rebuild
-docker compose -f docker-compose.yml --env-file .env.docker.local.prod up -d --build
-docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --build
+npm --prefix rooiam-admin install
+npm --prefix rooiam-admin run dev:demo-local
 ```
-
----
-
-## Port Reference
-
-| Port | Service | Stack |
-|------|---------|-------|
-| `5170` | API server (prod) | prod |
-| `5171` | Admin (prod) | prod |
-| `5172` | Portal / login (prod) | prod |
-| `5173` | Landing | prod |
-| `5175` | Docs | prod |
-| `5180` | API server (demo) | demo |
-| `5181` | Admin (demo) | demo |
-| `5182` | Portal / login (demo) | demo |
-| `5184` | Demo downstream app | demo |
-| `8025` | Mailhog UI | both |
-| `9001` | MinIO console | both |
-
----
-
-## Troubleshooting
-
-### Services not starting
 
 ```bash
-docker compose -f docker-compose.demo.yml ps
-docker compose -f docker-compose.demo.yml logs
+npm --prefix rooiam-app install
+npm --prefix rooiam-app run dev:demo-local
 ```
 
-### Database migration issues
+| URL | Surface |
+|---|---|
+| `http://localhost:5180/health` | API health |
+| `http://localhost:5181` | Platform admin (separate dev server) |
+| `http://localhost:5182` | Tenant portal (separate dev server) |
+| `http://localhost:8026` | Mailhog inbox |
+| `http://localhost:19001` | MinIO console; credentials from the env file |
+
+Sign in with `admin@rooiam.demo` for platform administration or `rooroo@sweetfactory.demo` for tenant administration. Use separate browser profiles for simultaneous operator and tenant sessions: cookies on localhost are shared across ports. Login uses magic links or configured demo methods, not passwords.
+
+CandyCloud needs its own backend and frontend; follow [Local Setup](../development/01_local_setup.md). It is not started by this Compose stack.
+
+## Production and other targets
+
+| Purpose | Compose file | Local env file convention |
+|---|---|---|
+| Production API + infrastructure | `docker-compose.prod.yml` | `.env.docker.local.prod` or `.env.docker.public.prod` |
+| Demo API + infrastructure | `docker-compose.demo.yml` | `.env.docker.local.demo` or `.env.docker.public.demo` |
+| Source-development Postgres + MinIO only | `docker-compose.local.yml` | No env file required |
+
+Production Compose builds `Dockerfile.server.prod`. Its env names differ from the demo Compose inputs. See [Environment Configuration](../reference/05_environment_configuration.md) and [First Production Setup](./03_first_production_setup.md). Frontends and HTTPS termination are deployed separately.
+
+## Logs and shutdown
+
+Include the same env file on every Compose command:
 
 ```bash
-docker compose -f docker-compose.demo.yml exec demo-server sh
-sqlx migrate run --database-url "$ROOIAM_DATABASE_URL"
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo ps
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo logs --tail 50 demo-server
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo down
 ```
 
-### Need to reseed demo data
-
-```bash
-docker compose -f docker-compose.demo.yml exec postgres psql -U rooiam -d rooiam_demo -c "DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id IN (SELECT id FROM oauth_clients WHERE client_id LIKE 'demo-%');"
-docker compose -f docker-compose.demo.yml restart demo-server
-```
-
-See [Troubleshooting](../troubleshooting/00_index.md) for more.
+`down` preserves volumes. Add `-v` only to deliberately delete all data in this disposable stack. Migrations run in the server binary; the runtime image does not include the `sqlx` CLI.

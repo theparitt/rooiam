@@ -164,7 +164,6 @@ function orderFromSource(sourcePath: string, isIndex: boolean): number {
 
 const IGNORE_FILES = [
   'marketing.md',
-  '00_docs_index.md',
   '01_mission_one_docker.md',
   '02_the_map_of_apps.md',
   '03_mission_two_manual.md',
@@ -259,8 +258,17 @@ export function resolveDocHref(currentSource: string, href: string): string | nu
     return href
   }
 
-  const baseDir = currentSource.split('/').slice(0, -1)
-  const resolvedSource = normalizePath([...baseDir, ...rawPath.split('/')])
+  const baseDir = ['docs', ...currentSource.split('/').slice(0, -1)]
+  const repositoryPath = normalizePath(
+    rawPath.startsWith('/') ? rawPath.split('/') : [...baseDir, ...rawPath.split('/')],
+  )
+  // Root README/operator guides and internal notes live in the repository,
+  // rather than in the public site's route catalog.
+  if (!repositoryPath.startsWith('docs/') || repositoryPath.startsWith('docs/internal/')) {
+    const url = `https://github.com/theparitt/rooiam/blob/main/${repositoryPath}`
+    return rawHash ? `${url}#${rawHash}` : url
+  }
+  const resolvedSource = repositoryPath.slice('docs/'.length)
   const doc = docsBySource.get(resolvedSource)
   if (!doc) return null
   return rawHash ? `${doc.routePath}#${rawHash}` : doc.routePath

@@ -29,6 +29,8 @@ If a page is not linked from here, it may still exist, but it is not part of the
 
 ## Start Here
 
+- [SDK and Device Login Reference](./reference/13_sdk_and_device_login.md)
+
 - [Quick Start](./getting-started/00_index.md)
 - [Production Guide](./production/00_index.md)
 - [Reference Guide](./reference/00_index.md)

@@ -274,8 +274,7 @@ Frontend renders an iframe pointing to the Rooiam server.
 ```html
 <iframe src="https://demo-api.rooiam.com/login-widget
               ?workspace_id=uuid-1
-              &client_id=demo-abc
-              &app=RooChoco%20Portal">
+              &client_id=demo-abc">
 </iframe>
 ```
 

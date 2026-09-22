@@ -61,8 +61,8 @@ Production rule:
 
 ## Demo Mode
 
-### `ROOIAM_ENABLE_DEMO_SEED`
-- local demo seed mode
+### `ROOIAM_MODE=demo`
+- selects demo behavior and startup seeding; `ROOIAM_ENABLE_DEMO_SEED` is not the runtime mode switch
 
 Rule:
 - do not use in production

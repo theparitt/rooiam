@@ -6,7 +6,8 @@
     "dev": "next dev -p 5176",
     "build": "next build",
     "start": "next start -p 5176",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy": "npm run build && wrangler pages deploy out --project-name rooiam-book --branch main --commit-dirty=true"
   },
   "dependencies": {
     "lucide-react": "^0.378.0",
@@ -23,6 +24,7 @@
     "@types/node": "^20.12.11",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "wrangler": "4.78.0"
   }
 }

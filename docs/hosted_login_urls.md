@@ -58,7 +58,7 @@ A pretty-URL redirect (`/roochoco` → `/?org=roochoco`) can be added later with
 
 ## Demo Mode
 
-When the server runs with `ROOIAM_ENABLE_DEMO_SEED=true`, demo orgs are seeded automatically on startup.
+When the server runs with `ROOIAM_MODE=demo`, demo orgs are seeded automatically on startup.
 The login page shows a **Demo** badge when `demo_mode: true` is returned by the server.
 
 Demo login URLs:

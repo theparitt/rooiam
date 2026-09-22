@@ -25,7 +25,7 @@ Also do not pass:
 
 to `/login-widget`.
 
-Those belong to the downstream app's own `/oidc/authorize` request, not to the widget URL.
+`state` and PKCE fields belong to the downstream app's own `/v1/oidc/authorize` request. `app` is not an OIDC authorization field; the display name comes from registration.
 
 The app display name should come from the registered OAuth client and workspace
 branding returned by Rooiam, not from a browser-composed `app` query string.

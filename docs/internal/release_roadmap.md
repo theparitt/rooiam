@@ -194,7 +194,7 @@ Full design: [40_device_login_plan.md](./40_device_login_plan.md).
 
 - Add classic username/password as an **opt-in** auth method a workspace can
   enable, alongside magic link / passkey / OAuth / device login.
-- Passwords hashed with Argon2id (same as API keys today). Account lockout,
+- Proposed passwords hashed with Argon2id (current workspace API keys use SHA-256). Account lockout,
   rate-limit, and breach-check (HIBP k-anonymity) recommended.
 
 > ⚠️ **Strategic note:** the current positioning is "self-hosted **passwordless**

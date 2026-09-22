@@ -1,5 +1,7 @@
 # Account Linking
 
+The linking endpoints and portal UI are implemented. The implementation-order section below records the original plan, not unfinished features. Unlink uses `DELETE /v1/identity/me/linked-accounts/{provider}`.
+
 Rooiam should treat account linking as an explicit identity action, not as a side effect of provider testing.
 
 This document defines the recommended v1 account-linking model for:
@@ -163,7 +165,7 @@ Recommended endpoints:
 - `GET /v1/identity/me/linked-accounts`
 - `POST /v1/identity/me/linked-accounts/google/start`
 - `POST /v1/identity/me/linked-accounts/microsoft/start`
-- `POST /v1/identity/me/linked-accounts/{provider}/unlink`
+- `POST /v1/identity/me/linked-accounts/{provider}`
 
 Recommended callback behavior:
 
@@ -217,7 +219,7 @@ So after linking, admin OAuth works because both providers resolve to the same i
 
 That is the correct reason for linking. It should not bypass admin policy; it should satisfy admin policy cleanly.
 
-## Suggested Implementation Order
+## Original implementation plan (historical)
 
 1. Add `Settings > Linked Accounts` UI.
 2. Add `GET /v1/identity/me/linked-accounts`.

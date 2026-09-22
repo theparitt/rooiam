@@ -6,26 +6,19 @@ This walkthrough is the shortest path to validate the current Rooiam feature sur
 
 ```bash
 cd rooiam
-docker compose up --build -d
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d
 ```
 
-This starts:
-
-- production-style surfaces
-- demo surfaces with seeded data
-- Postgres
-- Redis
-- MinIO
-- Mailhog
+Create the env file and start the frontends separately as described in the [Docker Quickstart](../getting-started/05_quickstart_with_docker.md). Compose starts only the seeded demo API and its infrastructure.
 
 Mailhog (your local fake inbox):
 
-- UI: `http://localhost:8025` *(Open this to see your magic login links!)*
-- SMTP: `127.0.0.1:1025`
+- UI: `http://localhost:8026` *(Open this to see your magic login links!)*
+- SMTP: `127.0.0.1:1026`
 
 MinIO console:
 
-- `http://localhost:9001`
+- `http://localhost:19001`
 
 ## 2. Validate Platform Admin
 
@@ -55,7 +48,7 @@ Use:
 Validate:
 
 - tenant branding appears
-- magic link arrives in your Mailhog inbox (`http://localhost:8025`)
+- magic link arrives in your Mailhog inbox (`http://localhost:8026`)
 - tenant portal loads after clicking the link and signing in
 
 ## 4. Validate Client Demo

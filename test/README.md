@@ -21,8 +21,8 @@ Set `ROOIAM_MODE` when starting the server:
 
 | Mode | Env | Demo seed | `/v1/demo/*` routes | `/v1/test/*` routes | Rate limits | `X-Forwarded-For` trusted |
 |------|-----|-----------|--------------------|--------------------|-------------|--------------------------|
-| `production` | default | no | **not registered** | **not registered** | strict | no |
-| `demo` | `ROOIAM_MODE=demo` | yes | yes | no | strict | no |
+| `production` | `ROOIAM_MODE=production` (required) | no | **not registered** | **not registered** | strict | no |
+| `demo` | `ROOIAM_MODE=demo` | yes | yes | no | mode-specific | no |
 | `test` | `ROOIAM_MODE=test` | no | yes | yes | **unlimited** | yes (127.0.0.1) |
 
 ```bash
@@ -34,7 +34,7 @@ ROOIAM_MODE=test SQLX_OFFLINE=true cargo run
 ROOIAM_MODE=demo SQLX_OFFLINE=true cargo run
 ```
 
-> Legacy `ROOIAM_ENABLE_DEMO_SEED=true` still works and is equivalent to `ROOIAM_MODE=demo`.
+> `ROOIAM_MODE` and `ROOIAM_DEPLOY_TARGET` must be explicit. The legacy seed flag does not select the runtime mode. Generate a complete, isolated test configuration before running these commands; do not reuse a production database or incompatible production env file.
 
 ## Run
 
@@ -84,7 +84,7 @@ The Hurl suite uses `test.vars`.
 | `rooChocoMemberEmail` | `praline@roochoco.test` |
 | `mintMallowMemberEmail` | `peppermint@mintmallow.test` |
 
-If you intentionally want demo-mode values for manual calls, use the `demo` section in [00_env.yaml](/home/theparitt/work/rooiam/test/00_env.yaml).
+If you intentionally want demo-mode values for manual calls, use the `demo` section in [00_env.yaml](./00_env.yaml).
 
 ## Files
 

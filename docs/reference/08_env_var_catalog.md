@@ -17,7 +17,7 @@ Local vs public is explicit via `ROOIAM_DEPLOY_TARGET`.
 
 | Variable | Purpose | Notes |
 |---|---|---|
-| `ROOIAM_MODE` | runtime mode | `production` or `demo` |
+| `ROOIAM_MODE` | runtime mode | `production`, `demo`, or isolated `test` mode |
 | `ROOIAM_DEPLOY_TARGET` | deployment target | `local` or `public` |
 | `ROOIAM_RESET_DEMO_DATA` | reset demo data | development-only |
 
@@ -27,8 +27,8 @@ Local vs public is explicit via `ROOIAM_DEPLOY_TARGET`.
 |---|---|---|
 | `ROOIAM_DATABASE_URL` | PostgreSQL connection | required |
 | `ROOIAM_REDIS_URL` | Redis connection | required |
-| `ROOIAM_HOST` | bind host | defaults to server local bind behavior |
-| `ROOIAM_PORT` | bind port | defaults to `5170` locally |
+| `ROOIAM_HOST` | bind host | required, e.g. `0.0.0.0` |
+| `ROOIAM_PORT` | bind port | required, conventionally `5170` for production or `5180` for demo |
 | `ROOIAM_ALLOWED_ORIGINS` | CORS allowlist | frontend origins that may call the API |
 | `ROOIAM_DB_POOL_SIZE` | database pool size | optional tuning |
 
@@ -74,13 +74,13 @@ For live fault-injection testing only:
 | `ROOIAM_APP_URL` | tenant-admin portal URL | tenant/workspace admin UI |
 | `ROOIAM_ENDUSER_URL` | demo end-user app URL | used by demo seed to build redirect URIs for demo OAuth clients — not needed in production |
 | `ROOIAM_ADMIN_URL` | platform-admin URL | platform operator UI |
-| `ROOIAM_OAUTH_REDIRECT` | legacy OAuth redirect helper | avoid treating this as the main app callback contract |
 
 ## Cookies And Sessions
 
+The session cookie name is fixed as `rooiam_sid`; there is no environment override.
+
 | Variable | Purpose | Notes |
 |---|---|---|
-| `ROOIAM_SESSION_COOKIE` | session cookie name | defaults if not set |
 | `ROOIAM_COOKIE_DOMAIN` | cookie domain override | production should match your real domain |
 | `ROOIAM_COOKIE_SECURE` | secure-cookie override | production should use secure cookies |
 
@@ -117,13 +117,13 @@ Google and Microsoft callback URLs are derived from `ROOIAM_SERVER_URL`:
 - Google: `{ROOIAM_SERVER_URL}/api/v1/auth/google/callback`
 - Microsoft: `{ROOIAM_SERVER_URL}/api/v1/auth/microsoft/callback`
 
-Normal setups should change `ROOIAM_SERVER_URL`, not try to manage separate provider callback env vars.
+Normal setups should change `ROOIAM_SERVER_URL`. Explicit `ROOIAM_GOOGLE_REDIRECT_URI` and `ROOIAM_MICROSOFT_REDIRECT_URI` overrides also exist; use them only when the provider registration and routed callback agree.
 
 ## OIDC Signing
 
 | Variable | Purpose | Notes |
 |---|---|---|
-| `ROOIAM_OIDC_SIGNING_SECRET` | symmetric token-signing secret | simple deployments |
+| `ROOIAM_OIDC_SIGNING_SECRET` | symmetric token-signing secret | development HS256 fallback; use RSA for interoperable public OIDC |
 | `ROOIAM_JWT_SECRET` | legacy/fallback secret | do not confuse with app callbacks |
 | `ROOIAM_OIDC_PRIVATE_KEY_PEM` | RSA private key PEM | advanced deployments |
 | `ROOIAM_OIDC_PUBLIC_KEY_PEM` | RSA public key PEM | advanced deployments |
@@ -164,7 +164,7 @@ Normal setups should change `ROOIAM_SERVER_URL`, not try to manage separate prov
 
 ## Rate Limits And Abuse Control
 
-All rate limits use a fixed 60-second sliding window. Each limit is a request count ceiling.
+The generic middleware uses Redis counters with a 60-second expiry window starting on the first request, not a sliding log of requests. Each limit is a request-count ceiling. Device-login routes also have dedicated limits.
 
 ### Generic overrides (apply to both production and demo mode)
 
@@ -228,7 +228,6 @@ Current active limits are always readable at `GET /v1/setup/config` (no auth req
 | `ROOIAM_MAX_LOGO_BYTES` | upload size limit for logos | branding safety |
 | `ROOIAM_TIMING_LOGS` | timing diagnostics | debugging/ops |
 | `ROOIAM_SETUP_TOKEN` | setup bootstrap token | protect initial setup |
-| `ROOIAM_MASCOT_SVG` | mascot asset override | presentation only |
 
 ## Practical `0.1` Rule
 

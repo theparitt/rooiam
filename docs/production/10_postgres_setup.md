@@ -6,7 +6,7 @@ Because PostgreSQL is the absolute core **Source of Truth** for all Tenant Polic
 
 ## 1. Basic Docker Compose Definition
 
-If you are hosting Rooiam entirely via Docker on a single VPS, here is the standard PostgreSQL block to include in your `docker-compose.yml`:
+If you are hosting Rooiam entirely via Docker on a single VPS, here is the standard PostgreSQL block to include in your `docker-compose.prod.yml`:
 
 ```yaml
 services:

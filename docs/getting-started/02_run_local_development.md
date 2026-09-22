@@ -170,24 +170,14 @@ npm run dev
 - `http://localhost:5184` = `candycloud-web`
 - `http://localhost:5175` = `rooiam-docs` (The guide you are reading now!)
 - `http://localhost:5176` = `rooiam-book` (The technical IAM textbook)
-- `http://localhost:9001` = `MinIO Console`
-- `http://localhost:8025` = `Mailhog inbox` (if running Docker)
+- MinIO console port depends on the selected infrastructure stack; see below.
+- Mailhog inbox port depends on the selected infrastructure stack; see below.
 
 ## 9. Optional: Start Mailhog and MinIO
 
-If you want local email capture and local S3-compatible storage:
+For host-based source development, `docker-compose.local.yml` supplies Postgres on `5434`, MinIO API on `9002`, and MinIO console on `9003`. It does not supply Redis or Mailhog.
 
-```bash
-docker compose up -d
-```
-
-Then use:
-
-- Mailhog UI: `http://localhost:8025`
-- Mailhog SMTP: `127.0.0.1:1025`
-- MinIO Console: `http://localhost:9001` (user: `rooiam`, pass: `rooiam_secret`)
-
-If you use Mailhog in non-demo local development, point your normal `ROOIAM_SMTP_*` settings to it.
+The [Docker quickstart](./05_quickstart_with_docker.md) provides a separate demo stack with Mailhog SMTP on host `1026`, inbox on `8026`, and MinIO console on `19001`. If reusing those dependencies from a source-run server, use their published host ports and configure the matching storage credentials. Avoid starting another API on a port already occupied by the demo stack.
 
 ## 10. Basic Verification
 

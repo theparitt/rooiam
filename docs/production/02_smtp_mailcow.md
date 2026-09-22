@@ -43,7 +43,7 @@ Running a local fake email-catcher on your machine.
 
 *   **Pros:** Completely prevents emails from being blasted onto the real internet. Catches every login email locally so you can click Magic Links during testing without needing a real domain or risking spam blocklists.
 *   **Cons:** Absolutely useless for real users in production because it intentionally doesn't route outbound emails.
-*   **How to use:** Run `docker compose up --build -d` — Mailhog starts automatically. View caught login emails at `http://localhost:8025`.
+*   **How to use:** Run `docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d` — Mailhog starts automatically. With the [Docker quickstart](../getting-started/05_quickstart_with_docker.md) env file, view caught login emails at `http://localhost:8026`.
 
 ## ⚙️ What Rooiam Needs
 

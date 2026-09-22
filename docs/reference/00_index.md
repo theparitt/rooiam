@@ -4,6 +4,8 @@ This section collects stable lookup-style docs. These are the canonical referenc
 
 ## Core Reference
 
+- [SDK and Device Login Reference](./13_sdk_and_device_login.md)
+
 - [Integration API Contract](./01_integration_api_contract.md)
 - [API Key Cookbook](./02_api_key_cookbook.md)
 - [Hosted Widget Integration Guide](./03_hosted_widget_integration_guide.md)

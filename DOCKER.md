@@ -3,9 +3,11 @@
 This file is the single source of truth for the Docker setup. Read it before
 editing any `docker-compose.*.yml` or `Dockerfile.*`.
 
+For configuration on a fresh clone, start with the [Docker quickstart](docs/getting-started/05_quickstart_with_docker.md).
+
 ## What these compose files build
 
-`docker-compose.prod.yml` and `docker-compose.demo.yml` build **only
+`docker-compose.prod.yml` and `docker-compose.demo.yml` run **only
 `rooiam-server` plus the infrastructure it needs**:
 
 - `postgres` — database
@@ -40,19 +42,16 @@ port is `5170` for prod and `5180` for demo.
 
 ## Commands
 
-Every command **must** include `--env-file` — the compose files use
+Every prod/demo command should include its `--env-file`. Demo uses
 `${VAR?}` (required) interpolation, so without it even `logs`/`ps` fail with
 "required variable ... is missing".
 
 ```bash
-# Build only (no run)
-docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo build
+# Build the current checkout under the tag used by demo Compose
+docker build -t ghcr.io/theparitt/rooiam-demo-server:latest -f Dockerfile.server.prod .
 
-# Build + run in background
-docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo up -d --build
-
-# Rebuild just the server (DB/Redis/MinIO/Mailhog keep running)
-docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo up -d --build demo-server
+# Run the locally built demo image
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --pull never
 
 # Logs
 docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo logs --tail 40 demo-server
@@ -64,7 +63,7 @@ docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo dow
 docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo down -v
 ```
 
-Swap `demo` → `prod` and the matching env file for production.
+Production Compose has a build section; use `up -d --build` with `docker-compose.prod.yml` and its matching env file. Demo Compose has only an image tag, so `compose build` does not rebuild it.
 
 ## Verify it worked
 
@@ -79,25 +78,11 @@ Demo mode requires a database whose name ends in `rooiam_demo` (safety check).
 
 ## Gotchas (things that have actually broken before)
 
-1. **Stale host env vars override the compose env.** Docker passes through any
-   matching `ROOIAM_*` vars from the host shell. If your shell still exports the
-   old MinIO names, the server's strict contract rejects them:
-   ```
-   [ UNEXPECTED ] ROOIAM_MINIO_ACCESS_KEY is not a recognized server env variable
-   ```
-   Fix: `unset ROOIAM_MINIO_ACCESS_KEY ROOIAM_MINIO_SECRET_KEY` (the current names
-   are `ROOIAM_MINIO_USER` / `ROOIAM_MINIO_PASSWORD`). Check with
-   `env | grep ROOIAM_MINIO`.
+1. **Shell variables override Compose interpolation.** Only names forwarded by a service's `environment` block enter the container. Adding a server setting to an env file does not automatically forward it; add an explicit Compose mapping when needed.
 
-2. **Wrong-mode env vars are fatal.** The strict contract rejects production-only
-   vars in demo and vice-versa. `ROOIAM_SETUP_TOKEN` is production-only;
-   `ROOIAM_DEMO_SMTP_*` and `ROOIAM_ENDUSER_URL` are demo-only. Use the env file
-   that matches the compose file.
+2. **Use the correct mode's variables.** The strict server contract rejects unknown `ROOIAM_*` names and incompatible mode-specific settings. Production SMTP uses `ROOIAM_SMTP_*`; demo SMTP uses `ROOIAM_DEMO_SMTP_*`.
 
-3. **Public env files ship with placeholder secrets.** Before a real public
-   deploy, edit `.env.docker.public.{prod,demo}`: change `POSTGRES_PASSWORD`,
-   `MINIO_ROOT_PASSWORD`, and (prod) `ROOIAM_SETUP_TOKEN`
-   (`openssl rand -hex 32`). The committed versions contain `*_here` placeholders.
+3. **Deployment env files are untracked.** A fresh clone must create them. The [Docker quickstart](docs/getting-started/05_quickstart_with_docker.md) and [environment guide](docs/reference/05_environment_configuration.md) contain local examples. Replace example credentials and configure real URLs before a public deployment.
 
 4. **Google/Microsoft OAuth keys are optional.** Unset shows as `[ - ]`, not an
    error. Demo and local prod run fine without them.

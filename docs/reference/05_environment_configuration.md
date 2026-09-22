@@ -1,259 +1,87 @@
 # Environment Configuration Guide
 
-This document describes how to configure Rooiam for different deployment scenarios using environment variables and Docker Compose.
+Rooiam has two runtime axes: `ROOIAM_MODE` (`production`, `demo`, or isolated `test`) and `ROOIAM_DEPLOY_TARGET` (`local` or `public`). The same Rust binary supports these combinations.
 
-## Architecture Overview
+Deployment env files are untracked. Their names in examples are conventions, not files supplied by a fresh clone. For a complete local demo env block, use the [Docker Quickstart](../getting-started/05_quickstart_with_docker.md).
 
-Rooiam uses a **2-axis separation** for environment configuration:
+## Source execution
 
-| Axis | Purpose | Controlled By |
-|------|---------|---------------|
-| **Mode** | System behavior (demo vs production) | `docker-compose.yml` / `docker-compose.demo.yml` |
-| **Target** | Deployment destination (local vs public-domain) | `.env.docker.*` files |
-
-### The Four Environments
-
-| Environment | Compose File | Env File | Use Case |
-|------------|--------------|----------|----------|
-| Local Production | `docker-compose.yml` | `.env.docker.local.prod` | Development on localhost/LAN |
-| Public Production | `docker-compose.yml` | `.env.docker.public.prod` | Production deployment |
-| Local Demo | `docker-compose.demo.yml` | `.env.docker.local.demo` | Demo development on localhost/LAN |
-| Public Demo | `docker-compose.demo.yml` | `.env.docker.public.demo` | Public demo deployment |
-
----
-
-## Quick Start Commands
+From `rooiam-server`, generate server configuration interactively:
 
 ```bash
-# Local Production
-docker compose -f docker-compose.yml --env-file .env.docker.local.prod up -d --build
-
-# Public Production
-docker compose -f docker-compose.yml --env-file .env.docker.public.prod up -d --build
-
-# Local Demo
-docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --build
-
-# Public Demo
-docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo up -d --build
+SQLX_OFFLINE=true cargo run -- setup
+SQLX_OFFLINE=true cargo run -- --env-file .env.local.prod
 ```
 
----
+Use the output filename you selected in the wizard. Without `--env-file`, the binary loads `.env` through dotenv. Existing process environment variables take precedence. The wizard writes server configuration; it does not generate the different Docker Compose interpolation inputs.
 
-## What Differs Between Modes
+Startup checks required values and rejects unrecognized `ROOIAM_*` names. Production uses `ROOIAM_SMTP_*` and `ROOIAM_SETUP_TOKEN`; demo uses `ROOIAM_DEMO_SMTP_*`. Do not change only the mode in an otherwise incompatible env file.
 
-### Differences Due to `demo / prod` (System Behavior)
+## Compose inputs versus server variables
 
-These are set in compose files:
+Compose reads the chosen env file to substitute `${...}` expressions. Only variables explicitly forwarded by a service's `environment` block enter that container. Adding a variable to `--env-file` does not automatically configure the server.
 
-| Setting | Production | Demo |
-|---------|------------|------|
-| `ROOIAM_MODE` | `production` | `demo` |
-| Database | Separate prod DB | Separate demo DB |
-| Redis | Separate prod Redis | Separate demo Redis |
-| SMTP | Real SMTP | Mock/Demo SMTP |
-| Pre-seeded data | None | Users, workspaces, OAuth clients |
+| Purpose | Production Compose input | Demo Compose input | Server receives |
+|---|---|---|---|
+| API URL | `ROOIAM_SERVER_URL` | `ROOIAM_DEMO_SERVER_URL` | `ROOIAM_SERVER_URL` |
+| Portal URL | `ROOIAM_APP_URL` | `ROOIAM_DEMO_APP_URL` | `ROOIAM_APP_URL` |
+| Admin URL | `ROOIAM_ADMIN_URL` | `ROOIAM_DEMO_ADMIN_URL` | `ROOIAM_ADMIN_URL` |
+| Target | `ROOIAM_DEPLOY_TARGET` | `ROOIAM_DEMO_DEPLOY_TARGET` | `ROOIAM_DEPLOY_TARGET` |
+| Secure cookie | `ROOIAM_COOKIE_SECURE` | `ROOIAM_DEMO_COOKIE_SECURE` | `ROOIAM_COOKIE_SECURE` |
+| Database URL | `ROOIAM_DATABASE_URL` | `ROOIAM_DEMO_DATABASE_URL` | `ROOIAM_DATABASE_URL` |
+| Redis URL | `ROOIAM_REDIS_URL` | `ROOIAM_DEMO_REDIS_URL` | `ROOIAM_REDIS_URL` |
+| CORS | `ROOIAM_ALLOWED_ORIGINS` | `ROOIAM_DEMO_ALLOWED_ORIGINS` | `ROOIAM_ALLOWED_ORIGINS` |
+| Storage credentials | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | `ROOIAM_DEMO_MINIO_USER` / `ROOIAM_DEMO_MINIO_PASSWORD` | `ROOIAM_MINIO_USER` / `ROOIAM_MINIO_PASSWORD` |
 
-### Differences Due to `local / public` (URLs & Security)
+Demo also forwards `ROOIAM_DEMO_ENDUSER_URL` as `ROOIAM_ENDUSER_URL` for seeded downstream callbacks. It uses `ROOIAM_DEMO_DB_NAME`, `ROOIAM_DEMO_DB_USER`, and `ROOIAM_DEMO_DB_PASSWORD` for Postgres and `ROOIAM_DEMO_*_BIND` variables for host ports.
 
-| Setting | Local | Public |
-|---------|-------|--------|
-| URLs | `http://localhost:*` | `https://*.rooiam.com` |
-| `*_COOKIE_SECURE` | `false` | `true` |
-| `ROOIAM_DEPLOY_TARGET` | `local` | `public` |
-| Allowed Origins | localhost origins | real domain origins |
-| Trusted Proxy | empty | configured CIDRs |
-| SMTP Security | `none` | `starttls` |
+## Local production example
 
----
+Create `.env.docker.local.prod` at the repository root. This example is for local evaluation only; replace the credentials before using real data.
 
-## Environment Variables Reference
+```env
+POSTGRES_DB=rooiam
+POSTGRES_USER=rooiam
+POSTGRES_PASSWORD=local_prod_password
+MINIO_ROOT_USER=rooiam
+MINIO_ROOT_PASSWORD=local_prod_minio_password
+ROOIAM_DEPLOY_TARGET=local
+ROOIAM_COOKIE_SECURE=false
+ROOIAM_SERVER_URL=http://localhost:5170
+ROOIAM_APP_URL=http://localhost:5172
+ROOIAM_ADMIN_URL=http://localhost:5171
+ROOIAM_ALLOWED_ORIGINS=http://localhost:5171,http://localhost:5172
+ROOIAM_DATABASE_URL=postgres://rooiam:local_prod_password@postgres:5432/rooiam
+ROOIAM_REDIS_URL=redis://redis:6379
+ROOIAM_PUBLIC_MEDIA_BASE=/media
+ROOIAM_MINIO_ENDPOINT=http://minio:9000
+ROOIAM_MINIO_BUCKET=rooiam
+ROOIAM_SETUP_TOKEN=replace_with_a_random_setup_token
+ROOIAM_SMTP_HOST=mailhog
+ROOIAM_SMTP_PORT=1025
+ROOIAM_SMTP_SECURITY=none
+ROOIAM_SMTP_FROM=noreply@rooiam.local
+```
 
-### Infrastructure (Shared)
-
-| Variable | Description |
-|----------|-------------|
-| `POSTGRES_DB` | PostgreSQL database name |
-| `POSTGRES_USER` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `MINIO_ROOT_USER` | MinIO root user |
-| `MINIO_ROOT_PASSWORD` | MinIO root password |
-
-### Production Mode URLs
-
-| Variable | Local Example | Public Example |
-|----------|---------------|----------------|
-| `SERVER_PUBLIC_URL` | `http://localhost:5170` | `https://api.rooiam.com` |
-| `LOGIN_PUBLIC_URL` | `http://localhost:5172` | `https://app.rooiam.com` |
-| `ADMIN_PUBLIC_URL` | `http://localhost:5171` | `https://admin.rooiam.com` |
-| `LANDING_PUBLIC_URL` | `http://localhost:5173` | `https://rooiam.com` |
-| `DOCS_PUBLIC_URL` | `http://localhost:5175` | `https://docs.rooiam.com` |
-
-### Demo Mode URLs
-
-| Variable | Local Example | Public Example |
-|----------|---------------|----------------|
-| `DEMO_SERVER_PUBLIC_URL` | `http://localhost:5180` | `https://demo-api.rooiam.com` |
-| `DEMO_APP_PUBLIC_URL` | `http://localhost:5184` | `https://candycloud.rooiam.com` |
-| `DEMO_ADMIN_PUBLIC_URL` | `http://localhost:5181` | `https://demo-admin.rooiam.com` |
-| `DEMO_PORTAL_PUBLIC_URL` | `http://localhost:5182` | `https://demo-app.rooiam.com` |
-
-`DEMO_PORTAL_PUBLIC_URL` is the Rooiam tenant portal (`rooiam-app`) and maps to `ROOIAM_APP_URL`.
-`DEMO_APP_PUBLIC_URL` is the downstream customer/end-user demo app (`candycloud-web`) and maps to `ROOIAM_ENDUSER_URL`.
-
-### Allowed Origins
-
-| Env File | Example Value |
-|----------|---------------|
-| `ROOIAM_ALLOWED_ORIGINS` (prod) | `http://localhost:5170,...` or `https://api.rooiam.com,...` |
-| `DEMO_ALLOWED_ORIGINS` (demo) | `http://localhost:5180,...` or `https://demo.rooiam.com,...` |
-
-### Cookie Security
-
-| Env File | Local | Public |
-|----------|-------|--------|
-| `ROOIAM_COOKIE_SECURE` (prod) | `false` | `true` |
-| `DEMO_COOKIE_SECURE` (demo) | `false` | `true` |
-
-### Database & Redis
-
-| Mode | Variable | Example |
-|------|----------|---------|
-| Production | `ROOIAM_DATABASE_URL` | `postgres://rooiam:pass@postgres:5432/rooiam` |
-| Production | `ROOIAM_REDIS_URL` | `redis://redis:6379` |
-| Demo | `DEMO_DATABASE_URL` | `postgres://rooiam:pass@postgres:5432/rooiam_demo` |
-| Demo | `DEMO_REDIS_URL` | `redis://redis:6379` |
-
-### SMTP
-
-| Mode | Variable | Local Example | Public Example |
-|------|----------|---------------|----------------|
-| Production | `ROOIAM_SMTP_HOST` | `mailhog` | `smtp.example.com` |
-| Production | `ROOIAM_SMTP_PORT` | `1025` | `587` |
-| Production | `ROOIAM_SMTP_SECURITY` | `none` | `starttls` |
-| Demo | `ROOIAM_DEMO_SMTP_HOST` | `mailhog` | `mailhog` |
-| Demo | `ROOIAM_DEMO_SMTP_PORT` | `1025` | `1025` |
-| Demo | `ROOIAM_DEMO_MAILBOX_URL` | `http://localhost:8025` | `https://mailhog-demo.internal` |
-
-### OAuth (Production Only)
-
-| Variable | Description |
-|----------|-------------|
-| `ROOIAM_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `ROOIAM_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `ROOIAM_MICROSOFT_CLIENT_ID` | Microsoft OAuth client ID |
-| `ROOIAM_MICROSOFT_CLIENT_SECRET` | Microsoft OAuth client secret |
-| `ROOIAM_MICROSOFT_TENANT_ID` | Microsoft tenant ID (or `common`) |
-
-### Security
-
-| Variable | Local | Public |
-|----------|-------|--------|
-| `ROOIAM_TRUSTED_PROXY_CIDRS` | (empty) | `127.0.0.1/32,172.16.0.0/12,10.0.0.0/8` |
-
-### Demo URLs (linking from prod to demo)
-
-| Variable | Local Example | Public Example |
-|----------|---------------|----------------|
-| `DEMO_APP_PUBLIC_URL` | `http://localhost:5184` | `https://candycloud.rooiam.com` |
-| `DEMO_PORTAL_PUBLIC_URL` | `http://localhost:5182` | `https://demo-app.rooiam.com` |
-| `DEMO_ADMIN_PUBLIC_URL` | `http://localhost:5181` | `https://demo-admin.rooiam.com` |
-
----
-
-## Docker Compose Services
-
-### Production Stack (`docker-compose.yml`)
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `postgres` | 5432 | PostgreSQL database |
-| `redis` | 6379 | Redis cache |
-| `minio` | 9000 | MinIO object storage |
-| `mailhog` | 8025 | SMTP capture (local dev) |
-| `server` | 5170 | Rooiam backend |
-| `admin` | 5171 | Admin dashboard |
-| `app` | 5172 | Rooiam tenant portal (`rooiam-app`) |
-| `landing` | 5173 | Landing page |
-| `docs` | 5175 | Documentation |
-| `book` | 5176 | Book documentation |
-
-### Demo Stack (`docker-compose.demo.yml`)
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `postgres` | 5432 | PostgreSQL database (demo) |
-| `redis` | 6379 | Redis cache (demo) |
-| `minio` | 9000 | MinIO object storage |
-| `mailhog` | 8025 | SMTP capture |
-| `demo-server` | 5180 | Rooiam backend (demo mode) |
-| `demo-admin` | 5181 | Admin dashboard (demo) |
-| `demo-app` | 5182 | Rooiam tenant portal (`rooiam-app`, demo) |
-| `demo` | 5184 | Downstream customer/end-user demo app (`candycloud-web`) |
-
----
-
-## Docker Image Building
-
-### Build Single Image for All Modes
-
-Rooiam uses **one Docker image** for all modes. The mode is determined at runtime via environment variables.
+Generate a setup token with `openssl rand -hex 32`, put it in the file, then run:
 
 ```bash
-# Build the server image
-docker build -t ghcr.io/theparitt/rooiam-server:latest -f Dockerfile.server.prod .
-
-# Login and push
-echo $GITHUB_TOKEN | docker login ghcr.io -u theparitt --password-stdin
-docker push ghcr.io/theparitt/rooiam-server:latest
+docker compose -f docker-compose.prod.yml --env-file .env.docker.local.prod up -d --build
 ```
 
-### Local Build Without Push
+This starts the API on `5170`, Mailhog on `8025`, and the MinIO console on `9001`. Admin and portal are separate dev servers on `5171` and `5172`. Postgres, Redis, and the MinIO API are accessed through the Compose network, not published host ports.
 
-```bash
-docker build -t rooiam-server:local -f Dockerfile.server.prod .
-```
+## Public deployment
 
----
+Create an appropriately named public env file with your HTTPS URLs, real credentials, secure cookies, and SMTP configuration. Configure a reverse proxy and deploy the frontends separately. Google/Microsoft credentials are optional if those methods are disabled.
 
-## Security Checklist Before Production
+The supplied production Compose file does not forward every setting in the [server variable catalog](./08_env_var_catalog.md). In particular, add explicit environment/volume mappings for RSA signing keys, WebAuthn configuration, cookie-domain settings, or other optional server features when needed. Merely adding them to the env file is insufficient.
 
-- [ ] `ROOIAM_COOKIE_SECURE=true`
-- [ ] `ROOIAM_TRUSTED_PROXY_CIDRS` configured for your network
-- [ ] Strong passwords for PostgreSQL and MinIO
-- [ ] `ROOIAM_SETUP_TOKEN` changed from default
-- [ ] Real OAuth credentials configured (Google, Microsoft)
-- [ ] Real SMTP configured with valid credentials
-- [ ] Allowed origins match actual deployment domains
+## Images and updates
 
----
+- `docker-compose.prod.yml` builds the server from the checkout.
+- `docker-compose.demo.yml` uses `ghcr.io/theparitt/rooiam-demo-server:latest`. Use `pull` to update it, or build that tag locally as shown in the quickstart.
+- Both stacks run migrations in the Rust process at startup. The runtime image has no `sqlx` command.
+- Use `--env-file` with `logs`, `ps`, `restart`, and `down` as well as `up`.
 
-## Troubleshooting
-
-### Database Migration
-
-The Docker entrypoint automatically runs migrations on startup.
-
-```bash
-docker compose exec server sqlx migrate run --database-url "$ROOIAM_DATABASE_URL"
-```
-
-### Reseed Demo Data
-
-To reseed demo data after code/config updates:
-
-```bash
-docker compose -f docker-compose.demo.yml exec postgres psql -U rooiam -d rooiam_demo -c "DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id IN (SELECT id FROM oauth_clients WHERE client_id LIKE 'demo-%');"
-docker compose -f docker-compose.demo.yml restart demo-server
-```
-
-### Verify Mode
-
-```bash
-docker compose logs -f server 2>&1 | grep "MODE"
-docker compose -f docker-compose.demo.yml logs -f demo-server 2>&1 | grep "MODE"
-```
-
-Expected output:
-- Production: `PRODUCTION MODE - No demo seed, no demo routes. Production-ready.`
-- Demo: `DEMO MODE - Demo seed active. Demo-login endpoint enabled.`
+Inspect `/health` or `/server-info` for the running package version and available build metadata. An image's `latest` tag does not prove it matches your checkout.

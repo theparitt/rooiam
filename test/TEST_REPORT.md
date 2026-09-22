@@ -3,8 +3,8 @@
 > Historical note:
 > This report predates the current `test.vars` / `ROOIAM_MODE=test` doctrine.
 > For current execution instructions, use:
-> - [README.md](/home/theparitt/work/rooiam/test/README.md)
-> - [TESTING.md](/home/theparitt/work/rooiam/test/TESTING.md)
+> - [README.md](./README.md)
+> - [TESTING.md](./TESTING.md)
 
 **Tool:** [hurl](https://hurl.dev) — HTTP file-based API testing
 **Variables file:** `test.vars`
@@ -479,7 +479,7 @@ Each test file runs in order. Within a file, requests run sequentially. Captured
 | 8 | rooroo | `PATCH /members/{{cocoMemberId}}/role` → `"admin"` | **200** | ✅ | Happy path — normal role change still works |
 | 9 | rooroo | `PATCH /members/{{cocoMemberId}}/role` → `"member"` (cleanup) | **200** | ✅ | Role restored, server left in clean state |
 
-**Where the guard lives:** [organization/repository.rs:555–584](rooiam/rooiam-server/src/modules/organization/repository.rs#L555-L584) — inside the SQL transaction, checked before any DELETE/INSERT on `member_roles`. Placing it in the repository (not service layer) ensures it protects all future code paths, not just the current handler.
+**Where the guard lives:** [organization/repository.rs:555–584](../rooiam-server/src/modules/organization/repository.rs#L555-L584) — inside the SQL transaction, checked before any DELETE/INSERT on `member_roles`. Placing it in the repository (not service layer) ensures it protects all future code paths, not just the current handler.
 
 **Defence in depth — three independent layers:**
 1. Service layer rejects `"owner"` in `allowed_roles` (cannot assign owner via API)

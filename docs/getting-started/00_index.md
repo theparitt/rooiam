@@ -69,8 +69,10 @@ Read these if you are unsure about:
 
 ## Local URL Map
 
+Create the env files using the [Docker quickstart](./05_quickstart_with_docker.md) and [configuration guide](../reference/05_environment_configuration.md). Compose starts the API and infrastructure; the frontends listed below are separate dev servers.
+
 ### Production Stack
-Start with: `docker compose -f docker-compose.yml --env-file .env.docker.local.prod up -d --build`
+Start with: `docker compose -f docker-compose.prod.yml --env-file .env.docker.local.prod up -d --build`
 
 | URL | Purpose |
 |-----|---------|
@@ -81,7 +83,7 @@ Start with: `docker compose -f docker-compose.yml --env-file .env.docker.local.p
 | `http://localhost:5175` | Documentation site |
 
 ### Demo Stack
-Start with: `docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d --build`
+Start with: `docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d`
 
 | URL | Purpose |
 |-----|---------|
@@ -90,13 +92,13 @@ Start with: `docker compose -f docker-compose.demo.yml --env-file .env.docker.lo
 | `http://localhost:5182` | Portal / login (demo) |
 | `http://localhost:5184` | Demo downstream app |
 
-### Shared Services
-Available in both stacks:
+### Infrastructure consoles
+Production Compose uses the first pair of ports; the demo quickstart uses the second:
 
 | URL | Purpose |
 |-----|---------|
-| `http://localhost:8025` | Mailhog inbox for magic-link emails |
-| `http://localhost:9001` | MinIO console |
+| `http://localhost:8025` / `http://localhost:8026` | Production / demo Mailhog inbox |
+| `http://localhost:9001` / `http://localhost:19001` | Production / demo MinIO console |
 
 ## Legacy Notes
 

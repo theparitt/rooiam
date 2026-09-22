@@ -66,7 +66,7 @@ Same SHA-256 hashing scheme, stored in `oauth_refresh_tokens.token_hash`. Expire
 
 ### OIDC Client Secrets
 
-Client secrets are SHA-256 hashed (same pattern) and compared in `validate_client_secret`. This is weaker than Argon2id; suitable for machine-to-machine secrets but consider upgrading for production deployments storing many clients.
+Client secrets are Argon2id-hashed and verified in `validate_client_secret`. Legacy SHA-256 client-secret hashes are rejected; regenerate those client secrets.
 
 ---
 

@@ -4,14 +4,10 @@
 
 ```bash
 cd rooiam
-docker compose -f docker-compose.yml --env-file .env.docker.local.prod up --build -d
+docker compose -f docker-compose.prod.yml --env-file .env.docker.local.prod up --build -d
 ```
 
-This starts the full local Docker stack with:
-
-- production-style surfaces
-- seeded demo surfaces
-- Postgres, Redis, MinIO, Mailhog
+First create the env file using the [Environment Configuration Guide](../reference/05_environment_configuration.md). This starts the production API plus Postgres, Redis, MinIO, and Mailhog. Frontends and the seeded demo stack run separately.
 
 No Rust toolchain required.
 
@@ -19,17 +15,16 @@ No Rust toolchain required.
 
 ### Start the Server
 
-The server always reads `rooiam-server/.env`. To switch modes, copy the env file
-for the mode you want onto `.env`, then run:
+Generate configuration with `SQLX_OFFLINE=true cargo run -- setup` first; mode env files are untracked. The server reads `.env` by default or the file passed with `--env-file`. To switch between files you have created:
 
 ```bash
 cd rooiam/rooiam-server
 
 # production (517x)
-cp .env.local.prod .env && SQLX_OFFLINE=true cargo run
+SQLX_OFFLINE=true cargo run -- --env-file .env.local.prod
 
 # demo (518x) — seeds demo data
-cp .env.local.demo .env && SQLX_OFFLINE=true cargo run
+SQLX_OFFLINE=true cargo run -- --env-file .env.local.demo
 ```
 
 > The server auto-creates the database, runs migrations, and (in demo) seeds data
@@ -40,12 +35,14 @@ cp .env.local.demo .env && SQLX_OFFLINE=true cargo run
 > `ROOIAM_SETUP_TOKEN` are rejected in demo mode (and vice-versa). Use the
 > matching env file instead.
 
-### Start All Frontends
+### Start the frontend helper
 
 ```bash
 cd rooiam
 bash start_rooiam.sh
 ```
+
+The helper starts production admin/portal, landing, and CandyCloud web. It does not start API servers, demo admin/portal, docs, or the book. Install dependencies and configure each app first.
 
 Run docs separately:
 
@@ -100,7 +97,7 @@ Builds: `npm run build:prod-online` / `npm run build:demo-online`. See each app'
 
 ```bash
 # 1. Start the demo Rooiam server (port 5180)
-cd rooiam-server && cp .env.local.demo .env && SQLX_OFFLINE=true cargo run
+cd rooiam-server && SQLX_OFFLINE=true cargo run -- --env-file .env.local.demo
 
 # 2. Start candycloud-server (port 5185)
 cd candycloud-server && node src/index.js
@@ -111,11 +108,7 @@ cd candycloud-web && npm run dev
 
 ## Mailhog
 
-```bash
-docker compose up -d
-```
-
-Mailhog UI: `http://localhost:8025`
+Use the Mailhog service in your chosen Compose stack. Production Compose publishes `8025`; the [demo quickstart](../getting-started/05_quickstart_with_docker.md) publishes `8026`. For a source-run server, set SMTP to the published host port rather than the container-only `mailhog:1025` address.
 
 ## Basic Verification
 

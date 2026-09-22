@@ -1,6 +1,6 @@
 # Session And Cookie Doctrine
 
-This page defines the intended Rooiam session-cookie model for `0.1`.
+This page describes the current Rooiam session-cookie model for `0.1.0`. The cookie name is fixed as `rooiam_sid`; there is no cookie-name environment override.
 
 ## 1. Core Rule
 
@@ -25,8 +25,9 @@ Rooiam does **not** use browser-stored JWT access tokens for normal app sessions
 `rooiam_sid` should be:
 
 - `HttpOnly`
-- `SameSite=Lax`
 - `Path=/`
+- `SameSite=Lax` when a valid cookie domain is configured or Secure is off
+- `SameSite=None` for a Secure, host-only cookie (the current implementation)
 
 `Secure` should be:
 
@@ -79,7 +80,7 @@ In production:
 - serve over `https`
 - keep `Secure` on
 - keep `HttpOnly` on
-- keep `SameSite=Lax` unless a very specific cross-site flow truly requires otherwise
+- verify the effective SameSite behavior above against your actual domain and browser setup
 - do not broaden cookie domain without a clear reason
 
 ## 7. Security Intent

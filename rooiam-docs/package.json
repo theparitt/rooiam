@@ -6,16 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:docs": "node scripts/check-docs.mjs",
+    "deploy": "npm run check:docs && VITE_BOOK_URL=https://book.rooiam.com npm run build && wrangler pages deploy dist --project-name rooiam-docs --branch main --commit-dirty=true"
   },
   "dependencies": {
+    "highlight.js": "^11.9.0",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.28.0",
     "rehype-highlight": "^7.0.0",
-    "highlight.js": "^11.9.0",
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
@@ -26,6 +28,7 @@
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.3",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "wrangler": "4.78.0"
   }
 }

@@ -1,7 +1,7 @@
 # Mobile Device Login Contract
 
 Status: active server contract.
-Updated: 2026-06-16.
+Updated: 2026-09-22.
 
 This document is the implementation guide for `rooiam-android`, `rooiam-ios`,
 and any fake-phone/dev tester that participates in Rooiam QR login.
@@ -21,8 +21,9 @@ The current server requires two things for approval:
 Device token alone is not enough anymore.
 
 The server also now accepts and stores attestation evidence at device
-registration time. Attestation is not yet fully verified, but the server can
-already distinguish:
+registration time. The current server includes real Apple App Attest verification
+and Google Play Integrity token decoding/verification, alongside policy-controlled
+compatibility verification. Registration or later approval checks can update these states:
 
 - `missing` — device registered with no attestation evidence
 - `pending` — attestation evidence received and stored, verification pipeline not finished

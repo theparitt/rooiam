@@ -14,4 +14,5 @@ export const CHAPTERS: Chapter[] = [
   { num: '10', title: 'Audit Logs',                  slug: 'chapter-10-activity-audit-logs' },
   { num: '11', title: 'Machine Identity & API Keys', slug: 'chapter-11-api-keys' },
   { num: '12', title: 'Corporate Guardrails',        slug: 'chapter-12-corporate-guardrails' },
+  { num: '13', title: 'Operator Security Playbook',  slug: 'chapter-13-operator-security-playbook' },
 ];

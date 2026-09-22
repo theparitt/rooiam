@@ -122,7 +122,7 @@ Test & Save (§4) does this automatically. To do it manually — or to verify �
 
 ```bash
 # inside the MinIO container (localhost = MinIO itself):
-docker compose exec rooiam-minio sh -c \
+docker compose -f docker-compose.prod.yml --env-file .env.docker.local.prod exec minio sh -c \
   'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" \
    && mc anonymous set download local/rooiam'
 ```

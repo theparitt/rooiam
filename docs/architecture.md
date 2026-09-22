@@ -421,7 +421,7 @@ Rules:
 
 ### OAuth Login
 
-1. Frontend redirects to `GET /v1/oauth/login`
+1. Frontend redirects to `GET /v1/oauth/google`
 2. Server stores OAuth state in Redis
 3. Provider redirects back to callback
 4. Server resolves external identity, creates session, redirects to validated target URL

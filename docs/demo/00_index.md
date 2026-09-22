@@ -26,11 +26,11 @@ When `ROOIAM_MODE=demo`:
 | `5181` | Admin (demo) |
 | `5182` | Portal / login (demo) |
 | `5184` | Demo downstream app |
-| `8025` | Mailhog inbox |
-| `9001` | MinIO console |
+| `8026` | Mailhog inbox |
+| `19001` | MinIO console |
 
-Start with:
+First follow the [Docker Quickstart](../getting-started/05_quickstart_with_docker.md) to create the env file and start the frontends separately. The API/infra command is:
 
 ```bash
-docker compose up --build -d
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d
 ```

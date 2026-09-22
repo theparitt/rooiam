@@ -25,7 +25,7 @@ Use this checklist before tagging or shipping a release candidate.
 ## 4. Session And Cookie
 
 - session cookie is `HttpOnly`
-- session cookie is `SameSite=Lax`
+- session cookie SameSite matches the configured domain/Secure behavior in the [cookie reference](./14_session_and_cookie_doctrine.md)
 - localhost keeps `Secure` off by default
 - production keeps `Secure` on
 - logout clears and invalidates the session correctly

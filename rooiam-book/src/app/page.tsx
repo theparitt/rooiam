@@ -38,7 +38,7 @@ export default function Home() {
         IAM platform written in <strong>Rust</strong> (Actix-web), backed by <strong>PostgreSQL</strong>
         and <strong>Redis</strong>. Each chapter dissects one core problem of identity — from the
         most fundamental question of <em>what is a user?</em> all the way through OIDC federation,
-        hardware-bound passkeys, cryptographic audit trails, and enterprise network policy.
+        passkeys, security audit records, and workspace network policy.
       </p>
 
       <h3>Who This Book Is For</h3>
@@ -46,12 +46,12 @@ export default function Home() {
         This book is written for <strong>software engineers</strong> at any level who want to
         understand identity systems from first principles. You do not need prior security
         experience. Each chapter builds on the previous one, introduces the theoretical
-        problem before any code, and always shows you the actual Rust source that Rooiam runs
-        in production.
+        problem before implementation details, and links to the corresponding Rust source.
+        Examples are identified separately from executable source.
       </p>
 
       <h3>How Each Chapter Works</h3>
-      <p>Every chapter follows the same four-part structure:</p>
+      <p>The chapters connect four aspects of identity systems:</p>
       <ol>
         <li>
           <strong>The Problem</strong> — a clear, intuitive statement of the failure mode or
@@ -66,13 +66,14 @@ export default function Home() {
           durably and correctly.
         </li>
         <li>
-          <strong>Rust Implementation</strong> — the actual <code>rooiam-server</code> code
-          that executes the solution on every request.
+          <strong>Rust Implementation</strong> — a source-guided walkthrough of the relevant
+          <code>rooiam-server</code> behavior and its limitations.
         </li>
       </ol>
       <p>
-        Each chapter closes with a <strong>Chapter Summary</strong> and a short set of
-        <strong>Exercises</strong> to solidify understanding.
+        The implementation chapters include <strong>Exercises</strong> and source links.
+        This edition follows package version 0.1.0 at commit c20b9ed (September 2026);
+        the API path version remains v1.
       </p>
 
       <h3>The Stack at a Glance</h3>

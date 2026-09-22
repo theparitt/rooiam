@@ -37,7 +37,7 @@ npm run dev:demo-local      # → http://localhost:5181  (talks to server on 518
 ## Environments (the 4 modes)
 
 The app is configured entirely through `VITE_API_URL` (the `rooiam-server` base
-URL). There is one env file per mode, selected with Vite's `--mode` flag.
+URL). Create an untracked env file per mode, selected with Vite's `--mode` flag.
 
 | Mode | Env file | `VITE_API_URL` | Ports |
 |------|----------|----------------|-------|
@@ -54,7 +54,7 @@ Two axes:
 ### How Vite picks the file
 
 The `--mode <name>` flag loads `.env.<name>` (plus the always-loaded `.env` and
-the gitignored `.env.local`). The mode string **must** match the file suffix:
+the gitignored `.env.local`). Mode-specific files override `.env.local`; use `.env.<mode>.local` for local overrides. The mode string **must** match the file suffix:
 `--mode demo-local` → `.env.demo-local`.
 
 Only `VITE_`-prefixed variables are exposed to the browser.
@@ -93,8 +93,8 @@ npm run dev:demo-local -- --port 5199
 | `VITE_API_URL` | `rooiam-server` API base (must include `/v1`) | `http://localhost:5170/v1` |
 | `VITE_DOCS_URL` | Documentation site URL (links in the UI) | `http://localhost:5175` |
 
-`.env.local` (gitignored) overrides any of these locally without editing the
-committed mode files.
+`.env.<mode>.local` (gitignored) overrides any of these locally without editing the
+mode files.
 
 ---
 
@@ -121,7 +121,7 @@ Pages are grouped by scope:
 ## Notes
 
 - This app needs a running `rooiam-server` at `VITE_API_URL`. Start the backend
-  first (`cd ../rooiam-server && cargo run`).
+  first (see [local setup](../docs/development/01_local_setup.md)).
 - For demo mode the server runs on **5180** and seeds demo data; sign in with the
   seeded operator account (`owner@rooiam.demo` / `admin@rooiam.demo`). Magic-link
-  emails land in Mailhog at `http://localhost:8025`.
+  emails land in the configured Mailhog inbox (`http://localhost:8026` with the Docker quickstart).

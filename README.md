@@ -24,10 +24,10 @@ If you don't see a password field, that's the feature.
 
 ## Quick demo
 
-The demo stack runs the API + seeded demo data with Postgres, Redis, MinIO, and Mailhog in Docker:
+The demo stack runs the API + seeded demo data with Postgres, Redis, MinIO, and Mailhog in Docker. First create the local env file using the [Quickstart](docs/getting-started/05_quickstart_with_docker.md); deployment env files are not committed:
 
 ```bash
-docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo up -d
+docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d
 ```
 
 Then open:
@@ -60,7 +60,9 @@ rooiam-server/   Rust + Actix-Web API + OIDC provider (port 5170)
 rooiam-admin/    Platform admin console
 rooiam-app/      Tenant login + portal (hosted login)
 rooiam-landing/  Public landing page
-rooiam-docs/     Documentation site
+rooiam-docs/     Documentation site (renders docs/)
+rooiam-book/     Educational server walkthrough
+rooiam-sdk/      Browser/server TypeScript SDKs + OpenAPI snapshots
 rooiam-examples/ Integration examples (widget / account / backend)
 ```
 

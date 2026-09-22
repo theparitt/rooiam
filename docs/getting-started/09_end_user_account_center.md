@@ -190,7 +190,7 @@ The following features have partial server-side support but the end-user UI is n
 
 ## Demo Mode Restrictions
 
-When `ROOIAM_ENABLE_DEMO_SEED=true` and the user is logged in as a demo account, personal changes are locked:
+When `ROOIAM_MODE=demo` and the user is logged in as a demo account, personal changes are locked:
 
 - **My Profile**: Form is editable but saving is blocked (warning shown).
 - **My Account**: Linking and unlinking is blocked (warning shown).

@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-- PostgreSQL 14+
-- Redis
-- Rust toolchain
-- Node.js 18+
+- PostgreSQL 16 (the Compose baseline)
+- Redis 7
+- Rust 1.88.0 (pinned by `rust-toolchain.toml`)
+- Node.js 20+
 - optional Mailhog
 
 ## Clone the Repo
@@ -17,39 +17,20 @@ cd rooiam
 
 ## Server Environment
 
-Example local `.env`:
+Run the configuration wizard from `rooiam-server`:
 
-```env
-# ── Mode ──────────────────────────────────────────────────────────────────────
-ROOIAM_MODE=demo
-ROOIAM_DEPLOY_TARGET=local
-
-# ── Server ────────────────────────────────────────────────────────────────────
-ROOIAM_HOST=0.0.0.0
-ROOIAM_PORT=5170
-
-# ── Public URLs ────────────────────────────────────────────────────────────────
-ROOIAM_SERVER_URL=http://localhost:5170
-ROOIAM_ADMIN_URL=http://localhost:5171
-ROOIAM_APP_URL=http://localhost:5172
-
-# ── Browser Security ────────────────────────────────────────────────────────────
-ROOIAM_ALLOWED_ORIGINS=http://localhost:5171,http://localhost:5172,http://localhost:5173,http://localhost:5175,http://localhost:5176
-ROOIAM_COOKIE_SECURE=false
-
-# ── Database / Cache ────────────────────────────────────────────────────────────
-ROOIAM_DATABASE_URL=postgres://rooiam:yourpassword@127.0.0.1:5432/rooiam
-ROOIAM_REDIS_URL=redis://127.0.0.1:6379
-
-# ── Demo SMTP ────────────────────────────────────────────────────────────────────
-ROOIAM_DEMO_SMTP_HOST=127.0.0.1
-ROOIAM_DEMO_SMTP_PORT=1025
-ROOIAM_DEMO_SMTP_FROM=demo@rooiam.local
+```bash
+SQLX_OFFLINE=true cargo run -- setup
+SQLX_OFFLINE=true cargo run -- --env-file .env.local.demo
 ```
+
+Choose demo/local and the output filename shown above, or use the filename you selected. Deployment env files are not committed. The demo database name must end in `rooiam_demo`; use ports `5180`, `5181`, and `5182` for API, admin, and portal. Production conventionally uses `5170`, `5171`, and `5172`.
+
+For Docker, use the complete [quickstart](../getting-started/05_quickstart_with_docker.md). `docker-compose.local.yml` supplies only Postgres (host `5434`) and MinIO (`9002`/`9003`); source development also needs Redis and an SMTP service.
 
 ## Frontend Environment Files
 
-Each frontend app reads its config from a `.env.local` file in its own directory. Vite loads `.env.local` automatically — it overrides `.env` and is gitignored.
+Vite loads `.env` and `.env.local`, then the selected mode files. `.env.<mode>.local` has precedence over shared `.env.local`. Use `.env.demo-local.local` with `dev:demo-local` or `.env.prod-local.local` with `dev:prod-local` for admin/portal. The examples below use production admin/portal ports; set their API URL to `http://localhost:5180/v1` for demo.
 
 ### Normal (Linux / Mac — localhost works)
 
