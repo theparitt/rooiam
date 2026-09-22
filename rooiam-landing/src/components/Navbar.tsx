@@ -22,10 +22,6 @@ export default function Navbar()
                 <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 hover:text-gray-800 transition-colors">
                     <Github className="w-4 h-4" /> GitHub
-                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full"
-                        style={{ background: '#FFE8F0', color: '#c96b8a' }}>
-                        soon
-                    </span>
                 </a>
             </div>
 
