@@ -2,28 +2,30 @@
   "name": "rooiam-demo",
   "private": true,
   "version": "0.1.0",
-    "license": "Apache-2.0",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:demo": "vite --host 0.0.0.0 --port 5184 --strictPort",
     "build": "tsc && vite build",
-    "deploy": "VITE_API_URL=https://candycloud-api.rooiam.com npm run build && npx wrangler pages deploy dist --project-name candycloud-web",
-    "preview": "vite preview"
+    "deploy": "VITE_API_URL=https://candycloud-api.rooiam.com npm run build && wrangler pages deploy dist --project-name candycloud-web --branch main --commit-dirty=true",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.320.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
-    "@types/qrcode": "^1.5.6",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^8.3.0",
+    "wrangler": "4.136.3"
   }
 }

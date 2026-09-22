@@ -117,3 +117,7 @@ If you use Docker:
   - `EXAMPLE_3_CLIENT_ID`
   - `EXAMPLE_3_APP_NAME`
   - `EXAMPLE_3_API_KEY`
+
+## Regression checks
+
+Install dependencies in each example directory, then run `node --test rooiam-examples/test/*.test.mjs` from the repository root. These checks launch isolated example servers and verify callback escaping, widget message boundaries, and browser script syntax.

@@ -41,6 +41,7 @@ async function requireSession(req, res, next) {
 //   POST /webauthn/register/start         → /identity/token/passkeys/register/start
 //   POST /webauthn/register/finish        → /identity/token/passkeys/register/finish
 //   DELETE /webauthn/passkeys/:id         → /identity/token/passkeys/:id
+// MFA below is simulated in CandyCloud, not forwarded to Rooiam.
 //   GET  /mfa/status                      → /identity/token/mfa
 //   POST /mfa/totp/start                  → /identity/token/mfa/totp/start
 //   POST /mfa/totp/finish                 → /identity/token/mfa/totp/finish
@@ -141,7 +142,7 @@ proxyRouter.post('/identity/me/linked-accounts/:provider/start', requireSession,
   } catch (err) {
     return next(err)
   }
-  await forward(req, res, next, `/identity/token/linked-accounts/${req.params.provider}/start`)
+  await forward(req, res, next, `/identity/token/linked-accounts/${encodeURIComponent(req.params.provider)}/start`)
 })
 proxyRouter.delete('/identity/me/linked-accounts/:provider', requireSession, async (req, res, next) => {
   try {
@@ -149,7 +150,7 @@ proxyRouter.delete('/identity/me/linked-accounts/:provider', requireSession, asy
   } catch (err) {
     return next(err)
   }
-  await forward(req, res, next, `/identity/token/linked-accounts/${req.params.provider}`)
+  await forward(req, res, next, `/identity/token/linked-accounts/${encodeURIComponent(req.params.provider)}`)
 })
 proxyRouter.post('/identity/me/email-change/request', requireSession, async (req, res, next) => {
   try {
@@ -183,7 +184,7 @@ proxyRouter.delete('/identity/me/sessions/:id', requireSession, async (req, res,
   } catch (err) {
     return next(err)
   }
-  await forward(req, res, next, `/identity/token/sessions/${req.params.id}`)
+  await forward(req, res, next, `/identity/token/sessions/${encodeURIComponent(req.params.id)}`)
 })
 proxyRouter.get('/identity/me/audit-logs', requireSession, async (req, res, next) => {
   try {
@@ -232,7 +233,7 @@ proxyRouter.patch('/webauthn/passkeys/:id', requireSession, async (req, res, nex
   } catch (err) {
     return next(err)
   }
-  await forward(req, res, next, `/identity/token/passkeys/${req.params.id}`)
+  await forward(req, res, next, `/identity/token/passkeys/${encodeURIComponent(req.params.id)}`)
 })
 proxyRouter.delete('/webauthn/passkeys/:id', requireSession, async (req, res, next) => {
   try {
@@ -240,7 +241,7 @@ proxyRouter.delete('/webauthn/passkeys/:id', requireSession, async (req, res, ne
   } catch (err) {
     return next(err)
   }
-  await forward(req, res, next, `/identity/token/passkeys/${req.params.id}`)
+  await forward(req, res, next, `/identity/token/passkeys/${encodeURIComponent(req.params.id)}`)
 })
 
 // /mfa/* — demo stubs (no real TOTP stored, avoids locking demo accounts)
@@ -280,7 +281,7 @@ proxyRouter.post('/mfa/totp/start', requireSession, async (req, res) => {
 proxyRouter.post('/mfa/totp/finish', requireSession, async (req, res) => {
   try {
     validateEmptyQuery(req)
-    validateBody(req, { required: ['code'], optional: [] })
+    validateBody(req, { required: ['code'], optional: ['challenge_id'] })
     const { code } = req.body
     // Accept any 6-digit numeric code
     if (!code || !/^\d{6}$/.test(String(code))) {
@@ -325,12 +326,9 @@ proxyRouter.post('/mfa/recovery-codes/regenerate', requireSession, async (req, r
 })
 
 // Path passthrough routes (same path in Rooiam)
-proxyRouter.all('/orgs/*', requireSession, async (req, res, next) => {
+proxyRouter.get('/orgs/current/portal', requireSession, async (req, res, next) => {
   try {
     validateEmptyQuery(req)
-    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
-      validateEmptyBody(req)
-    }
   } catch (err) {
     return next(err)
   }
@@ -348,7 +346,7 @@ async function forward(req, res, next, rooiamPath, accessToken = req.session?.ac
     // Pass body for mutating methods
     let body
     let contentType
-    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) && req.body && Object.keys(req.body).length > 0) {
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) && req.body) {
       body = JSON.stringify(req.body)
       contentType = 'application/json'
     }

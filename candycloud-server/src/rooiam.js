@@ -16,6 +16,7 @@ export async function exchangeCode({ code, redirectUri, clientId, codeVerifier }
   })
 
   const res = await fetch(`${ROOIAM_API}/oidc/token`, {
+    signal: AbortSignal.timeout(10000),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -34,6 +35,7 @@ export async function exchangeCode({ code, redirectUri, clientId, codeVerifier }
  */
 export async function fetchUserinfo(accessToken) {
   const res = await fetch(`${ROOIAM_API}/oidc/userinfo`, {
+    signal: AbortSignal.timeout(10000),
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   const data = await res.json().catch(() => ({}))
@@ -53,6 +55,7 @@ export async function proxyToRooiam(path, { method = 'GET', body, accessToken, c
   if (contentType) headers['Content-Type'] = contentType
 
   const res = await fetch(`${ROOIAM_API}${path}`, {
+    signal: AbortSignal.timeout(10000),
     method,
     headers,
     ...(body !== undefined ? { body } : {}),

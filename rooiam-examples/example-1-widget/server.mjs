@@ -3,13 +3,14 @@ import express from 'express'
 import dotenv from 'dotenv'
 import {
   buildHostedWidgetUrl,
+  escapeHtml,
   readExampleConfig,
 } from '../shared/example-helpers.mjs'
 
 dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 const app = express()
-const port = Number(process.env.PORT || 5180)
+const port = Number(process.env.PORT || 5191)
 const apiBase = (process.env.ROOIAM_API_BASE || 'http://localhost:5170/v1').replace(/\/+$/, '')
 
 function layout({ title, body }) {
@@ -136,7 +137,7 @@ app.get('/', (req, res) => {
         <div class="widget-wrap">
           <iframe
             id="widget-frame"
-            src="${widgetUrl}"
+            src="${escapeHtml(widgetUrl)}"
             allow="publickey-credentials-get *"
             title="Rooiam login widget"
           ></iframe>
@@ -144,9 +145,10 @@ app.get('/', (req, res) => {
         <script>
           const iframe = document.getElementById('widget-frame')
           window.addEventListener('message', event => {
+            if (event.source !== iframe.contentWindow || event.origin !== new URL(iframe.src).origin) return
             if (!event?.data || event.data.type !== 'rooiam-login-widget:size') return
-            if (typeof event.data.height === 'number') iframe.style.height = event.data.height + 'px'
-            if (typeof event.data.width === 'number') iframe.style.width = Math.min(event.data.width, 420) + 'px'
+            if (Number.isFinite(event.data.height) && event.data.height > 0) iframe.style.height = event.data.height + 'px'
+            if (Number.isFinite(event.data.width) && event.data.width > 0) iframe.style.width = Math.min(event.data.width, 420) + 'px'
             iframe.style.opacity = '1'
           })
         </script>
@@ -176,11 +178,11 @@ app.get('/callback', (req, res) => {
             <h2>App Callback Error</h2>
             <div class="status bad">
               <strong>Callback failed.</strong><br />
-              ${String(error_description || error)}
+              ${escapeHtml(error_description || error)}
             </div>
             <div class="meta">
-              <div class="meta-item"><div class="k">App</div><div class="v">${config.app_name || 'Rooiam Example'}</div></div>
-              <div class="meta-item"><div class="k">Client ID</div><div class="v">${config.client_id || '—'}</div></div>
+              <div class="meta-item"><div class="k">App</div><div class="v">${escapeHtml(config.app_name || 'Rooiam Example')}</div></div>
+              <div class="meta-item"><div class="k">Client ID</div><div class="v">${escapeHtml(config.client_id || '—')}</div></div>
             </div>
             <a class="btn" href="/">Back to login</a>
           </section>
@@ -207,9 +209,9 @@ app.get('/callback', (req, res) => {
             Rooiam redirected back to the app callback registered for this workspace app. This example keeps the widget contract strict and does not pass callback-style parameters into the iframe.
           </div>
           <div class="meta">
-            <div class="meta-item"><div class="k">App</div><div class="v">${config.app_name || 'Rooiam Example'}</div></div>
-            <div class="meta-item"><div class="k">Client ID</div><div class="v">${config.client_id || '—'}</div></div>
-            <div class="meta-item"><div class="k">Callback Path</div><div class="v">${req.originalUrl}</div></div>
+            <div class="meta-item"><div class="k">App</div><div class="v">${escapeHtml(config.app_name || 'Rooiam Example')}</div></div>
+            <div class="meta-item"><div class="k">Client ID</div><div class="v">${escapeHtml(config.client_id || '—')}</div></div>
+            <div class="meta-item"><div class="k">Callback Path</div><div class="v">${escapeHtml(req.originalUrl)}</div></div>
             <div class="meta-item"><div class="k">Flow Contract</div><div class="v">widget identity only</div></div>
           </div>
           <a class="btn" href="/">Back to login</a>
@@ -219,6 +221,6 @@ app.get('/callback', (req, res) => {
   )
 })
 
-app.listen(port, () => {
-  console.log(`example-1-widget running on http://localhost:${port}`)
+const server = app.listen(port, () => {
+  console.log(`example-1-widget running on http://localhost:${server.address().port}`)
 })

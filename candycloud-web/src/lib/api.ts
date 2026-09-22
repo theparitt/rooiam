@@ -149,7 +149,7 @@ export type DemoLinkedAccounts = {
 
 export const demoApi = {
   me: () => apiFetch<{ rooiam_user_id: string; email: string | null; display_name: string | null }>('/me'),
-  updateProfile: (payload: { display_name?: string | null }) =>
+  updateProfile: (payload: { display_name: string }) =>
     apiFetch<{ ok: boolean; display_name: string | null }>('/me/profile', {
       method: 'PATCH',
       body: JSON.stringify(payload),

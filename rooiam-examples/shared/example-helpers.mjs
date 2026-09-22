@@ -16,6 +16,17 @@ import path from 'node:path'
  * the route handlers can focus on the actual auth or API flow being taught.
  */
 
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char])
+}
+
+// JSON embedded in a script must not be able to close the script element.
+export function scriptJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
 export function normalizeBaseUrl(value, fallback) {
   return String(value || fallback || '').replace(/\/+$/, '')
 }
@@ -58,7 +69,7 @@ export function buildHostedWidgetUrl(config = {}) {
   if ((config.workspace_id || '').trim()) {
     url.searchParams.set('workspace_id', config.workspace_id.trim())
   } else if ((config.workspace_slug || '').trim()) {
-    url.searchParams.set('org', config.workspace_slug.trim())
+    url.searchParams.set('workspace', config.workspace_slug.trim())
   }
 
   if ((config.client_id || '').trim()) {
@@ -77,7 +88,12 @@ export function parseCookies(header = '') {
       .map((part) => {
         const index = part.indexOf('=')
         if (index < 0) return [part, '']
-        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))]
+        const value = part.slice(index + 1)
+        try {
+          return [part.slice(0, index), decodeURIComponent(value)]
+        } catch {
+          return [part.slice(0, index), value]
+        }
       }),
   )
 }
@@ -90,7 +106,7 @@ export function parseCookies(header = '') {
  */
 export async function requestJson(url, options = {}) {
   try {
-    const response = await fetch(url, options)
+    const response = await fetch(url, { signal: AbortSignal.timeout(10000), ...options })
     const data = await response.json().catch(() => ({}))
 
     if (!response.ok) {

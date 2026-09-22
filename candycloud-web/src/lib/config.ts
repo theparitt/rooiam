@@ -3,7 +3,7 @@ const loginWidget = import.meta.env.VITE_LOGIN_WIDGET_URL?.trim()
 
 export function getApiBase() {
   if (!api) {
-    throw new Error('Missing VITE_API_URL. Set it to your Rooiam API base, for example http://localhost:5180/v1.')
+    throw new Error('Missing VITE_API_URL. Set it to your CandyCloud backend origin, for example http://localhost:5185.')
   }
   return api.replace(/\/+$/, '')
 }

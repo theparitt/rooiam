@@ -27,6 +27,7 @@ import {
   RateLimitError,
 } from './lib/api'
 import { getApiBase, getLoginBase } from './lib/config'
+import { isTrustedWidgetMessage, getWidgetNavigationUrl } from './lib/widget-message'
 import DemoBadge from './components/DemoBadge'
 import DemoLoginHint from './components/DemoLoginHint'
 
@@ -482,7 +483,9 @@ function Landing() {
 
   React.useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'rooiam:iframe-height' && iframeRef.current) {
+      const frame = iframeRef.current
+      if (!isTrustedWidgetMessage(e, frame)) return
+      if (['rooiam-login-widget:size', 'rooiam:iframe-height'].includes(e.data?.type) && Number.isFinite(e.data.height) && e.data.height > 0 && iframeRef.current) {
         iframeRef.current.style.height = `${e.data.height}px`
         setIframeReady(true)
       }
@@ -494,7 +497,8 @@ function Landing() {
         setWidgetReady(true)
       }
       if (e.data?.type === 'rooiam:navigate' && typeof e.data.url === 'string') {
-        window.location.href = e.data.url
+        const destination = getWidgetNavigationUrl(e.data.url, frame.src)
+        if (destination) window.location.href = destination
       }
       if (e.data?.type === 'rooiam:error') {
         setBootError(e.data.message || 'Widget failed to load')
@@ -538,9 +542,7 @@ function Landing() {
           if (!config.redirect_uri) {
             throw new Error(
               `Demo config error: redirect_uri is empty for "${config.app_id}".\n` +
-              `The server seeded this OAuth client with a different origin.\n` +
-              `Fix: delete demo OAuth clients from the DB and restart the server to reseed.\n` +
-              `SQL: DELETE FROM oauth_clients WHERE client_id LIKE 'demo-%';`
+              `Register an exact callback URL for ${window.location.origin} in this app's Rooiam settings.`
             )
           }
           return { catalog, config }
@@ -1581,7 +1583,7 @@ function Dashboard() {
     setSelfServiceError('')
     setSelfServiceNotice('')
     const apiBase = getApiBase()
-    const payload = { display_name: profileName.trim() || null }
+    const payload = { display_name: profileName.trim() }
     setProfileApiLog(makeLog('PATCH', `${apiBase}/identity/me/profile`, payload, '…', ''))
     try {
       const result = await demoApi.updateProfile(payload)
@@ -1968,7 +1970,8 @@ function Dashboard() {
               </div>
 
               <div className="self-service-block">
-                <p className="self-service-label">Authenticator app</p>
+                <p className="self-service-label">Authenticator app · simulation</p>
+                <p className="self-service-empty">This demo accepts any six-digit code and shows fake recovery codes. It does not enable MFA on your Rooiam account.</p>
                 <div className="self-service-status">
                   <strong>{mfaStatus?.totp_enabled ? 'Enabled' : 'Not enabled'}</strong>
                   <span>{mfaStatus ? `${mfaStatus.backup_codes_remaining} backup codes remaining` : 'Loading status…'}</span>

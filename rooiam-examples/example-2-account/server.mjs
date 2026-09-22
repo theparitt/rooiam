@@ -3,15 +3,16 @@ import express from 'express'
 import dotenv from 'dotenv'
 import {
   buildHostedWidgetUrl,
+  escapeHtml,
+  scriptJson,
   callWorkspaceApi,
-  parseCookies,
   readExampleConfig,
 } from '../shared/example-helpers.mjs'
 
 dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 const app = express()
-const port = Number(process.env.PORT || 5181)
+const port = Number(process.env.PORT || 5192)
 const apiBase = (process.env.ROOIAM_API_BASE || 'http://localhost:5170/v1').replace(/\/+$/, '')
 const apiKey = (process.env.ROOIAM_API_KEY || '').trim()
 
@@ -227,7 +228,7 @@ app.get('/', async (req, res) => {
   const body = `
     <section class="grid widget-only">
       <div class="iframe-wrap">
-        <iframe id="login-widget-frame" src="${widgetUrl}" title="${config.app_name || 'Rooiam Example'} Login" allow="publickey-credentials-get *"></iframe>
+        <iframe id="login-widget-frame" src="${escapeHtml(widgetUrl)}" title="${escapeHtml(config.app_name || 'Rooiam Example')} Login" allow="publickey-credentials-get *"></iframe>
       </div>
     </section>
     <script>
@@ -235,7 +236,7 @@ app.get('/', async (req, res) => {
         const frame = document.getElementById('login-widget-frame');
         if (!frame) return;
         window.addEventListener('message', function(event) {
-          if (event.origin !== 'http://localhost:5170') return;
+          if (event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin) return;
           if (!event.data || event.data.type !== 'rooiam-login-widget:size') return;
           const nextHeight = Number(event.data.height);
           const nextWidth = Number(event.data.width);
@@ -311,15 +312,15 @@ app.get('/dashboard', async (req, res) => {
           <div class="summary-grid">
             <div class="subcard">
               <h3>Workspace</h3>
-              <p>${integration.error ? '—' : integration.data.workspace_name}</p>
+              <p>${escapeHtml(integration.error ? '—' : integration.data.workspace_name)}</p>
             </div>
             <div class="subcard">
               <h3>Workspace ID</h3>
-              <p class="mono">${integration.error ? '—' : integration.data.workspace_id}</p>
+              <p class="mono">${escapeHtml(integration.error ? '—' : integration.data.workspace_id)}</p>
             </div>
             <div class="subcard">
               <h3>Brand Color</h3>
-              <p>${integration.error ? '—' : (integration.data.brand_color || '—')}</p>
+              <p>${escapeHtml(integration.error ? '—' : (integration.data.brand_color || '—'))}</p>
             </div>
           </div>
         </section>
@@ -409,9 +410,9 @@ app.get('/dashboard', async (req, res) => {
     </section>
     <script>
       (function() {
-        const apiBase = ${JSON.stringify(apiBase)}
-        const apiOrigin = ${JSON.stringify(apiOrigin)}
-        const returnUrl = ${JSON.stringify(accountReturnUrl)}
+        const apiBase = ${scriptJson(apiBase)}
+        const apiOrigin = ${scriptJson(apiOrigin)}
+        const returnUrl = ${scriptJson(accountReturnUrl)}
         const globalMessage = document.getElementById('global-message')
         const navButtons = Array.from(document.querySelectorAll('[data-section]'))
         const panels = Array.from(document.querySelectorAll('[data-panel]'))
@@ -478,7 +479,7 @@ app.get('/dashboard', async (req, res) => {
               },
             })
           } catch (error) {
-            throw new Error('Could not reach the Rooiam API from 5181.')
+            throw new Error('Could not reach the Rooiam API from 5192.')
           }
           if (response.status === 401) {
             throw new Error('Sign in first. Your end-user session on 5170 is missing or expired.')
@@ -509,27 +510,29 @@ app.get('/dashboard', async (req, res) => {
           history[replace ? 'replaceState' : 'pushState']({}, '', window.location.pathname + '?' + params.toString())
         }
 
+        const escapeHtml = ${escapeHtml.toString()}
+
         function badge(kind, label) {
-          return '<span class="status-badge ' + kind + '">' + label + '</span>'
+          return '<span class="status-badge ' + kind + '">' + escapeHtml(label) + '</span>'
         }
 
         function sessionCard(session, current) {
           const context = [session.login_app_name, session.login_workspace_slug ? ('Workspace ' + session.login_workspace_slug) : ''].filter(Boolean).join(' · ')
           return '<div class="list-item">' +
-            '<div><h3>' + (session.user_agent || 'Unknown device') + '</h3><p>' +
-              (session.ip || '—') + ' · ' + new Date(session.last_seen_at).toLocaleString() + (context ? (' · ' + context) : '') +
+            '<div><h3>' + escapeHtml(session.user_agent || 'Unknown device') + '</h3><p>' +
+              escapeHtml(session.ip || '—') + ' · ' + new Date(session.last_seen_at).toLocaleString() + (context ? (' · ' + escapeHtml(context)) : '') +
             '</p></div>' +
             (current
               ? '<span class="status-badge ok">Current</span>'
-              : '<button class="button warn" data-session-delete="' + session.id + '" type="button">Revoke</button>') +
+              : '<button class="button warn" data-session-delete="' + escapeHtml(session.id) + '" type="button">Revoke</button>') +
           '</div>'
         }
 
         function auditCard(log) {
           const meta = [log.target_type, log.target_id || '', log.ip || ''].filter(Boolean).join(' · ')
           return '<div class="audit-item">' +
-            '<div class="audit-item-top"><span class="audit-action">' + log.action + '</span><span class="subtle">' + new Date(log.created_at).toLocaleString() + '</span></div>' +
-            '<div class="audit-meta">' + (meta || 'No extra metadata') + '</div>' +
+            '<div class="audit-item-top"><span class="audit-action">' + escapeHtml(log.action) + '</span><span class="subtle">' + new Date(log.created_at).toLocaleString() + '</span></div>' +
+            '<div class="audit-meta">' + escapeHtml(meta || 'No extra metadata') + '</div>' +
           '</div>'
         }
 
@@ -560,10 +563,10 @@ app.get('/dashboard', async (req, res) => {
             const name = isGoogle ? 'Google' : 'Microsoft'
             const linkedLabel = provider.linked ? ('Linked' + (provider.linked_email ? (' as ' + provider.linked_email) : '')) : 'Not linked yet'
             return '<div class="list-item">' +
-              '<div><h3>' + name + '</h3><p>' + linkedLabel + '</p></div>' +
+              '<div><h3>' + name + '</h3><p>' + escapeHtml(linkedLabel) + '</p></div>' +
               (provider.linked
-                ? '<button class="button warn" data-unlink="' + provider.provider + '" type="button">Unlink</button>'
-                : '<button class="button" data-link="' + provider.provider + '" type="button">Link</button>') +
+                ? '<button class="button warn" data-unlink="' + escapeHtml(provider.provider) + '" type="button">Unlink</button>'
+                : '<button class="button" data-link="' + escapeHtml(provider.provider) + '" type="button">Link</button>') +
               '</div>'
           }).join('')
 
@@ -587,8 +590,8 @@ app.get('/dashboard', async (req, res) => {
           passkeyList.innerHTML = passkeys.map(function(passkey) {
             const lastUsed = passkey.last_used_at ? (' · Last used ' + new Date(passkey.last_used_at).toLocaleString()) : ''
             return '<div class="list-item">' +
-              '<div><h3>' + passkey.name + '</h3><p>Added ' + new Date(passkey.created_at).toLocaleDateString() + lastUsed + '</p></div>' +
-              '<button class="button warn" data-passkey-delete="' + passkey.id + '" type="button">Remove</button>' +
+              '<div><h3>' + escapeHtml(passkey.name) + '</h3><p>Added ' + new Date(passkey.created_at).toLocaleDateString() + lastUsed + '</p></div>' +
+              '<button class="button warn" data-passkey-delete="' + escapeHtml(passkey.id) + '" type="button">Remove</button>' +
             '</div>'
           }).join('')
           passkeyEmpty.style.display = passkeys.length ? 'none' : 'block'
@@ -634,7 +637,7 @@ app.get('/dashboard', async (req, res) => {
           }
           backupCodes.classList.remove('hidden')
           backupCodes.innerHTML = codes.map(function(code) {
-            return '<div class="backup-code">' + code + '</div>'
+            return '<div class="backup-code">' + escapeHtml(code) + '</div>'
           }).join('')
         }
 
@@ -833,7 +836,7 @@ app.get('/dashboard', async (req, res) => {
         selectSection(initialSection, true)
 
         loadDashboardState().catch(function(error) {
-          setMessage('warn', error.message + ' Make sure localhost:5181 is allowed and you are signed in through the widget first.')
+          setMessage('warn', error.message + ' Make sure localhost:5192 is allowed and you are signed in through the widget first.')
         })
       })();
     <\/script>
@@ -863,7 +866,7 @@ app.get('/callback', async (req, res) => {
         ${error ? `
           <div class="hint warn">
             <h3>Authorization error</h3>
-            <p>${errorDescription || error}</p>
+            <p>${escapeHtml(errorDescription || error)}</p>
           </div>
         ` : `
           <div class="hint ok">
@@ -872,9 +875,9 @@ app.get('/callback', async (req, res) => {
           </div>
         `}
         <div class="meta">
-          <div class="meta-item"><div class="k">App</div><div class="v">${config.app_name || 'Rooiam Example'}</div></div>
-          <div class="meta-item"><div class="k">Client ID</div><div class="v">${config.client_id || '—'}</div></div>
-          <div class="meta-item"><div class="k">Callback Path</div><div class="v">${req.originalUrl}</div></div>
+          <div class="meta-item"><div class="k">App</div><div class="v">${escapeHtml(config.app_name || 'Rooiam Example')}</div></div>
+          <div class="meta-item"><div class="k">Client ID</div><div class="v">${escapeHtml(config.client_id || '—')}</div></div>
+          <div class="meta-item"><div class="k">Callback Path</div><div class="v">${escapeHtml(req.originalUrl)}</div></div>
           <div class="meta-item"><div class="k">Flow Contract</div><div class="v">widget identity only</div></div>
         </div>
         <div class="actions">
@@ -886,6 +889,6 @@ app.get('/callback', async (req, res) => {
   res.type('html').send(layout({ title: 'Example 2: Real Integration Callback', body }))
 })
 
-app.listen(port, () => {
-  console.log(`example-2-account running on http://localhost:${port}`)
+const server = app.listen(port, () => {
+  console.log(`example-2-account running on http://localhost:${server.address().port}`)
 })

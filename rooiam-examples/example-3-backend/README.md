@@ -6,7 +6,7 @@ This example is intentionally machine-to-machine only:
 
 - browser calls local routes on `5193`
 - `5193` backend calls Rooiam on `5170`
-- the workspace API key stays on the example server
+- the configured workspace API key stays on the example server; a key pasted into the page is sent to this backend
 
 This example does not use:
 
@@ -113,3 +113,7 @@ Then open:
 ```text
 http://localhost:5193
 ```
+
+## Access boundary
+
+The server binds to `127.0.0.1` by default because local callers can use the configured workspace API key. `HOST` can override the bind address for a protected container network. Do not expose this example publicly with a server key unless an authenticated access layer protects it. This is a local operator example, not an end-user authorization layer.

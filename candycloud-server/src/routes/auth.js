@@ -12,6 +12,11 @@ import { validateBody, validateEmptyQuery } from '../validation.js'
 
 export const authRouter = Router()
 
+authRouter.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store')
+  next()
+})
+
 // ── POST /v1/auth/exchange ────────────────────────────────────────────────────
 // Frontend calls this after receiving the OIDC callback code.
 // Body: { code, redirect_uri, client_id, code_verifier, workspace, workspace_id, app_name, app_id }
@@ -48,7 +53,7 @@ authRouter.post('/exchange', async (req, res, next) => {
       userinfo,
       workspace: workspace || '',
       workspaceId: workspace_id || '',
-      appId: app_id || client_id,
+      appId: client_id,
       appName: app_name || '',
       createdAt: Date.now(),
     })

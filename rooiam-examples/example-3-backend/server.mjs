@@ -3,13 +3,14 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import {
   callWorkspaceApi,
+  escapeHtml,
   normalizeBaseUrl,
 } from '../shared/example-helpers.mjs'
 
 dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 const app = express()
-const port = Number(process.env.PORT || 5182)
+const port = Number(process.env.PORT || 5193)
 const apiBase = normalizeBaseUrl(process.env.ROOIAM_API_BASE, 'http://localhost:5170/v1')
 const apiKey = (process.env.ROOIAM_API_KEY || '').trim()
 app.use(express.json())
@@ -43,6 +44,7 @@ async function callRooiamIntegration(pathname, options = {}, rawApiKey = apiKey)
   if (!result.ok) {
     const missingKey = !String(rawApiKey || '').trim()
     return {
+      status: result.status,
       error: missingKey
         ? 'Missing workspace API key. Paste it into the page input or set ROOIAM_API_KEY in example-3-backend/.env'
         : (result.error || 'Could not reach Rooiam API.'),
@@ -890,7 +892,7 @@ function layout({ title, body }) {
     const byId = (id) => document.getElementById(id)
     const RESPONSE_PLACEHOLDER = 'The JSON response will appear here.'
 
-    // These tracked objects power the small "docs UI" state on 5182.
+    // These tracked objects power the small "docs UI" state on 5193.
     // The goal is to keep enough local state to make repeated requests easier
     // to demo, without turning this file into a full frontend framework app.
     const state = {
@@ -1056,7 +1058,7 @@ function layout({ title, body }) {
           const resolvedUrl = buildUrlWithParams(url, id)
           const data = await requestJson(resolvedUrl)
           renderJson(code, data)
-          setSuccess(note, '<strong>Request succeeded.</strong><br />The browser called <code>' + resolvedUrl + '</code> on <code>5182</code>.')
+          setSuccess(note, '<strong>Request succeeded.</strong><br />The browser called <code>' + escapeHtml(resolvedUrl) + '</code> on <code>5193</code>.')
           if (id === 'clients') {
             await syncClients(true)
           }
@@ -1068,7 +1070,7 @@ function layout({ title, body }) {
           }
         } catch (error) {
           renderJson(code, { ok: false, error: error.message || 'Request failed.' })
-          setFailure(note, '<strong>Request failed.</strong><br />' + (error && error.message ? error.message : 'Unknown error.'))
+          setFailure(note, '<strong>Request failed.</strong><br />' + escapeHtml(error && error.message ? error.message : 'Unknown error.'))
         } finally {
           clearLoading(trigger)
         }
@@ -1321,7 +1323,7 @@ function layout({ title, body }) {
         if (config.beforeRun) {
           const errorMessage = config.beforeRun()
           if (errorMessage) {
-            setFailure(note, '<strong>Cannot run yet.</strong><br />' + errorMessage)
+            setFailure(note, '<strong>Cannot run yet.</strong><br />' + escapeHtml(errorMessage))
             return
           }
         }
@@ -1341,12 +1343,12 @@ function layout({ title, body }) {
             '<strong>Request succeeded.</strong><br /><code>' +
               request.method +
               ' ' +
-              request.pathLabel +
-              '</code> completed through <code>5182</code>.'
+              escapeHtml(request.pathLabel) +
+              '</code> completed through <code>5193</code>.'
           )
         } catch (error) {
           renderJson(code, { ok: false, error: error.message || 'Request failed.' })
-          setFailure(note, '<strong>Request failed.</strong><br />' + (error && error.message ? error.message : 'Unknown error.'))
+          setFailure(note, '<strong>Request failed.</strong><br />' + escapeHtml(error && error.message ? error.message : 'Unknown error.'))
         } finally {
           clearLoading(trigger)
         }
@@ -2106,7 +2108,8 @@ function proxyPayload(pathLabel, data) {
 
 function sendProxyResult(res, result, pathLabel) {
   if (result.error) {
-    res.status(502).json(jsonError(result.error, 502))
+    const status = result.status >= 400 && result.status <= 599 ? result.status : 502
+    res.status(status).json(jsonError(result.error, status))
     return
   }
   res.json(proxyPayload(pathLabel, result.data))
@@ -2152,26 +2155,26 @@ const READ_PROXY_ROUTES = [
     rooiamPath: () => '/orgs/integrations/clients',
     queryKeys: ['page', 'page_size', 'q', 'status', 'app_type', 'sort_by', 'sort_order'],
   },
-  { localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}` },
-  { localPath: '/api/rooiam/clients/:clientId/secret-metadata', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}/secret-metadata` },
+  { localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}` },
+  { localPath: '/api/rooiam/clients/:clientId/secret-metadata', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}/secret-metadata` },
   {
     localPath: '/api/rooiam/members',
     rooiamPath: () => '/orgs/integrations/members',
     queryKeys: ['page', 'page_size', 'q', 'role', 'status', 'sort_by', 'sort_order'],
   },
-  { localPath: '/api/rooiam/members/:memberId', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}` },
+  { localPath: '/api/rooiam/members/:memberId', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}` },
   {
     localPath: '/api/rooiam/members/:memberId/activity',
-    rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}/activity`,
+    rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}/activity`,
     queryKeys: ['page', 'page_size', 'sort_by', 'sort_order'],
   },
-  { localPath: '/api/rooiam/members/:memberId/sessions', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}/sessions` },
+  { localPath: '/api/rooiam/members/:memberId/sessions', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}/sessions` },
   {
     localPath: '/api/rooiam/invites',
     rooiamPath: () => '/orgs/integrations/invites',
     queryKeys: ['page', 'page_size', 'q', 'sort_by', 'sort_order'],
   },
-  { localPath: '/api/rooiam/invites/:inviteId', rooiamPath: (req) => `/orgs/integrations/invites/${req.params.inviteId}` },
+  { localPath: '/api/rooiam/invites/:inviteId', rooiamPath: (req) => `/orgs/integrations/invites/${encodeURIComponent(req.params.inviteId)}` },
   {
     localPath: '/api/rooiam/activity',
     rooiamPath: () => '/orgs/integrations/activity',
@@ -2191,16 +2194,16 @@ const WRITE_PROXY_ROUTES = [
   { method: 'patch', localPath: '/api/rooiam/branding', rooiamPath: () => '/orgs/integrations/branding', includeBody: true },
   { method: 'patch', localPath: '/api/rooiam/auth-config', rooiamPath: () => '/orgs/integrations/auth-config', includeBody: true },
   { method: 'post', localPath: '/api/rooiam/clients', rooiamPath: () => '/orgs/integrations/clients', includeBody: true },
-  { method: 'patch', localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}`, includeBody: true },
-  { method: 'patch', localPath: '/api/rooiam/clients/:clientId/status', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}/status`, includeBody: true },
-  { method: 'post', localPath: '/api/rooiam/clients/:clientId/rotate-secret', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}/rotate-secret`, includeBody: true },
-  { method: 'delete', localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${req.params.clientId}` },
+  { method: 'patch', localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}`, includeBody: true },
+  { method: 'patch', localPath: '/api/rooiam/clients/:clientId/status', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}/status`, includeBody: true },
+  { method: 'post', localPath: '/api/rooiam/clients/:clientId/rotate-secret', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}/rotate-secret`, includeBody: true },
+  { method: 'delete', localPath: '/api/rooiam/clients/:clientId', rooiamPath: (req) => `/orgs/integrations/clients/${encodeURIComponent(req.params.clientId)}` },
   { method: 'post', localPath: '/api/rooiam/invites', rooiamPath: () => '/orgs/integrations/invites', includeBody: true },
-  { method: 'delete', localPath: '/api/rooiam/invites/:inviteId', rooiamPath: (req) => `/orgs/integrations/invites/${req.params.inviteId}` },
-  { method: 'patch', localPath: '/api/rooiam/members/:memberId/profile', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}/profile`, includeBody: true },
-  { method: 'delete', localPath: '/api/rooiam/members/:memberId/sessions', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}/sessions` },
-  { method: 'patch', localPath: '/api/rooiam/members/:memberId/role', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}/role`, includeBody: true },
-  { method: 'delete', localPath: '/api/rooiam/members/:memberId', rooiamPath: (req) => `/orgs/integrations/members/${req.params.memberId}` },
+  { method: 'delete', localPath: '/api/rooiam/invites/:inviteId', rooiamPath: (req) => `/orgs/integrations/invites/${encodeURIComponent(req.params.inviteId)}` },
+  { method: 'patch', localPath: '/api/rooiam/members/:memberId/profile', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}/profile`, includeBody: true },
+  { method: 'delete', localPath: '/api/rooiam/members/:memberId/sessions', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}/sessions` },
+  { method: 'patch', localPath: '/api/rooiam/members/:memberId/role', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}/role`, includeBody: true },
+  { method: 'delete', localPath: '/api/rooiam/members/:memberId', rooiamPath: (req) => `/orgs/integrations/members/${encodeURIComponent(req.params.memberId)}` },
 ]
 
 app.get('/api/health', (_req, res) => {
@@ -2553,7 +2556,7 @@ app.get('/', (_req, res) => {
                   class="input"
                   type="text"
                   placeholder="rooiam_..."
-                  value="${maskedApiKey}"
+                  value="${escapeHtml(maskedApiKey)}"
                   ${maskedApiKey ? 'data-prefilled="env"' : ''}
                 />
               </div>
@@ -3104,6 +3107,7 @@ app.get('/', (_req, res) => {
   )
 })
 
-app.listen(port, () => {
-  console.log(`example-3-backend running on http://localhost:${port}`)
+// This page grants access to the configured workspace key. Keep it local by default.
+const server = app.listen(port, process.env.HOST || '127.0.0.1', () => {
+  console.log(`example-3-backend running on http://localhost:${server.address().port}`)
 })

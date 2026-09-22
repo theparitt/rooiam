@@ -83,7 +83,7 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log(`  candycloud-api started`)
   console.log(`  PORT             : ${PORT}`)
   console.log(`  ROOIAM_API_URL   : ${ROOIAM_API_URL}`)
-  console.log(`  REDIS_URL        : ${process.env.CANDYCLOUD_REDIS_URL || '(not set)'}`)
+  console.log(`  REDIS            : ${process.env.CANDYCLOUD_REDIS_URL ? 'configured' : 'localhost default'}`)
   console.log(`  COOKIE_SECURE    : ${process.env.CANDYCLOUD_COOKIE_SECURE || 'false'}`)
   console.log(`  COOKIE_DOMAIN    : ${process.env.CANDYCLOUD_COOKIE_DOMAIN || '(not set)'}`)
   console.log(`  ALLOWED_ORIGINS  : ${allowedOrigins.join(', ') || '(none)'}`)

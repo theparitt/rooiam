@@ -35,7 +35,15 @@ export async function loadSession(sessionId) {
   const raw = await redis.get(sessionId)
   if (!raw) return null
   try {
-    return JSON.parse(raw)
+    const session = JSON.parse(raw)
+    // This example does not refresh tokens. Expire local access with the token,
+    // including after demo MFA updates rewrite the Redis entry.
+    const expiresAt = Number(session.createdAt) + Number(session.expiresIn) * 1000
+    if (!Number.isFinite(expiresAt) || !(session.expiresIn > 0) || Date.now() >= expiresAt) {
+      await redis.del(sessionId)
+      return null
+    }
+    return session
   } catch {
     return null
   }
@@ -60,11 +68,8 @@ export function cookieOptions() {
   return {
     httpOnly: true,
     secure,
-    // Production (HTTPS): SameSite=none so the cookie works cross-subdomain.
-    // Local dev (HTTP):   Omit SameSite entirely — browsers treat no-SameSite
-    //                     as the legacy default, which allows cross-port fetches
-    //                     on localhost. SameSite=lax blocks fetch() from :5184→:5185.
-    ...(secure ? { sameSite: 'none' } : {}),
+    // Ports do not change the cookie site; localhost works with Lax.
+    sameSite: secure ? 'none' : 'lax',
     maxAge: SESSION_TTL * 1000,
     path: '/',
     ...(domain ? { domain } : {}),
