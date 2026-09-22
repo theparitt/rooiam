@@ -1,284 +1,44 @@
-# Downstream Hosted Widget Callback Flow
+# Downstream hosted widget callback flow
 
-This is the canonical downstream-app flow for Rooiam `0.1`.
+This describes the current CandyCloud example. Its source is [candycloud-web](../../candycloud-web/README.md) and [candycloud-server](../../candycloud-server/README.md). CandyCloud demonstrates an app-owned OIDC session, with deliberate demo features described below.
 
-If you are building an app that embeds `/login-widget`, this page is the exact doctrine to follow.
+## Services and sessions
 
-The reference implementation is the **Candycloud** example app:
+| Service | Responsibility |
+| --- | --- |
+| `candycloud.rooiam.com` | React frontend, deployed to Cloudflare Pages |
+| `candycloud-api.rooiam.com` | Express app backend, Redis sessions, SQLite app profiles |
+| `demo-api.rooiam.com` | Rooiam demo IAM, hosted widget, OIDC endpoints |
 
-- `candycloud-web/` — the end-user SPA
-- `candycloud-server/` — the app's own backend (Node.js/Express)
+Rooiam owns the `rooiam_sid` IAM cookie. CandyCloud issues its own opaque `candycloud_session` HttpOnly cookie after exchanging an authorization code. The two cookies represent different sessions. Cookie site and domain rules still apply; cross-origin frontend requests use `credentials: 'include'` and the backend allows configured frontend origins.
 
----
+CandyCloud's API routes are at the backend root, **without `/v1`**. Rooiam's API routes use `/v1`.
 
-## Core Principle: Two Separate Sessions
+## Login sequence
 
-The most important rule in this integration:
+1. The frontend fetches `/demo/app-catalog` and `/demo/app-config` through CandyCloud's backend. The app config supplies registered client details, callback URL, scopes, and OIDC endpoints. It also loads branding and enabled authentication methods.
+2. The frontend generates a random OIDC state and PKCE verifier/challenge and saves the pending request in browser local storage. It embeds Rooiam's `/login-widget` with workspace and client identity. The iframe URL does not choose the app callback.
+3. Rooiam owns the widget login transaction, establishes the IAM session, and navigates to the registered app callback for the embedding origin.
+4. When `/callback` has no authorization code yet, CandyCloud starts the OIDC authorization request using the stored state, PKCE challenge, client ID, scopes, and exact registered redirect URI. A session-storage marker prevents repeating that handoff indefinitely.
+5. Rooiam returns an authorization code and state. CandyCloud verifies the state before calling its own `POST /auth/exchange` with the code, redirect URI, client ID, and PKCE verifier.
+6. CandyCloud's backend calls Rooiam's `/v1/oidc/token`, then `/v1/oidc/userinfo`. It stores the resulting tokens and verified user identity in Redis and sets the app cookie.
+7. The frontend stores display/session metadata in session storage and opens `/dashboard`. Normal self-service calls use the app cookie; the backend supplies the bearer token to Rooiam.
 
-| Session | Cookie | Owned by | Purpose |
-|---------|--------|----------|---------|
-| IAM session | `rooiam_sid` | `api.rooiam.com` | Who you are (identity) |
-| App session | `candycloud_session` | `candycloud-api.rooiam.com` | Are you logged into this app |
+The browser accepts widget messages only from the configured iframe window and origin. Navigation messages must resolve to an HTTP(S) URL on that widget origin. The current widget's `rooiam-login-widget:size` message updates the iframe height.
 
-Your app must **never** use `rooiam_sid` as its application session. The IAM session is Rooiam's internal state. Your app creates its own session after OIDC code exchange.
+## Self-service and lifetime
 
-This separation solves:
-- Cross-origin / third-party cookie issues — your cookie is first-party on your own domain
-- Session lifetime independence — your app controls its own session TTL
-- Clean logout — clearing your app session does not log the user out of Rooiam SSO
+`GET /identity/me` on CandyCloud is forwarded to Rooiam's bearer-authenticated `GET /v1/identity/token`. Other identity and passkey routes have explicit rewrites in [proxy.js](../../candycloud-server/src/routes/proxy.js). Cookie-authenticated Rooiam routes are not interchangeable with the bearer routes.
 
----
+The Redis entry and app cookie have a 24-hour maximum lifetime. CandyCloud does not refresh tokens automatically: session loading rejects an entry once `createdAt + expiresIn` is reached. Demo MFA updates cannot extend authenticated access past that deadline. The dashboard also polls the upstream identity endpoint every 30 seconds and returns to sign-in when it receives 401.
 
-## Three Services
+Logout calls CandyCloud's `POST /auth/logout`, deletes its Redis session, and clears its cookie. The frontend then navigates to Rooiam's `/v1/oidc/end-session` with the client ID and a post-logout destination. Rooiam validates that destination against the client's registered redirect configuration. Local logout alone does not revoke all Rooiam credentials.
 
-```
-candycloud.rooiam.com       = frontend SPA (Cloudflare Pages or static)
-candycloud-api.rooiam.com   = app backend  (Node.js, port 4000)
-api.rooiam.com              = Rooiam IAM   (Rust server, port 5170/5180)
-```
+## Deliberate demo boundaries
 
----
+- `/auth/token` returns the access token to the signed-in browser for the dashboard's curl examples. Token responses use `Cache-Control: no-store`. This is an exception to backend token isolation, not a pattern for keeping all tokens inaccessible to JavaScript.
+- CandyCloud's authenticator enrollment and recovery-code controls are simulated. They accept any six-digit code and do not enable real Rooiam MFA.
+- Browser-supplied workspace/app labels are display metadata. They must not become authorization claims for application business data.
+- `/me` and `/me/profile` operate on CandyCloud's SQLite profile; `/identity/me` and its profile route operate on the Rooiam identity.
 
-## Full Login Flow
-
-```
-1. User opens candycloud.rooiam.com
-   └─ frontend loads, calls GET /v1/auth/session on candycloud-api
-      └─ no session yet → show login page
-
-2. Frontend fetches app catalog + config from Rooiam:
-   GET api.rooiam.com/v1/demo/app-catalog
-   GET api.rooiam.com/v1/demo/app-config?workspace_id=...&origin=candycloud.rooiam.com
-
-3. Frontend builds PKCE auth request (state, code_verifier, code_challenge)
-   Stores it in localStorage
-
-4. Frontend renders iframe:
-   <iframe src="api.rooiam.com/login-widget?workspace_id=...&client_id=...">
-
-5. User logs in inside the iframe
-   └─ Rooiam sets rooiam_sid on api.rooiam.com domain
-   └─ Widget returns to the app's registered callback (no authorization code yet)
-
-6. App callback resumes its stored PKCE transaction by navigating the top window to:
-   api.rooiam.com/v1/oidc/authorize?client_id=...&code_challenge=...
-                                    &redirect_uri=candycloud.rooiam.com/callback&...
-   └─ Rooiam reads rooiam_sid, validates session
-   └─ Rooiam creates authorization code
-   └─ Rooiam redirects to: candycloud.rooiam.com/callback?code=...&state=...
-
-7. /callback page on candycloud.rooiam.com receives code + state
-   └─ Reads stored PKCE auth from localStorage
-   └─ Verifies state matches
-   └─ POSTs to candycloud-api:
-      POST candycloud-api.rooiam.com/v1/auth/exchange
-      { code, redirect_uri, client_id, code_verifier, workspace, workspace_id, app_name, app_id }
-
-8. candycloud-api exchanges code with Rooiam server-side:
-   POST api.rooiam.com/v1/oidc/token   (server-to-server — no browser, no CORS, no cookie)
-   └─ Gets access_token, refresh_token, id_token
-   └─ Calls GET api.rooiam.com/v1/oidc/userinfo with access_token
-   └─ Stores { accessToken, userinfo, workspace, ... } in Redis
-   └─ Sets candycloud_session cookie (HttpOnly, Secure, SameSite=None, Domain=rooiam.com)
-   └─ Returns { ok: true, userinfo, workspace, workspace_id }
-
-9. /callback stores lightweight session in sessionStorage, navigates to /dashboard
-
-10. /dashboard on boot:
-    GET candycloud-api.rooiam.com/v1/auth/session (via candycloud_session cookie)
-    └─ Returns userinfo from Redis session
-    └─ Renders dashboard
-
-11. All subsequent API calls:
-    candycloud-web → candycloud-api (candycloud_session cookie)
-    candycloud-api → api.rooiam.com (Bearer access_token, server-side)
-```
-
----
-
-## Why Server-Side Code Exchange
-
-The OIDC code exchange happens in `candycloud-api`, not in the browser. This is intentional:
-
-1. **No CORS issue.** Server-to-server calls to `api.rooiam.com/v1/oidc/token` need no browser origin header.
-2. **No third-party cookie issue.** `candycloud_session` is set by `candycloud-api.rooiam.com` — a first-party cookie for `candycloud.rooiam.com`. The browser never needs to send `rooiam_sid` for app API calls.
-3. **Access token stays server-side.** The frontend never sees the Rooiam access token.
-
----
-
-## Callback Page Logic
-
-```ts
-const code = params.get('code')
-const state = params.get('state')
-const auth = readOidcAuth()  // from localStorage
-
-// No OIDC state stored — bad state
-if (!auth) { setError('Missing OIDC state'); return }
-
-// No code yet — first landing before authorize redirect
-if (!code || !state) {
-  if (!readOidcAuthorizeStarted()) {
-    markOidcAuthorizeStarted(auth.state)
-    window.location.replace(buildAuthorizeUrl(config, auth))
-  } else {
-    setError('Missing authorization code')
-  }
-  return
-}
-
-// State mismatch
-if (state !== auth.state) { setError('State mismatch'); return }
-
-// Exchange code via candycloud-api (server-side)
-const result = await demoApi.authExchange({
-  code,
-  redirect_uri: auth.redirectUri,
-  client_id: auth.appId,
-  code_verifier: auth.codeVerifier,
-  workspace: auth.workspace,
-  workspace_id: auth.workspaceId,
-  app_name: auth.appName,
-  app_id: auth.appId,
-})
-
-// Save lightweight session to sessionStorage (no tokens — those are server-side)
-persistDemoSession({ userinfo: result.userinfo, workspace: result.workspace, ... })
-navigate('/dashboard')
-```
-
----
-
-## Dashboard Session Check
-
-On `/dashboard` boot, if no session in sessionStorage:
-
-```ts
-demoApi.authSession()  // GET /v1/auth/session on candycloud-api
-  .then(result => {
-    // candycloud_session cookie is valid — reconstruct local session
-    setSession({ userinfo: result.userinfo, workspace: result.workspace, ... })
-  })
-  .catch(() => {
-    // No valid app session — redirect to login
-    navigate('/')
-  })
-```
-
-This handles page refreshes, new tabs, and returning users — all via the `candycloud_session` cookie, with no dependency on `rooiam_sid`.
-
----
-
-## candycloud-api Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/auth/exchange` | Exchange OIDC code server-side, create `candycloud_session` |
-| `GET` | `/v1/auth/session` | Return current session info (401 if missing/expired) |
-| `POST` | `/v1/auth/logout` | Clear `candycloud_session` from Redis and browser |
-| `GET` | `/v1/me` | Alias → proxies to `/identity/me` on Rooiam |
-| `*` | `/v1/*` | Proxy to Rooiam using stored access token |
-
-All proxy routes require a valid `candycloud_session` cookie.
-
----
-
-## Environment Variables
-
-### candycloud-server
-
-```env
-CANDYCLOUD_PORT=4000
-ROOIAM_API_URL=https://demo-api.rooiam.com/v1   # Rooiam server (server-to-server)
-CANDYCLOUD_REDIS_URL=redis://redis:6379
-CANDYCLOUD_COOKIE_SECURE=true
-CANDYCLOUD_COOKIE_DOMAIN=rooiam.com              # scope to *.rooiam.com
-CANDYCLOUD_ALLOWED_ORIGINS=https://candycloud.rooiam.com
-```
-
-### candycloud-web
-
-```env
-VITE_API_URL=https://candycloud-api.rooiam.com/v1   # app backend
-VITE_LOGIN_WIDGET_URL=https://demo-api.rooiam.com    # Rooiam server (serves /login-widget)
-```
-
-`VITE_LOGIN_WIDGET_URL` points to the Rooiam server because `/login-widget` is served by Rooiam, not by the app backend.
-
----
-
-## Anti-Patterns
-
-### Do not exchange the OIDC code in the browser
-
-Calling `POST /v1/oidc/token` from the browser requires CORS from the app origin to the Rooiam server and exposes the access token to JavaScript. Use the app backend for token exchange.
-
-### Do not use `rooiam_sid` as the app session
-
-`rooiam_sid` is an IAM-internal cookie. It is not stable across domains, not under your control, and not meant to be read by downstream apps.
-
-### Do not pass `redirect_uri` to `/login-widget`
-
-The widget resolves the callback URL from the registered OAuth client and the current embed origin. Passing `redirect_uri` in the widget URL breaks the hosted-widget security contract.
-
-### Do not pass `app` to `/login-widget`
-
-The canonical downstream contract does not require a browser-composed `app`
-query parameter on the widget URL. The hosted widget should derive display
-context from the registered OAuth client and workspace branding instead.
-
-### Do not store the access token in the browser
-
-The Rooiam access token should live in your app backend's session store (Redis). The frontend only holds the lightweight `candycloud_session` cookie.
-
-## Missing IAM session during authorization
-
-`/v1/oidc/authorize` does not start widget login or accept a `return_to` model.
-It first validates the active client, exact callback and S256 challenge. With
-no valid IAM session it returns `error=login_required` and the original `state`
-to that validated callback. Unknown clients or unregistered callbacks receive
-a local error and are never redirect targets.
-
-Validate the error state against the stored transaction, show a sign-in-again
-message and return to the app's widget page on user action. Do not automatically
-retry authorization in a loop. CandyCloud implements this recovery behavior;
-neither its web app nor its backend sends the obsolete resume parameter.
-
-### Regression checks
-
-Run pure OIDC tests with `SQLX_OFFLINE=true cargo test --lib modules::oidc` from
-`rooiam-server`. The handler integration test uses disposable PostgreSQL and
-Redis (never the production environment):
-
-```bash
-SQLX_OFFLINE=true \
-DATABASE_URL=postgres://user:password@127.0.0.1:5432/rooiam_test \
-ROOIAM_OIDC_TEST_REDIS_URL=redis://127.0.0.1:6379 \
-cargo test --lib authorize_callback_boundary_and_session_recovery -- --ignored
-```
-
-It exercises missing, malformed, expired and revoked sessions; unregistered
-callbacks; unknown clients; mandatory PKCE; and successful code issuance after
-sign-in. SQLx creates isolated test databases and applies migrations.
-
-The refresh regression test forces two requests to overlap while the original
-row is locked. Exactly one replacement can be issued; detecting reuse revokes
-that replacement as well. Client ownership is checked before family revocation.
-Run it with the disposable `DATABASE_URL` above:
-
-```bash
-SQLX_OFFLINE=true cargo test --lib refresh_rotation_serializes_concurrent_requests -- --ignored
-```
-
-Portal widget URLs use the browser SDK's `buildHostedLoginUrl` helper, passing
-`apiOrigin`, `workspaceId`, and `clientId` (plus `preview: true` for previews).
-It never adds `app`, `return_to`, or a caller-supplied redirect. Shared fixtures
-in `rooiam-sdk/spec/widget-contract.json` are tested by both the SDK and the
-server's strict widget query parser.
-
-After changing SDK types or snippets, build the browser SDK, then run
-`npm run test:integration` in `rooiam-app`. This compiles the actual displayed
-TypeScript login template against the built SDK and checks the generated iframe
-query against the shared server fixtures. The server test
-`sdk_token_response_matches_server_openapi` keeps the SDK token response schema
-aligned with the endpoint; `exchangeCode()` uses the POST response type.
+For configuration and deployment, see [CandyCloud architecture](12_candycloud_app_architecture.md).
