@@ -272,7 +272,7 @@ impl DeviceLoginService {
         .ok()
         .flatten()
         .unwrap_or(5);
-        let expires_at = Utc::now() + chrono::Duration::minutes(expiry_minutes.max(1));
+        let expires_at = Utc::now() + chrono::Duration::minutes(expiry_minutes.clamp(1, 5));
 
         self.repo
             .create_device_login_intent(NewDeviceLoginIntent {
@@ -331,7 +331,8 @@ impl DeviceLoginService {
             .ok_or_else(|| AppError::NotFound("Device login request not found.".into()))?;
 
         let expected_binding = build_browser_binding_hash(browser_nonce, user_agent)?;
-        if intent.browser_binding_hash != expected_binding {
+        use subtle::ConstantTimeEq;
+        if !bool::from(intent.browser_binding_hash.as_bytes().ct_eq(expected_binding.as_bytes())) {
             return Err(AppError::Forbidden(
                 "This device login request belongs to a different browser session.".into(),
             ));
@@ -1263,6 +1264,9 @@ pub fn build_approval_payload(intent: &DeviceLoginIntent) -> String {
 pub fn effective_intent_status(intent: &DeviceLoginIntent) -> String {
     if intent.consumed_at.is_some() || intent.status == "consumed" {
         return "consumed".into();
+    }
+    if matches!(intent.status.as_str(), "rejected" | "cancelled") {
+        return intent.status.clone();
     }
     if intent.expires_at <= Utc::now() {
         return "expired".into();

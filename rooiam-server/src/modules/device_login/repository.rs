@@ -11,6 +11,35 @@ pub struct DeviceLoginRepository {
     pub(crate) pool: PgPool,
 }
 
+/// Consumed in the SAME transaction that inserts the resulting session or MFA challenge.
+/// A failed insert rolls back consumption; a lost response requires a new login intent.
+#[derive(Clone)]
+pub struct DeviceLoginCompletion {
+    pub public_id: Uuid,
+    pub nonce_hash: String,
+    pub user_id: Uuid,
+}
+
+impl DeviceLoginCompletion {
+    pub async fn consume(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError> {
+        // Lock the device against revocation until the result has been persisted.
+        // Never authorize using a device that was revoked after approval.
+        let active: Option<Uuid> = sqlx::query_scalar(
+            "SELECT d.id FROM user_trusted_devices d JOIN device_login_intents i ON i.approved_device_id = d.id JOIN users u ON u.id = d.user_id WHERE i.public_id = $1 AND d.user_id = $2 AND d.revoked_at IS NULL AND u.status = 'active' FOR UPDATE OF d, u",
+        ).bind(self.public_id).bind(self.user_id).fetch_optional(&mut **tx).await?;
+        if active.is_none() {
+            return Err(AppError::Forbidden("The approving device or account is no longer active. Start again.".into()));
+        }
+        let affected = sqlx::query(
+            "UPDATE device_login_intents SET status = 'consumed', consumed_at = NOW() WHERE public_id = $1 AND nonce_hash = $2 AND approved_user_id = $3 AND status = 'approved' AND consumed_at IS NULL AND expires_at > clock_timestamp()",
+        ).bind(self.public_id).bind(&self.nonce_hash).bind(self.user_id).execute(&mut **tx).await?.rows_affected();
+        if affected != 1 {
+            return Err(AppError::Conflict("This login request expired or was already completed. Start again.".into()));
+        }
+        Ok(())
+    }
+}
+
 pub struct NewDeviceLoginIntent<'a> {
     pub public_id: Uuid,
     pub browser_binding_hash: &'a str,
@@ -94,7 +123,7 @@ impl DeviceLoginRepository {
         .await
         .map_err(|e| {
             let message = e.to_string();
-            if message.contains("user_trusted_devices_device_token_hash_key") {
+            if message.contains("user_trusted_devices_device_token_hash_key") || message.contains("user_trusted_devices_public_key_unique") {
                 AppError::Conflict("This trusted device is already registered.".into())
             } else {
                 AppError::Internal(format!("Failed to create trusted device: {}", e))
@@ -317,21 +346,24 @@ impl DeviceLoginRepository {
         &self,
         redirect_uri: &str,
     ) -> Result<Option<(Uuid, Uuid)>, AppError> {
-        let row = sqlx::query_as::<_, (Uuid, Uuid)>(
+        let rows = sqlx::query_as::<_, (Uuid, Uuid)>(
             r#"
             SELECT c.id, c.org_id
             FROM oauth_client_redirect_uris r
             JOIN oauth_clients c ON c.id = r.oauth_client_id
             WHERE r.redirect_uri = $1
-            LIMIT 1
+            LIMIT 2
             "#,
         )
         .bind(redirect_uri)
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to resolve redirect target: {}", e)))?;
 
-        Ok(row)
+        if rows.len() > 1 {
+            return Err(AppError::Validation("This callback belongs to multiple applications. Register a unique callback for phone sign-in.".into()));
+        }
+        Ok(rows.into_iter().next())
     }
 
     pub async fn get_device_login_intent_by_public_id(
@@ -392,6 +424,10 @@ impl DeviceLoginRepository {
         approved_user_id: Uuid,
         approved_device_id: Uuid,
     ) -> Result<Option<DeviceLoginIntent>, AppError> {
+        let mut tx = self.pool.begin().await?;
+        let active: Option<Uuid> = sqlx::query_scalar("SELECT id FROM user_trusted_devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE")
+            .bind(approved_device_id).bind(approved_user_id).fetch_optional(&mut *tx).await?;
+        if active.is_none() { return Ok(None); }
         let intent = sqlx::query_as::<_, DeviceLoginIntent>(
             r#"
             UPDATE device_login_intents
@@ -413,10 +449,11 @@ impl DeviceLoginRepository {
         .bind(public_id)
         .bind(approved_user_id)
         .bind(approved_device_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to approve device login intent: {}", e)))?;
 
+        tx.commit().await?;
         Ok(intent)
     }
 

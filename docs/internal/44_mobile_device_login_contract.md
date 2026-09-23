@@ -1,7 +1,22 @@
 # Mobile Device Login Contract
 
-Status: active server contract.
-Updated: 2026-09-22.
+Status: protocol v1 implementation contract; real-device certification pending.
+Updated: 2026-09-23.
+
+## Frozen v1 decisions
+
+- The configured, enrolled API origin is the trust anchor. Compare the QR `server` against it **before sending any cookie or device token**. Production requires HTTPS. Reject userinfo, extra/duplicate query keys, fragments, non-UUID IDs and oversized QR input. A QR cannot silently enroll or switch servers. Local debug builds permit loopback connectivity only.
+- QR contents remain `server` and `public_id`. Neither field authorizes completion. The browser retains its random nonce in memory; the server stores its hash and binds it to the user agent. This is not OIDC PKCE. Reload starts a new intent; clients never persist nonces in URLs, storage, logs or analytics. The status API currently sends the nonce as a query parameter: configure proxies/APM to omit query strings and use `Cache-Control: no-store`.
+- Phone preview returns `protocol_version: 1`, issuer/context fields, the six-digit request code, two-digit match number, expiry and exact UTF-8 `approval_payload`. Unknown versions fail closed. Browser displays three two-digit choices; the user compares both codes on the phone. A scan alone never approves.
+- Number comparison does **not** eliminate deliberate QR relay/social engineering. Users must initiate the browser request and review the server/application context. Do not market v1 as phishing-resistant or equivalent to a passkey.
+- States are `pending → approved → consumed`, or `pending → rejected/cancelled`. Pending/approved requests become effectively `expired` at their deadline. Rejected, cancelled and consumed states remain terminal after expiry. No claim state or separate grant is introduced. Lifetime is clamped to 1–5 minutes; default 5.
+- Approval and rejection are explicit phone actions. Approval requires its enrolled account session, device token, Ed25519 signature, correct number and server attestation policy. Public keys are unique across enrollments. Revocation prevents subsequent approval/completion; a revoke racing completion is serialized by a device row lock.
+- Completion rechecks policy, account/device state, IP access and application/callback validity. Consumption and insertion of the resulting **session or MFA challenge share one PostgreSQL transaction**. An insert failure rolls back consumption. Exactly one result can be committed. Required MFA is not bypassed.
+- An ambiguous/lost completion response is not automatically retried. The user starts a fresh intent; an already committed result cannot be reissued with the old nonce. An approved but abandoned request expires. Once an MFA challenge is committed, its normal MFA lifecycle applies; later device revocation does not retroactively revoke that challenge or existing sessions.
+- Android v1 uses an Ed25519 seed encrypted at rest by an Android Keystore AES-GCM key. Signing occurs in process memory; this is **not hardware-backed Ed25519 signing**. Backups/transfers of app identity are excluded. Clearing/reinstalling requires fresh enrollment; lost phones are revoked in My Security.
+- Platform `tenant_login_device_enabled` and workspace `allow_device_login` must both permit workspace flows. Workspace opt-in defaults to false. `GET/PUT /v1/identity/device-login/workspace-policy` requires the current workspace's `org:update` permission. Platform policy cannot be overridden by a tenant.
+
+Reference implementations: `rooiam-android`, `rooiam-app/src/components/DeviceLogin.tsx`, and `rooiam-examples/device-login`. See [current evidence](./45_v0.2_current_status_2026-09-23.md) before making release claims.
 
 This document is the implementation guide for `rooiam-android`, `rooiam-ios`,
 and any fake-phone/dev tester that participates in Rooiam QR login.

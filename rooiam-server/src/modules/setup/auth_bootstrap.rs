@@ -303,6 +303,10 @@ pub async fn load_public_auth_methods(
         .unwrap_or(true);
 
     let response = PublicAuthMethodsResponse {
+        device_login_enabled: load_tenant_access_policy(&state.db).await?.allow_device_login
+            && if let Some(org) = org_policy.as_ref() {
+                sqlx::query_scalar::<_, bool>("SELECT allow_device_login AND status = 'active' FROM organizations WHERE id = $1").bind(org.id).fetch_one(&state.db).await?
+            } else { true },
         magic_link_enabled: magic_link_enabled
             && tenant_access_policy
                 .as_ref()

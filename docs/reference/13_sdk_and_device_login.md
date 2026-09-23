@@ -1,6 +1,6 @@
 # SDK and Device Login Reference
 
-This page describes the current `0.1.0` checkout. The package version and the REST path prefix (`/v1`) are separate version identifiers.
+This page describes the development checkout for 0.2. Existing server/SDK package versions remain `0.1.0`; package versions and the REST path prefix (`/v1`) are separate identifiers.
 
 ## TypeScript SDKs
 
@@ -46,7 +46,11 @@ The server has a trusted-device login protocol separate from WebAuthn. The mobil
 
 Implementation modules include Apple App Attest and Google Play Integrity verification, plus policy-controlled compatibility verification. Exact request bodies, signing payloads, and policy settings are in the [mobile contract](../internal/44_mobile_device_login_contract.md) and current handler/service code. The server stores push tokens but does not itself deliver APNs/FCM notifications.
 
-A server protocol does not imply a bundled mobile app or SDK helper for every endpoint. Use the [API/SDK smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) to validate a deployment and its native clients.
+The development checkout includes `rooiam-android`, the hosted QR screen, and a real-signing Node harness in `rooiam-examples/device-login`. They are previews; real-phone/vendor and release certification are still pending.
+
+`RooiamBrowser.deviceLogin` exposes `start`, `status`, `complete` and `cancel`, with optional abort signals. Keep the returned browser nonce in memory and poll status approximately every two seconds. Complete once after approval; follow the returned MFA challenge before showing success. Mutations are not automatically retried. After a lost completion response or reload, start a new request. `trustedDevices.list()` and `trustedDevices.revoke(id)` use the existing account cookie; never put phone private keys/device tokens in browser code.
+
+Regenerate the contract with `node rooiam-sdk/scripts/sync-openapi.mjs`; `--check` detects server/spec/schema drift. Workspace phone login defaults off and requires both platform policy and workspace opt-in. Use the [API/SDK smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) to validate a deployment and its native clients.
 
 ## Next milestone
 

@@ -66,6 +66,8 @@ use utoipa::{Modify, OpenApi};
         crate::modules::auth::handlers::start_magic_link,
         crate::modules::auth::handlers::verify_magic_link,
         crate::modules::device_login::handlers::start_device_login,
+        crate::modules::device_login::handlers::get_workspace_device_policy,
+        crate::modules::device_login::handlers::set_workspace_device_policy,
         crate::modules::device_login::handlers::get_device_login_status,
         crate::modules::device_login::handlers::complete_device_login,
         crate::modules::device_login::handlers::cancel_device_login,

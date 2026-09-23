@@ -9,11 +9,17 @@ use super::models::{MfaBackupCode, MfaChallenge, UserMfaMethod};
 #[derive(Clone)]
 pub struct MfaRepository {
     pool: PgPool,
+    device_completion: Option<crate::modules::device_login::repository::DeviceLoginCompletion>,
 }
 
 impl MfaRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self { pool, device_completion: None }
+    }
+
+    pub fn with_device_completion(mut self, completion: crate::modules::device_login::repository::DeviceLoginCompletion) -> Self {
+        self.device_completion = Some(completion);
+        self
     }
 
     pub async fn get_totp_method(&self, user_id: Uuid) -> Result<Option<UserMfaMethod>, AppError> {
@@ -75,6 +81,11 @@ impl MfaRepository {
         payload: serde_json::Value,
         expires_at: DateTime<Utc>,
     ) -> Result<MfaChallenge, AppError> {
+        let mut tx = self.pool.begin().await?;
+        if let Some(completion) = &self.device_completion {
+            if completion.user_id != user_id { return Err(AppError::Unauthorized); }
+            completion.consume(&mut tx).await?;
+        }
         let challenge = sqlx::query_as::<_, MfaChallenge>(
             r#"
             INSERT INTO mfa_challenges (user_id, session_id, method_type, purpose, payload, expires_at)
@@ -88,9 +99,10 @@ impl MfaRepository {
         .bind(purpose)
         .bind(payload)
         .bind(expires_at)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         Ok(challenge)
     }
 

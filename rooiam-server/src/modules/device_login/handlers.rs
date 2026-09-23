@@ -31,7 +31,7 @@ use crate::shared::widget_login_context::{
 };
 
 use super::models::{DeviceLoginIntent, UserTrustedDevice};
-use super::repository::DeviceLoginRepository;
+use super::repository::{DeviceLoginCompletion, DeviceLoginRepository};
 use super::service::{
     build_approval_payload, create_device_attestation_challenge,
     device_attestation_challenge_redis_key, device_attestation_challenge_ttl_seconds,
@@ -167,6 +167,10 @@ pub struct DeviceLoginIntentPreviewResponse {
     pub match_number: u8,
     pub approval_payload: String,
     pub expires_at: DateTime<Utc>,
+    pub protocol_version: u8,
+    pub workspace_id: Option<Uuid>,
+    pub application_id: Option<Uuid>,
+    pub redirect_uri: Option<String>,
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -291,7 +295,23 @@ async fn build_device_login_completion_response(
         .await?
         .ok_or_else(|| AppError::Forbidden("This account does not have a primary email.".into()))?;
     let redirect_uri = intent.redirect_uri.clone();
+    ensure_device_login_policy(&state.db, intent.workspace_id).await?;
+    let (_, ip_policy) = resolve_effective_ip_policy_for_redirect(&state.db, redirect_uri.as_deref()).await?;
+    let decision = evaluate_ip_access(&ip_policy, client_ip_from_http_request(req, state.config.as_ref()))?;
+    if decision != crate::shared::ip_policy::IpAccessDecision::Allowed {
+        return Err(AppError::Forbidden(access_denied_message(&decision).into()));
+    }
+    if let Some(client_id) = intent.oauth_client_id {
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM oauth_clients c JOIN oauth_client_redirect_uris r ON r.oauth_client_id = c.id WHERE c.id = $1 AND c.org_id = $2 AND c.status = 'active' AND r.redirect_uri = $3)")
+            .bind(client_id).bind(intent.workspace_id).bind(&redirect_uri).fetch_one(&state.db).await?;
+        if !valid { return Err(AppError::Forbidden("The application or callback is no longer enabled.".into())); }
+    }
     let approved_device_id = intent.approved_device_id;
+    let completion = DeviceLoginCompletion {
+        public_id: intent.public_id,
+        nonce_hash: intent.nonce_hash.clone(),
+        user_id: approved_user_id,
+    };
 
     let login_context =
         resolve_login_context(&state.db, approved_user_id, redirect_uri.as_deref()).await?;
@@ -313,7 +333,7 @@ async fn build_device_login_completion_response(
     )
     .await?;
 
-    let mfa_repo = MfaRepository::new(state.db.clone());
+    let mfa_repo = MfaRepository::new(state.db.clone()).with_device_completion(completion.clone());
     let mfa_service = MfaService::new(
         mfa_repo,
         IdentityRepository::new(state.db.clone()),
@@ -377,7 +397,7 @@ async fn build_device_login_completion_response(
         })));
     }
 
-    let session_repo = SessionRepository::new(state.db.clone());
+    let session_repo = SessionRepository::new(state.db.clone()).with_device_completion(completion);
     let session_service = SessionService::new(session_repo, state.db.clone());
     let (_session, opaque_session) = session_service
         .create_opaque_session_with_context(
@@ -455,7 +475,7 @@ pub async fn start_device_login(
                         organization_id: get_platform_org_id(&state.db).await,
                         action: "auth.widget.context_invalid".into(),
                         target_type: "widget_login_context".into(),
-                        target_id: body.widget_login_context.clone(),
+                        target_id: None,
                         ip: ip.clone(),
                         user_agent: user_agent.clone(),
                         metadata: serde_json::json!({
@@ -518,7 +538,7 @@ pub async fn start_device_login(
     }
 
     let repo = device_login_repo(&state);
-    let (workspace_id, oauth_client_id) = if let Some(ctx) = widget_login_context.as_ref() {
+    let (mut workspace_id, oauth_client_id) = if let Some(ctx) = widget_login_context.as_ref() {
         (
             ctx.workspace_id,
             repo.get_oauth_client_internal_id(&ctx.client_id).await?,
@@ -533,6 +553,18 @@ pub async fn start_device_login(
     };
 
     let issuer_url = effective_issuer_url(&state.db).await?;
+    if widget_login_context.is_some() {
+        if let Some(redirect) = effective_redirect_uri.as_deref() {
+            let target = repo.resolve_redirect_target(redirect).await?;
+            if target != oauth_client_id.zip(workspace_id) {
+                return Err(AppError::Forbidden("The application callback does not match this workspace.".into()));
+            }
+        }
+    }
+    if workspace_id.is_none() {
+        workspace_id = get_workspace_policy_for_redirect(&state.db, effective_redirect_uri.as_deref()).await?.map(|org| org.id);
+    }
+    ensure_device_login_policy(&state.db, workspace_id).await?;
     let started = device_login_service(&state)
         .start_device_login(StartDeviceLoginInput {
             workspace_id,
@@ -617,6 +649,17 @@ pub async fn get_device_login_status(
     }))
 }
 
+pub async fn ensure_device_login_policy(db: &sqlx::PgPool, workspace_id: Option<Uuid>) -> Result<(), AppError> {
+    if !load_tenant_access_policy(db).await?.allow_device_login {
+        return Err(AppError::Forbidden("Phone sign-in is disabled by the operator.".into()));
+    }
+    if let Some(id) = workspace_id {
+        let enabled: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM organizations WHERE id = $1 AND allow_device_login AND status = 'active')").bind(id).fetch_one(db).await?;
+        if !enabled { return Err(AppError::Forbidden("Phone sign-in is disabled for this workspace.".into())); }
+    }
+    Ok(())
+}
+
 #[utoipa::path(
     post,
     path = "/v1/auth/device-login/complete",
@@ -634,13 +677,14 @@ pub async fn complete_device_login(
     body: web::Json<CompleteDeviceLoginRequest>,
 ) -> Result<HttpResponse, AppError> {
     let intent = device_login_service(&state)
-        .consume_approved_browser_intent(
+        .load_browser_intent(
             body.public_id,
             &body.browser_nonce,
             request_user_agent(&req).as_deref(),
         )
         .await?;
 
+    super::service::ensure_intent_can_be_completed(&intent)?;
     build_device_login_completion_response(&req, &state, intent).await
 }
 
@@ -731,6 +775,10 @@ pub async fn get_device_login_intent(
         match_number: intent.match_number as u8,
         approval_payload,
         expires_at: intent.expires_at,
+        protocol_version: 1,
+        workspace_id: intent.workspace_id,
+        application_id: intent.oauth_client_id,
+        redirect_uri: intent.redirect_uri,
     }))
 }
 
@@ -1096,7 +1144,8 @@ pub async fn revoke_trusted_device(
 
 pub fn auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/device-login")
+        web::scope("/auth/device-login")
+            .wrap(actix_web::middleware::DefaultHeaders::new().add(("Cache-Control", "no-store")))
             .service(
                 web::resource("/start")
                     .wrap(crate::http::middleware::rate_limit::RateLimit::per_endpoint(10, 60))
@@ -1149,6 +1198,9 @@ pub fn auth_routes(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("/device-login/workspace-policy").wrap(RequireAuth)
+        .route(web::get().to(get_workspace_device_policy))
+        .route(web::put().to(set_workspace_device_policy)));
     cfg.service(
         web::scope("/me/devices")
             .wrap(RequireAuth)
@@ -1243,4 +1295,39 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
                     .route(web::post().to(reject_device_login)),
             ),
     );
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceDevicePolicy { pub enabled: bool }
+
+async fn policy_workspace(req: &HttpRequest, state: &web::Data<AppState>) -> Result<(Uuid, Uuid), AppError> {
+    let session = extract_session(req)?;
+    let org = session.current_org_id.ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
+    crate::modules::organization::handlers::ensure_demo_workspace_allowed(state, org).await?;
+    let rbac = crate::modules::rbac::service::RbacService::new(crate::modules::rbac::repository::RbacRepository::new(state.db.clone()));
+    if !rbac.has_permission(session.user_id, org, "org:update").await? {
+        return Err(AppError::Forbidden("Workspace administration permission is required.".into()));
+    }
+    Ok((session.user_id, org))
+}
+
+#[utoipa::path(get, path = "/v1/identity/device-login/workspace-policy", tag = "browser", security(("session_cookie" = [])), responses((status = 200, description = "Current workspace phone sign-in policy")))]
+pub async fn get_workspace_device_policy(req: HttpRequest, state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+    let (_, org) = policy_workspace(&req, &state).await?;
+    let enabled: bool = sqlx::query_scalar("SELECT allow_device_login FROM organizations WHERE id = $1").bind(org).fetch_one(&state.db).await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({"enabled": enabled, "platform_enabled": load_tenant_access_policy(&state.db).await?.allow_device_login})))
+}
+
+#[utoipa::path(put, path = "/v1/identity/device-login/workspace-policy", tag = "browser", request_body = WorkspaceDevicePolicy, security(("session_cookie" = [])), responses((status = 200, description = "Workspace phone sign-in policy saved")))]
+pub async fn set_workspace_device_policy(req: HttpRequest, state: web::Data<AppState>, body: web::Json<WorkspaceDevicePolicy>) -> Result<HttpResponse, AppError> {
+    let (user, org) = policy_workspace(&req, &state).await?;
+    let changed = sqlx::query("UPDATE organizations SET allow_device_login = $1, updated_at = NOW() WHERE id = $2 AND status = 'active' AND NOT platform_locked").bind(body.enabled).bind(org).execute(&state.db).await?.rows_affected();
+    if changed != 1 { return Err(AppError::Forbidden("This workspace is locked or inactive.".into())); }
+    AuditService::new(state.db.clone()).log(AuditEvent {
+        actor_user_id: Some(user), organization_id: Some(org), action: "workspace.device_login_policy.updated".into(),
+        target_type: "organization".into(), target_id: Some(org.to_string()), ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+        user_agent: request_user_agent(&req), metadata: serde_json::json!({"enabled": body.enabled}),
+    }).await;
+    Ok(HttpResponse::Ok().json(serde_json::json!({"enabled": body.enabled})))
 }

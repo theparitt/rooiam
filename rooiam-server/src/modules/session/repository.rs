@@ -9,11 +9,17 @@ const USER_SESSION_LIST_LIMIT: i64 = 100;
 #[derive(Clone)]
 pub struct SessionRepository {
     pool: PgPool,
+    device_completion: Option<crate::modules::device_login::repository::DeviceLoginCompletion>,
 }
 
 impl SessionRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self { pool, device_completion: None }
+    }
+
+    pub fn with_device_completion(mut self, completion: crate::modules::device_login::repository::DeviceLoginCompletion) -> Self {
+        self.device_completion = Some(completion);
+        self
     }
 
     /// Store a newly generated session into the Postgres backend safely
@@ -31,6 +37,11 @@ impl SessionRepository {
         ip: Option<std::net::IpAddr>,
     ) -> Result<Session, AppError> {
         let fingerprint = crate::shared::session_fingerprint::compute(user_agent, ip);
+        let mut tx = self.pool.begin().await?;
+        if let Some(completion) = &self.device_completion {
+            if completion.user_id != user_id { return Err(AppError::Unauthorized); }
+            completion.consume(&mut tx).await?;
+        }
         let session = sqlx::query_as::<sqlx::Postgres, Session>(
             r#"
             INSERT INTO sessions (id, user_id, current_org_id, login_surface, login_app_name, login_workspace_slug, session_secret_hash, expires_at, user_agent, ip, session_fingerprint)
@@ -49,8 +60,10 @@ impl SessionRepository {
         .bind(user_agent)
         .bind(ip)
         .bind(&fingerprint)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(session)
     }

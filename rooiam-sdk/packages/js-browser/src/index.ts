@@ -9,7 +9,20 @@
 // Wire types in ./generated/schema.ts are generated from the server's OpenAPI spec
 // (rooiam-sdk/spec/openapi.json), so request/response shapes cannot drift.
 
-import type { paths } from './generated/schema.js'
+import type { paths, components } from './generated/schema.js'
+
+export type DeviceLoginStart = components['schemas']['StartDeviceLoginResponse']
+export type DeviceLoginStatus = components['schemas']['DeviceLoginStatusResponse']
+export type DeviceLoginInput = components['schemas']['StartDeviceLoginRequest']
+export type DeviceLoginBinding = components['schemas']['CompleteDeviceLoginRequest']
+export interface DeviceLoginResult {
+  ok: boolean
+  redirect_uri?: string | null
+  user_id?: string
+  mfa_required?: boolean
+  mfa_enrollment_required?: boolean
+  challenge_id?: string
+}
 
 export interface RooiamBrowserOptions {
   /** Rooiam API base, INCLUDING the /v1 segment. e.g. https://auth.example.com/v1 */
@@ -181,6 +194,25 @@ export class RooiamBrowser {
   }
 
   // ---- public login flow (no session required) ----
+
+  /** The binding stays in memory in the initiating browser. Never include it in a QR or logs.
+   * Mutations are never automatically retried. After ambiguous completion, start a new intent.
+   */
+  readonly deviceLogin = {
+    start: (input: DeviceLoginInput, signal?: AbortSignal) =>
+      this.request<DeviceLoginStart>('/auth/device-login/start', { method: 'POST', body: JSON.stringify(input), signal, cache: 'no-store' }),
+    status: (binding: DeviceLoginBinding, signal?: AbortSignal) =>
+      this.request<DeviceLoginStatus>(`/auth/device-login/${encodeURIComponent(binding.public_id)}/status`, { query: { browser_nonce: binding.browser_nonce }, signal, cache: 'no-store' }),
+    complete: (binding: DeviceLoginBinding, signal?: AbortSignal) =>
+      this.request<DeviceLoginResult>('/auth/device-login/complete', { method: 'POST', body: JSON.stringify(binding), signal, cache: 'no-store' }),
+    cancel: (binding: DeviceLoginBinding, signal?: AbortSignal) =>
+      this.request<{ ok: boolean; status: string }>('/auth/device-login/cancel', { method: 'POST', body: JSON.stringify(binding), signal }),
+  }
+
+  readonly trustedDevices = {
+    list: () => this.request<components['schemas']['TrustedDeviceResponse'][]>('/identity/me/devices'),
+    revoke: (id: string) => this.request<{ ok: boolean }>(`/identity/me/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  }
 
   /** GET /setup/auth-methods — which login methods the workspace has enabled. */
   authMethods(query: WorkspaceLookupQuery = {}): Promise<GetResp<'/v1/setup/auth-methods'>> {

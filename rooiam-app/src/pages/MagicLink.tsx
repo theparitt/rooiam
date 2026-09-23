@@ -14,8 +14,10 @@ import { normalizeLoginMethodOrder, radiusClass } from '../lib/login-style'
 import LoginWidgetCore from '../components/portal/LoginWidgetCore'
 import DemoBadge from '../components/DemoBadge'
 import DemoLoginHint from '../components/DemoLoginHint'
+import DeviceLogin from '../components/DeviceLogin'
 
 type AuthMethods = {
+    device_login_enabled?: boolean
     magic_link_enabled: boolean
     google_enabled: boolean
     microsoft_enabled: boolean
@@ -313,6 +315,7 @@ export default function MagicLinkPage()
 
                 const auth = data.auth
                 setAuthMethods({
+                    device_login_enabled: Boolean(auth?.device_login_enabled),
                     magic_link_enabled: Boolean(auth?.magic_link_enabled),
                     google_enabled: Boolean(auth?.google_enabled),
                     microsoft_enabled: Boolean(auth?.microsoft_enabled),
@@ -985,6 +988,22 @@ export default function MagicLinkPage()
                             </>
                         )}
                     </div>
+                    {authMethods.device_login_enabled && !mfaChallengeId && !sent && (!isEmbedded || widgetLoginContext) && (
+                        <DeviceLogin input={{
+                            redirect_uri: isEmbedded ? undefined : redirectUri || undefined,
+                            widget_login_context: widgetLoginContext || undefined,
+                            widget_embed_origin: isEmbedded ? window.location.origin : undefined,
+                            surface: 'tenant',
+                        }} onComplete={(result) => {
+                            if (result.mfa_enrollment_required && result.challenge_id) {
+                                window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(result.challenge_id)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+                            } else if (result.mfa_required && result.challenge_id) {
+                                setMfaChallengeId(result.challenge_id); setMfaRedirectUri(redirectUri)
+                            } else if (result.ok && result.user_id) {
+                                window.location.href = resolveAuthRedirect(result.redirect_uri || redirectUri)
+                            } else { setError('Phone approval did not complete sign-in. Start again.') }
+                        }} />
+                    )}
                     {authMethods.demo_mode && authMethods.magic_link_enabled && !isEmbedded ? (
                         workspaceSlug ? (
                             <DemoLoginHint

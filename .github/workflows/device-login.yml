@@ -1,0 +1,41 @@
+name: Device login contract and regressions
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SQLX_OFFLINE: 'true'
+      DATABASE_URL: postgres://postgres:test-only@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix rooiam-sdk/packages/js-browser && npm ci --prefix rooiam-sdk/packages/js-server
+      - run: node rooiam-sdk/scripts/sync-openapi.mjs --check
+      - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib modules::device_login -- --include-ignored
+      - run: npm test --prefix rooiam-sdk/packages/js-browser && npm test --prefix rooiam-sdk/packages/js-server
+      - run: npm run build --prefix rooiam-sdk/packages/js-browser && npm run build --prefix rooiam-sdk/packages/js-server
+      - run: node --test rooiam-examples/device-login/fake-phone.test.mjs
+      - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+      - run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest :app:lintDebug
+        working-directory: rooiam-android

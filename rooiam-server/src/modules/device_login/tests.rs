@@ -1082,7 +1082,7 @@ async fn device_routes_only_match_expected_paths() {
 #[actix_web::test]
 async fn auth_device_login_routes_are_mounted_under_auth_scope() {
     let app = actix_test::init_service(
-        App::new().service(web::scope("/v1/auth").configure(handlers::auth_routes)),
+        App::new().service(web::scope("/v1").configure(handlers::auth_routes)),
     )
     .await;
 
@@ -1284,6 +1284,95 @@ async fn repository_roundtrip_rejects_pending_device_login_intent(pool: sqlx::Pg
         .unwrap();
     assert_eq!(rejected.status, "rejected");
     assert_eq!(rejected.status_reason.as_deref(), Some("rejected_by_phone"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires isolated DATABASE_URL"]
+async fn completion_is_atomic_and_single_use_under_races(pool: sqlx::PgPool) {
+    use super::repository::DeviceLoginCompletion;
+    use crate::modules::session::repository::SessionRepository;
+    let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id").fetch_one(&pool).await.unwrap();
+    let device: Uuid = sqlx::query_scalar("INSERT INTO user_trusted_devices (user_id, device_label, platform, device_token_hash) VALUES ($1, 'Test', 'android', 'test-hash') RETURNING id").bind(user).fetch_one(&pool).await.unwrap();
+    let repo = DeviceLoginRepository::new(pool.clone());
+    let id = Uuid::new_v4();
+    repo.create_device_login_intent(NewDeviceLoginIntent {
+        public_id: id, browser_binding_hash: "binding", nonce_hash: "nonce", workspace_id: None, oauth_client_id: None,
+        redirect_uri: None, surface: Some("tenant"), display_code: "123456", match_number: 42, decoy_numbers: &[11,77],
+        requester_ip: None, requester_user_agent: None, expires_at: Utc::now() + chrono::Duration::minutes(5),
+    }).await.unwrap();
+    repo.approve_device_login_intent(id, user, device).await.unwrap().unwrap();
+    let completion = DeviceLoginCompletion { public_id: id, nonce_hash: "nonce".into(), user_id: user };
+    let sessions = SessionRepository::new(pool.clone()).with_device_completion(completion.clone());
+    // Force session INSERT failure AFTER the consume UPDATE; both must roll back.
+    let existing_id = Uuid::new_v4();
+    SessionRepository::new(pool.clone()).create_session(existing_id, user, "existing", Utc::now() + chrono::Duration::hours(1), None, None, None, None, None, None).await.unwrap();
+    let failed = sessions.create_session(existing_id, user, "hash", Utc::now() + chrono::Duration::hours(1), None, None, None, None, None, None).await;
+    assert!(failed.is_err());
+    assert_eq!(repo.get_device_login_intent_by_public_id(id).await.unwrap().unwrap().status, "approved");
+    let mfa = crate::modules::mfa::repository::MfaRepository::new(pool.clone()).with_device_completion(completion.clone());
+    // A broken session FK forces an MFA INSERT failure after consumption too.
+    assert!(mfa.create_challenge(user, Some(Uuid::new_v4()), "totp", "login", serde_json::json!({}), Utc::now() + chrono::Duration::minutes(5)).await.is_err());
+    assert_eq!(repo.get_device_login_intent_by_public_id(id).await.unwrap().unwrap().status, "approved");
+    // A wrong browser nonce must not consume or create a session.
+    let wrong = SessionRepository::new(pool.clone()).with_device_completion(DeviceLoginCompletion { nonce_hash: "wrong".into(), ..completion });
+    assert!(wrong.create_session(Uuid::new_v4(), user, "hash", Utc::now() + chrono::Duration::hours(1), None, None, None, None, None, None).await.is_err());
+    let mut tasks = tokio::task::JoinSet::new();
+    for attempt in 0..50 {
+        let sessions = sessions.clone();
+        let mfa = mfa.clone();
+        tasks.spawn(async move {
+            if attempt % 2 == 0 { sessions.create_session(Uuid::new_v4(), user, "hash", Utc::now() + chrono::Duration::hours(1), None, None, None, None, None, None).await.is_ok() }
+            else { mfa.create_challenge(user, None, "totp", "login", serde_json::json!({}), Utc::now() + chrono::Duration::minutes(5)).await.is_ok() }
+        });
+    }
+    let mut successes = 0;
+    while let Some(r) = tasks.join_next().await { if r.unwrap() { successes += 1; } }
+    assert_eq!(successes, 1);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = $1").bind(user).fetch_one(&pool).await.unwrap();
+    let challenges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mfa_challenges WHERE user_id = $1").bind(user).fetch_one(&pool).await.unwrap();
+    assert_eq!(count + challenges, 2); // one pre-existing session + one winning session or MFA handoff
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires isolated DATABASE_URL"]
+async fn revocation_after_approval_blocks_completion(pool: sqlx::PgPool) {
+    use super::repository::DeviceLoginCompletion;
+    let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id").fetch_one(&pool).await.unwrap();
+    let device: Uuid = sqlx::query_scalar("INSERT INTO user_trusted_devices (user_id, device_label, platform, device_token_hash) VALUES ($1, 'Test', 'android', 'test-hash') RETURNING id").bind(user).fetch_one(&pool).await.unwrap();
+    let id = Uuid::new_v4();
+    sqlx::query("INSERT INTO device_login_intents (public_id, browser_binding_hash, nonce_hash, display_code, match_number, approved_user_id, approved_device_id, status, expires_at) VALUES ($1, 'binding', 'nonce', '123456', 42, $2, $3, 'approved', NOW() + INTERVAL '5 minutes')")
+        .bind(id).bind(user).bind(device).execute(&pool).await.unwrap();
+    let repo = DeviceLoginRepository::new(pool.clone());
+    repo.revoke_trusted_device(user, device).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    assert!(DeviceLoginCompletion { public_id: id, nonce_hash: "nonce".into(), user_id: user }.consume(&mut tx).await.is_err());
+}
+
+#[test]
+fn terminal_rejection_and_cancellation_do_not_change_after_expiry() {
+    for status in ["rejected", "cancelled", "consumed"] {
+        let intent = build_test_device_login_intent(status, Some(Utc::now() - chrono::Duration::minutes(1)));
+        assert_eq!(super::service::effective_intent_status(&intent), status);
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires isolated DATABASE_URL"]
+async fn workspace_opt_in_and_ambiguous_callbacks_fail_closed(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO system_settings(key,value) VALUES ('tenant_login_device_enabled','true') ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value").execute(&pool).await.unwrap();
+    let a: Uuid = sqlx::query_scalar("INSERT INTO organizations(name,slug,allow_device_login) VALUES ('A','phone-test-a',true) RETURNING id").fetch_one(&pool).await.unwrap();
+    let b: Uuid = sqlx::query_scalar("INSERT INTO organizations(name,slug) VALUES ('B','phone-test-b') RETURNING id").fetch_one(&pool).await.unwrap();
+    assert!(super::handlers::ensure_device_login_policy(&pool, Some(a)).await.is_ok());
+    assert!(super::handlers::ensure_device_login_policy(&pool, Some(b)).await.is_err());
+    let repo = DeviceLoginRepository::new(pool.clone());
+    for (org, name) in [(a, "phone-client-a"), (b, "phone-client-b")] {
+        let client: Uuid = sqlx::query_scalar("INSERT INTO oauth_clients(client_id,app_name,app_type,org_id) VALUES ($1,'Test','web',$2) RETURNING id").bind(name).bind(org).fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO oauth_client_redirect_uris(oauth_client_id,redirect_uri) VALUES ($1,'https://test.example/callback')").bind(client).execute(&pool).await.unwrap();
+        if org == a { assert_eq!(repo.resolve_redirect_target("https://test.example/callback").await.unwrap(), Some((client,a))); }
+    }
+    assert!(repo.resolve_redirect_target("https://test.example/callback").await.is_err());
+    sqlx::query("UPDATE system_settings SET value = 'false' WHERE key = 'tenant_login_device_enabled'").execute(&pool).await.unwrap();
+    assert!(super::handlers::ensure_device_login_policy(&pool, Some(a)).await.is_err());
 }
 
 fn build_test_trusted_device(

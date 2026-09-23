@@ -66,7 +66,7 @@ export default function Hero()
 
                 <a href={DOCS_ROADMAP_URL}
                     className="block max-w-2xl rounded-2xl border border-purple-200 bg-purple-50 p-5 mb-8 hover:bg-purple-100 transition-colors">
-                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Next milestone · 0.2 planned</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Next milestone · 0.2 in development</span>
                     <span className="block mt-2 text-xl font-black text-gray-800">Scan. Match. Approve.</span>
                     <span className="block mt-2 text-sm font-semibold text-gray-600">
                         Our next goal: scan a browser QR code, verify the number, and approve sign-in from your trusted Android phone.

@@ -1,6 +1,6 @@
 # Rooiam 0.2 — Trusted Device & QR Authentication
 
-Status: **planned next release; not a release announcement**. Updated: 2026-09-23.
+Status: **implementation preview; real-device and release certification pending**. Updated: 2026-09-23.
 The current package version remains `0.1.0`. Code in the checkout is not a certification of the complete mobile experience.
 
 **Scan. Match. Approve.**
@@ -17,7 +17,7 @@ Rooiam remains the **self-hosted passwordless IAM for multi-tenant SaaS**. Trust
 | Integration | OpenAPI snapshot and browser/server TypeScript SDK packages | Validate device-login coverage and provide tested helpers and examples |
 | Trusted devices | Registration, revocation, device-token hashes, Ed25519 approval signatures and attestation verification paths | Prove enrollment and revocation with a real Android client |
 | Login intents | PostgreSQL intent storage; start, status, approve, reject, cancel and browser-bound completion | Verify replay, races, policy enforcement and failure recovery end to end |
-| User experience | Server contract exists; a bundled Android + hosted-widget journey is not established | Ship the Android scan/approve flow and hosted-login QR experience together |
+| User experience | Android and hosted QR implementations build locally; real-phone journey is not yet certified | Verify and ship the Android scan/approve flow and hosted-login QR experience together |
 | Operations | Docker stacks, existing docs and test runners | Reproduce setup, upgrades and the reference login from a fresh clone |
 
 See the [SDK and device-login reference](./reference/13_sdk_and_device_login.md) for today's API boundaries.

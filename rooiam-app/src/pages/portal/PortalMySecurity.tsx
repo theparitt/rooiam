@@ -11,6 +11,7 @@ import PortalFormField from '../../components/portal/PortalFormField'
 import PortalPaginationControls from '../../components/portal/PortalPaginationControls'
 import PortalTabBar from '../../components/portal/PortalTabBar'
 import { usePortalMySecurity } from '../../hooks/usePortalMySecurity'
+import TrustedDevices from '../../components/portal/TrustedDevices'
 
 type Props = {
     demoMode?: boolean
@@ -94,6 +95,7 @@ export default function PortalMySecurity({ demoMode = false }: Props) {
     return (
         <div className="max-w-lg space-y-5 sm:space-y-6 animate-slide-up">
             <PortalPageHeader title="My Security" />
+            <TrustedDevices disabled={demoMode} />
 
             {demoMode ? (
                 <PortalInlineMessage tone="warning">Personal account changes are locked in demo mode.</PortalInlineMessage>

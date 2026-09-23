@@ -36,6 +36,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/device-login/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/device-login/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete_device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/device-login/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/device-login/{public_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_device_login_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -78,6 +142,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["verify_magic_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/device-login/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/device-login/intents/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_device_login_intent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/device-login/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reject_device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/device-login/workspace-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_workspace_device_policy"];
+        put: operations["set_workspace_device_policy"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -169,6 +297,70 @@ export interface paths {
          *     Step 1: Send a confirmation email before account deletion. Token expires in 1 hour.
          */
         post: operations["request_delete_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_trusted_devices"];
+        put?: never;
+        post: operations["register_trusted_device"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/devices/attestation-challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_trusted_device_attestation_challenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revoke_trusted_device"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/devices/{id}/push-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_trusted_device_push_token"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1091,8 +1283,40 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ApproveDeviceLoginRequest: {
+            approval_signature: string;
+            device_token: string;
+            /** Format: uuid */
+            public_id: string;
+            /** Format: int32 */
+            selected_number: number;
+        };
+        CancelDeviceLoginRequest: {
+            browser_nonce: string;
+            /** Format: uuid */
+            public_id: string;
+        };
+        CompleteDeviceLoginRequest: {
+            browser_nonce: string;
+            /** Format: uuid */
+            public_id: string;
+        };
         ConfirmDeleteAccountRequest: {
             token: string;
+        };
+        CreateDeviceAttestationChallengeRequest: {
+            app_id: string;
+            device_public_key: string;
+            environment: string;
+            format: string;
+            key_id: string;
+        };
+        CreateDeviceAttestationChallengeResponse: {
+            challenge: string;
+            challenge_token: string;
+            /** Format: date-time */
+            expires_at: string;
+            ok: boolean;
         };
         CreateOrgClientRequest: {
             allowed_embed_origins?: string[];
@@ -1100,6 +1324,40 @@ export interface components {
             app_type: string;
             confirm_multi_origin?: boolean;
             redirect_uris: string[];
+        };
+        DeviceLoginIntentPreviewResponse: {
+            /** Format: uuid */
+            application_id?: string | null;
+            approval_payload: string;
+            display_code: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int32 */
+            match_number: number;
+            ok: boolean;
+            /** Format: int32 */
+            protocol_version: number;
+            /** Format: uuid */
+            public_id: string;
+            redirect_uri?: string | null;
+            status: string;
+            status_reason?: string | null;
+            /** Format: uuid */
+            workspace_id?: string | null;
+        };
+        DeviceLoginStatusResponse: {
+            /** Format: date-time */
+            approved_at?: string | null;
+            /** Format: date-time */
+            consumed_at?: string | null;
+            display_code: string;
+            /** Format: date-time */
+            expires_at: string;
+            number_choices: number[];
+            ok: boolean;
+            redirect_uri?: string | null;
+            status: string;
+            status_reason?: string | null;
         };
         FinishLoginEnrollmentRequest: {
             /** Format: uuid */
@@ -1130,6 +1388,26 @@ export interface components {
             token: string;
             token_type_hint?: string | null;
         };
+        RegisterTrustedDeviceAttestationRequest: {
+            app_id?: string | null;
+            challenge_token?: string | null;
+            environment?: string | null;
+            format: string;
+            key_id?: string | null;
+            statement: string;
+        };
+        RegisterTrustedDeviceRequest: {
+            attestation?: null | components["schemas"]["RegisterTrustedDeviceAttestationRequest"];
+            device_label: string;
+            device_public_key: string;
+            device_token: string;
+            platform: string;
+        };
+        RejectDeviceLoginRequest: {
+            device_token: string;
+            /** Format: uuid */
+            public_id: string;
+        };
         RenamePasskeyRequest: {
             name: string;
         };
@@ -1150,6 +1428,23 @@ export interface components {
         };
         SendInviteRequest: {
             email: string;
+        };
+        StartDeviceLoginRequest: {
+            redirect_uri?: string | null;
+            surface?: string | null;
+            widget_embed_origin?: string | null;
+            widget_login_context?: string | null;
+        };
+        StartDeviceLoginResponse: {
+            browser_nonce: string;
+            display_code: string;
+            /** Format: date-time */
+            expires_at: string;
+            number_choices: number[];
+            ok: boolean;
+            /** Format: uuid */
+            public_id: string;
+            qr_value: string;
         };
         StartLinkRequest: {
             redirect_uri?: string | null;
@@ -1180,6 +1475,43 @@ export interface components {
             grant_type: string;
             redirect_uri?: string | null;
             refresh_token?: string | null;
+        };
+        TokenResponse: {
+            access_token: string;
+            /** Format: int64 */
+            expires_in: number;
+            id_token?: string | null;
+            refresh_token?: string | null;
+            token_type: string;
+        };
+        TrustedDeviceAttestationSummary: {
+            app_id?: string | null;
+            environment?: string | null;
+            format?: string | null;
+            key_id?: string | null;
+            /** Format: date-time */
+            received_at?: string | null;
+            status: string;
+            status_reason?: string | null;
+            /** Format: date-time */
+            verified_at?: string | null;
+        };
+        TrustedDeviceResponse: {
+            attestation: components["schemas"]["TrustedDeviceAttestationSummary"];
+            /** Format: date-time */
+            created_at: string;
+            device_label: string;
+            device_public_key?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_seen_at?: string | null;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            platform: string;
+            push_capable: boolean;
+            /** Format: date-time */
+            revoked_at?: string | null;
         };
         UpdateCurrentOrganizationBrandingRequest: {
             brand_color?: string | null;
@@ -1239,6 +1571,9 @@ export interface components {
             smtp_security?: string | null;
             smtp_user?: string | null;
         };
+        UpdateTrustedDevicePushTokenRequest: {
+            push_token?: string | null;
+        };
         UpdateWorkspaceIntegrationMemberProfileRequest: {
             avatar_url?: string | null;
             display_name?: string | null;
@@ -1253,6 +1588,9 @@ export interface components {
         };
         VerifyMagicLinkRequest: {
             token: string;
+        };
+        WorkspaceDevicePolicy: {
+            enabled: boolean;
         };
         WorkspaceIntegrationInfoResponse: {
             allowed_permissions: string[];
@@ -1270,14 +1608,6 @@ export interface components {
             workspace_id: string;
             workspace_name: string;
             workspace_slug: string;
-        };
-        TokenResponse: {
-            access_token: string;
-            /** Format: int64 */
-            expires_in: number;
-            id_token?: string | null;
-            refresh_token?: string | null;
-            token_type: string;
         };
     };
     responses: never;
@@ -1317,6 +1647,151 @@ export interface operations {
         responses: {
             /** @description OIDC discovery document (issuer, endpoints, supported algs) */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelDeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending QR device-login request cancelled from the browser */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent cannot be cancelled */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    complete_device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteDeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Phone-approved QR login completed; sets session cookie or returns MFA next step */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent not approved or already consumed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    start_device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartDeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description QR device-login request created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_device_login_status: {
+        parameters: {
+            query: {
+                browser_nonce: string;
+            };
+            header?: never;
+            path: {
+                /** @description Public device-login intent ID */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current QR device-login status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1400,6 +1875,167 @@ export interface operations {
             };
             /** @description Invalid or expired token */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approve_device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveDeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description QR device-login request approved from a trusted device */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent cannot be approved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_device_login_intent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public device-login intent ID */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Preview scanned device-login request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reject_device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectDeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description QR device-login request rejected from a trusted device */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Intent cannot be rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_workspace_device_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current workspace phone sign-in policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_workspace_device_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceDevicePolicy"];
+            };
+        };
+        responses: {
+            /** @description Workspace phone sign-in policy saved */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1553,6 +2189,191 @@ export interface operations {
             };
             /** @description No valid session cookie */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_trusted_devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List trusted devices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    register_trusted_device: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterTrustedDeviceRequest"];
+            };
+        };
+        responses: {
+            /** @description Trusted device registered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_trusted_device_attestation_challenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeviceAttestationChallengeRequest"];
+            };
+        };
+        responses: {
+            /** @description One-time attestation challenge issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revoke_trusted_device: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Trusted device ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trusted device revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trusted device not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_trusted_device_push_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Trusted device ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTrustedDevicePushTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Trusted device push token updated or cleared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trusted device not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

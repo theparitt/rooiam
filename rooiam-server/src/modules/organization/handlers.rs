@@ -2686,7 +2686,7 @@ pub struct MarkSecurityAlertReviewRequest {
     pub alert_key: String,
 }
 
-async fn ensure_demo_workspace_allowed(
+pub(crate) async fn ensure_demo_workspace_allowed(
     state: &web::Data<AppState>,
     org_id: Uuid,
 ) -> Result<(), AppError> {

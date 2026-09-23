@@ -96,6 +96,7 @@ pub struct DatabaseStatusResponse {
 
 #[derive(Serialize)]
 pub struct PublicAuthMethodsResponse {
+    pub device_login_enabled: bool,
     pub magic_link_enabled: bool,
     pub google_enabled: bool,
     pub microsoft_enabled: bool,
