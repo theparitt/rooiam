@@ -1,5 +1,7 @@
 # OpenAPI + SDK — Phased Plan
 
+> Release sequencing update (2026-09-23): the [0.2 implementation plan](./43_v0.2_plan_brief.md) and [release roadmap](./release_roadmap.md) supersede older version assignments in this document. Existing protocol behavior remains governed by the mobile contract and server code.
+
 Status: **In progress — Phases A–D done + 3 D-backfills; browser + OIDC surface 100% covered (2026-06-02). Spec at 76 ops. Next: Phase E (refactor consumers).**
 
 Goal: a typed, language-agnostic SDK layer so downstream apps integrate with

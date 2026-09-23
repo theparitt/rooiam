@@ -41,13 +41,13 @@ export default function DemoShowcase()
                 <div className="max-w-6xl mx-auto">
                     <div className="text-center mb-14">
                         <p className="text-sm font-black uppercase tracking-widest mb-3" style={{ color: '#A07BFF' }}>
-                            Live Demos
+                            Product Demos
                         </p>
                         <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">
                             See it from every angle
                         </h2>
                         <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                            One platform, three roles. Each demo is live and interactive — no sign-up required.
+                            One platform, three roles. Open the deployed demo surfaces to explore the current product; availability depends on the active demo deployment.
                         </p>
                     </div>
 
@@ -82,7 +82,7 @@ export default function DemoShowcase()
                                     <a href={demo.url} target="_blank" rel="noreferrer"
                                         className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all hover:scale-[1.03]"
                                         style={{ background: demo.accentBg, color: demo.accent }}>
-                                        Try Demo →
+                                        Open Demo →
                                     </a>
                                 </div>
                             </div>

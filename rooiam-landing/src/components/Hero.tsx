@@ -1,8 +1,8 @@
 import { BookOpen, Copy, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { DOCS_GETTING_STARTED_URL, DEMO_APP_URL, GITHUB_REPO_URL } from '../lib/site'
+import { DOCS_GETTING_STARTED_URL, DOCS_ROADMAP_URL, DEMO_APP_URL, GITHUB_REPO_URL } from '../lib/site'
 
-const dockerSnippet = `git clone ${GITHUB_REPO_URL}\ncd rooiam && docker compose --profile demo up`
+const dockerSnippet = `git clone ${GITHUB_REPO_URL}\ncd rooiam\n# Create .env.docker.local.demo from the Quick Start guide\ndocker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d`
 
 export default function Hero()
 {
@@ -64,6 +64,17 @@ export default function Hero()
                     </a>
                 </div>
 
+                <a href={DOCS_ROADMAP_URL}
+                    className="block max-w-2xl rounded-2xl border border-purple-200 bg-purple-50 p-5 mb-8 hover:bg-purple-100 transition-colors">
+                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Next milestone · 0.2 planned</span>
+                    <span className="block mt-2 text-xl font-black text-gray-800">Scan. Match. Approve.</span>
+                    <span className="block mt-2 text-sm font-semibold text-gray-600">
+                        Our next goal: scan a browser QR code, verify the number, and approve sign-in from your trusted Android phone.
+                        The server foundation exists; the complete mobile experience is planned.
+                    </span>
+                    <span className="block mt-3 text-sm font-bold text-purple-700">Read the 0.2 goals →</span>
+                </a>
+
                 {/* Docker snippet */}
                 <div className="rounded-2xl overflow-hidden shadow-lg max-w-2xl"
                     style={{ background: '#1a1a2e' }}>
@@ -90,19 +101,27 @@ export default function Hero()
                         </div>
                         <div className="flex items-center gap-3">
                             <span className="text-pink-400 select-none">$</span>
-                            <span className="text-green-300">cd rooiam && docker compose --profile demo up</span>
+                            <span className="text-green-300">cd rooiam</span>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="text-pink-400 select-none">$</span>
+                            <span className="text-gray-400"># Create .env.docker.local.demo from the Quick Start guide</span>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="text-pink-400 select-none">$</span>
+                            <span className="text-green-300 break-all">docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d</span>
                         </div>
                         <div className="mt-3 space-y-1 pl-1">
                             <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo API    → http://localhost:5180</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo admin  → http://localhost:5181</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo portal → http://localhost:5182</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo app    → http://localhost:5184</div>
+                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Mailhog     → http://localhost:8026</div>
+                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  MinIO       → http://localhost:19001</div>
                         </div>
                     </div>
                 </div>
 
                 <p className="mt-4 text-xs font-semibold text-gray-400">
-                    Requires Docker. No Rust toolchain needed. Rooiam is early-stage and best for evaluation, internal use, and early adopters today.
+                    Requires Docker and the local demo env file from the setup guide. Frontends run separately. No host Rust toolchain is needed.
+                    Rooiam is early-stage and best for evaluation, internal use, and early adopters today.
                 </p>
             </div>
         </section>

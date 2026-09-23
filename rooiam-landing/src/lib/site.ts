@@ -16,3 +16,5 @@ export const DOCS_TROUBLESHOOTING_URL = `${DOCS_BASE_URL}/troubleshooting`
 export const DEMO_APP_URL = `${DEMO_BASE_URL}/`
 export const DEMO_PORTAL_URL = `${DEMO_APP_BASE_URL}/`
 export const DEMO_ADMIN_URL = `${DEMO_ADMIN_BASE_URL}/`
+
+export const DOCS_ROADMAP_URL = `${DOCS_BASE_URL}/roadmap`

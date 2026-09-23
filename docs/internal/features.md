@@ -30,6 +30,7 @@ This document describes the feature surface currently implemented in the reposit
 - **Session Metadata**: Sessions capture IP, user-agent, creation time, and last-seen time.
 - **Admin OAuth Guardrails**: Provider tests are kept separate from real admin sign-in, and admin OAuth can be enabled only after verification.
 - **Audit Coverage**: Auth, provider-test, link/unlink, and suspicious-login events are written to audit logs.
+- **Workspace Access Policies**: Workspace admins can configure allowed sign-in methods, email-domain restrictions, IP allowlists, session-age limits, and concurrent-session limits.
 
 ## End-User Account Center
 
@@ -86,11 +87,11 @@ This document describes the feature surface currently implemented in the reposit
 - **Linked Provider UX for End Users**: The backend account-linking capability is real, but the downstream end-user self-service surface for link/unlink is still thinner than the rest of the security/account area.
 - **Email Change Verification Landing**: The backend email-change verification flow exists, but the downstream app landing/confirmation experience is still weaker than the rest of the end-user account center.
 - **Security Messaging Polish**: Suspicious activity and recovery guidance are present in audit/security data, but the user-facing explanation and escalation UX are still maturing.
-- **Self-Host Packaging**: Compose packaging, env templates, and upgrade/operator docs are still missing.
+- **Self-Host Polish**: Compose stacks and documented env examples exist; operator install, backup, upgrade, and deployment guidance still needs further polish.
 
 ## Not Yet Started
 
-- Advanced security controls: IP allowlists, step-up MFA, enterprise policy controls.
+- Advanced security controls beyond the current workspace policies, including step-up MFA and broader enterprise policy controls.
 - Rich permission-management UI with role templates and deeper permission editing.
 - Full identity-graph merge and richer account recovery flows.
 - Dedicated suspicious-activity / security-alert center for end users.

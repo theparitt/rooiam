@@ -1,5 +1,7 @@
 # Device Login (QR / Phone) — Server-Aligned Plan
 
+> Release sequencing update (2026-09-23): the [0.2 implementation plan](./43_v0.2_plan_brief.md) and [release roadmap](./release_roadmap.md) supersede older version assignments in this document. Existing protocol behavior remains governed by the mobile contract and server code.
+
 Status: **SERVER IMPLEMENTED / MOBILE HARDENING ACTIVE**.
 Updated: 2026-06-16.
 

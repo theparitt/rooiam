@@ -34,7 +34,8 @@ Initial public release of Rooiam.
 - Per-client redirect URI and scope configuration
 
 ### Identity API
-- `GET /v1/identity/me` — current user + workspace context
+- `GET /v1/identity/me` — current user profile using the Rooiam session cookie
+- `GET /v1/identity/token` — bearer-authenticated current identity for downstream applications
 - `POST /v1/auth/magic-link/start` — send magic link
 - Session management and token revocation endpoints
 

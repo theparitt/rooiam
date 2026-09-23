@@ -1,5 +1,5 @@
-import { Check, Loader2, Calendar } from 'lucide-react'
-import { GITHUB_REPO_URL } from '../lib/site'
+import { Check, Smartphone, Calendar } from 'lucide-react'
+import { DOCS_ROADMAP_URL, GITHUB_REPO_URL } from '../lib/site'
 
 type Item = { text: string; note?: string }
 
@@ -13,25 +13,32 @@ const done: Item[] = [
     { text: 'OIDC authorization code flow with PKCE' },
     { text: 'Per-workspace branding and access policy' },
     { text: 'Platform and workspace audit surfaces' },
-    { text: 'Docker self-host (one command)' },
+    { text: 'Docker API and infrastructure stacks' },
+    { text: 'OpenAPI snapshots and TypeScript SDK packages' },
+    { text: 'Trusted-device login server protocol' },
 ]
 
-const inProgress: Item[] = [
-    { text: 'Make Rooiam easier to self-host', note: 'setup, deploy, operator trust' },
-    { text: 'Make app integration easier to understand', note: 'hosted login, OIDC, examples' },
-    { text: 'Polish tenant and operator flows for real use' },
+const nextRelease: Item[] = [
+    { text: 'Freeze and verify the existing device-login contract' },
+    { text: 'Prove device trust and one-time browser completion', note: 'replay, revocation, tenant isolation' },
+    { text: 'Android enrollment, QR scan and number-match approval' },
+    { text: 'Hosted-login QR flow with workspace policy and MFA' },
+    { text: 'TypeScript SDK helpers and a fresh-clone reference demo' },
+    { text: 'Security release checks and self-host guidance' },
 ]
 
 const planned: Item[] = [
-    { text: 'v0.3: safer and more polished tenant/operator workflows' },
-    { text: 'v1.0: a credible product for small and mid-size multi-tenant SaaS teams' },
+    { text: 'Tenant and operator polish informed by real usage' },
+    { text: 'iOS and push approval', note: 'follow-up candidates' },
+    { text: 'Rust SDK when a real integration needs it' },
+    { text: 'v1.0: stable platform for multi-tenant SaaS teams' },
     { text: 'Enterprise expansion only after real market demand' },
 ]
 
 const columns = [
     {
-        label: 'Done',
-        version: 'v0.1',
+        label: 'Available foundation',
+        version: 'current checkout',
         color: '#B5EFD5',
         border: '#90DDB5',
         iconColor: '#2a8a5a',
@@ -39,17 +46,17 @@ const columns = [
         icon: <Check className="w-3.5 h-3.5" />,
     },
     {
-        label: 'In Progress',
-        version: 'now',
+        label: 'Next milestone',
+        version: '0.2 · planned',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
-        items: inProgress,
-        icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />,
+        items: nextRelease,
+        icon: <Smartphone className="w-3.5 h-3.5" />,
     },
     {
-        label: 'Planned',
-        version: 'upcoming',
+        label: 'After 0.2',
+        version: 'direction',
         color: '#FFE8A0',
         border: '#e8c832',
         iconColor: '#8a6a00',
@@ -71,8 +78,25 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Built in the open. The goal is not to promise everything. The goal is to become a strong self-hosted passwordless IAM for multi-tenant SaaS.
+                        Rooiam 0.2 focuses on one complete trusted-device login journey, built on our self-hosted passwordless IAM foundation.
                     </p>
+                </div>
+
+                <div className="rounded-3xl border-2 border-purple-200 bg-white p-6 md:p-8 mb-8">
+                    <p className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">0.2 goal · Trusted Device &amp; QR Authentication</p>
+                    <h3 className="text-3xl font-black text-gray-800 mb-3">Scan. Match. Approve.</h3>
+                    <p className="text-base font-semibold text-gray-600 max-w-3xl">
+                        Enroll an Android phone. Scan the browser QR. Verify the number and request details.
+                        Approve on your phone, then securely finish signing in to the requesting browser.
+                    </p>
+                    <p className="mt-3 text-sm text-gray-600 max-w-3xl">
+                        Release gate: a real Android-to-browser flow, replay and revocation checks,
+                        tenant isolation, and a demo developers can run from a fresh clone.
+                        This is planned work, not an available mobile release.
+                    </p>
+                    <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
+                        Read the phases and release criteria →
+                    </a>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-3">

@@ -35,22 +35,20 @@ const plans = [
     {
         icon: <Cloud className="w-7 h-7" />,
         name: 'Hosted',
-        tagline: 'Managed by us',
-        price: 'Coming',
-        priceNote: 'soon',
+        tagline: 'Future managed option',
+        price: 'Not',
+        priceNote: 'available yet',
         color: '#FFB5C8',
         border: '#FF85A5',
         bg: 'white',
-        badge: 'Coming Soon',
+        badge: 'Planned',
         features: [
-            'Everything in Self-Host',
-            'We run the infrastructure for you',
-            'Good fit for hobby projects and early startups',
-            'Simple hosted onboarding',
+            'A future managed Rooiam service',
+            'Infrastructure operated for you',
             'Managed upgrades and operations',
-            'Low-cost way to avoid self-hosting',
+            'Availability and pricing not announced',
         ],
-        cta: 'Follow on GitHub',
+        cta: 'Follow the Roadmap',
         ctaHref: GITHUB_REPO_URL,
         ctaStyle: { background: 'linear-gradient(135deg, #FFB5C8, #D5B7FF)', color: '#5a2d3f' },
     },
@@ -66,10 +64,10 @@ export default function Pricing()
                 <div className="text-center mb-6">
                     <p className="text-sm font-black uppercase tracking-widest mb-4" style={{ color: '#c96b8a' }}>Pricing</p>
                     <h2 className="text-4xl md:text-5xl font-black text-gray-800 mb-4">
-                        Self-host free. <span className="gradient-text">Hosted tier coming soon.</span>
+                        Self-host free. <span className="gradient-text">Managed hosting is planned.</span>
                     </h2>
                     <p className="text-lg font-semibold text-gray-400 max-w-xl mx-auto">
-                        The core product is free to self-host forever. A managed hosted option is in progress.
+                        The core product is free to self-host. A managed option is part of the future roadmap and is not available today.
                     </p>
                 </div>
 
@@ -147,7 +145,7 @@ export default function Pricing()
 
                 {/* Bottom note */}
                 <p className="text-center text-sm font-semibold text-gray-400 mt-10">
-                    Free to self-host forever. Hosted tier pricing will be announced when ready.
+                    Free to self-host. Managed hosting plans and timing will be announced when they are defined.
                     {' '}·{' '}
                     <a href={DOCS_HOME_URL} className="underline hover:text-gray-700 transition-colors">Read the docs</a>
                     {' '}·{' '}

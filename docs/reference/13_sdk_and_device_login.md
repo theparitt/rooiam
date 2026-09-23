@@ -47,3 +47,7 @@ The server has a trusted-device login protocol separate from WebAuthn. The mobil
 Implementation modules include Apple App Attest and Google Play Integrity verification, plus policy-controlled compatibility verification. Exact request bodies, signing payloads, and policy settings are in the [mobile contract](../internal/44_mobile_device_login_contract.md) and current handler/service code. The server stores push tokens but does not itself deliver APNs/FCM notifications.
 
 A server protocol does not imply a bundled mobile app or SDK helper for every endpoint. Use the [API/SDK smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) to validate a deployment and its native clients.
+
+## Next milestone
+
+[Rooiam 0.2](../roadmap.md) targets a verified Android + hosted-login QR journey on this foundation. The current protocol uses a browser nonce for device-login completion; this is separate from downstream OIDC PKCE. New scan-secret, claim or authorization-code fields from design proposals are not current API parameters.

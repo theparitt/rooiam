@@ -27,6 +27,10 @@ If a page is not linked from here, it may still exist, but it is not part of the
 > - **`rooiam-admin`**: platform operator console
 > - **`rooiam-app`**: tenant login and workspace portal
 
+## Next Release
+
+[Rooiam 0.2 — Trusted Device & QR Authentication](./roadmap.md): Scan. Match. Approve. The next milestone aims to complete and verify the Android-to-browser journey on the existing server foundation. This is planned work, not a released mobile feature.
+
 ## Start Here
 
 - [SDK and Device Login Reference](./reference/13_sdk_and_device_login.md)

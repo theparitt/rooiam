@@ -126,6 +126,7 @@ function classifySection(sourcePath: string, title: string): DocSectionId {
   if (
     sourcePath === '00_docs_index.md' ||
     sourcePath === 'architecture.md' ||
+    sourcePath === 'roadmap.md' ||
     sourcePath === 'marketing.md'
   ) {
     return 'overview'
