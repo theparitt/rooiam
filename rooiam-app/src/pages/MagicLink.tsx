@@ -38,6 +38,7 @@ type LoginBootstrapResponse = {
 }
 
 type WorkspaceBranding = {
+    id?: string
     slug: string
     name: string
     login_display_name: string | null
@@ -102,7 +103,9 @@ export default function MagicLinkPage()
     const [workspaceBrandingError, setWorkspaceBrandingError] = useState('')
     const [widgetLoginContext, setWidgetLoginContext] = useState<string | null>(null)
 
-    const { appName, redirectUri, workspaceId, workspaceSlug } = getTenantContext(window.location.search)
+    const { appName, redirectUri: portalRedirectUri, workspaceId, workspaceSlug } = getTenantContext(window.location.search)
+    const [appRedirectUri, setAppRedirectUri] = useState('')
+    const redirectUri = appRedirectUri || portalRedirectUri
     const clientId = params.get('client_id') || ''
     const tenantName = workspaceBranding?.login_display_name || workspaceBranding?.name || appName
     const tenantColor = workspaceBranding?.brand_color || '#8d72d9'
@@ -273,7 +276,7 @@ export default function MagicLinkPage()
                 // demo OAuth or a magic-link verify), skip the login form entirely.
                 // Only do this for top-level pages — not when embedded in an iframe,
                 // where the parent app manages auth state via OIDC.
-                if (!isEmbedded) {
+                if (!isEmbedded && !clientId) {
                     const meRes = await fetch(`${API}/identity/me`, { credentials: 'include' })
                     if (meRes.ok && !cancelled) {
                         const dest = workspaceSlug
@@ -297,6 +300,7 @@ export default function MagicLinkPage()
                 let data: LoginBootstrapResponse
                 if (!res.ok)
                 {
+                    if (clientId) throw new Error('Could not validate this application. Start sign-in again from the application.')
                     postProgress('Bootstrap unavailable, switching to fallback...', `status=${res.status}`)
                     data = await loadLegacyLoginData()
                 } else {
@@ -306,6 +310,23 @@ export default function MagicLinkPage()
 
                 if (cancelled) {
                     return
+                }
+
+                // App destinations come only from the server's registered client configuration.
+                // Do not accept redirect_uri from the page URL or fall back to a portal login
+                // when a requested application is missing or belongs to another workspace.
+                if (clientId) {
+                    if (!data.app || data.app.client_id !== clientId || !/^https?:\/\//.test(data.app.redirect_uri)
+                        || (workspaceId && data.workspace?.id !== workspaceId)
+                        || (workspaceSlug && data.workspace?.slug !== workspaceSlug)) {
+                        throw new Error('This application has no valid registered callback for this workspace.')
+                    }
+                    setAppRedirectUri(data.app.redirect_uri)
+                    if (!isEmbedded) {
+                        const me = await fetch(`${API}/identity/me`, { credentials: 'include' })
+                        if (cancelled) return
+                        if (me.ok) { window.location.replace(resolveAuthRedirect(data.app.redirect_uri)); return }
+                    }
                 }
 
                 if (isEmbedded && clientId && !data.app?.widget_login_context) {
@@ -366,6 +387,11 @@ export default function MagicLinkPage()
                 }
 
                 const message = err instanceof Error ? err.message : 'Could not load login settings.'
+                if (clientId) {
+                    setAppRedirectUri('')
+                    setWidgetLoginContext(null)
+                    setAuthMethods({ device_login_enabled: false, magic_link_enabled: false, google_enabled: false, microsoft_enabled: false, passkey_enabled: false, demo_mode: false, demo_mailbox_url: null })
+                }
                 setAuthMethodsError(message)
                 setWorkspaceBranding(null)
                 setWorkspaceBrandingError(workspaceId || workspaceSlug ? message : '')
@@ -988,7 +1014,7 @@ export default function MagicLinkPage()
                             </>
                         )}
                     </div>
-                    {authMethods.device_login_enabled && !mfaChallengeId && !sent && (!isEmbedded || widgetLoginContext) && (
+                    {authMethods.device_login_enabled && !mfaChallengeId && !sent && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext) && (
                         <DeviceLogin input={{
                             redirect_uri: isEmbedded ? undefined : redirectUri || undefined,
                             widget_login_context: widgetLoginContext || undefined,

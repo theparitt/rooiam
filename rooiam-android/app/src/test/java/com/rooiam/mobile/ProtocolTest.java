@@ -3,6 +3,14 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 public class ProtocolTest {
     private final String id = "12345678-1234-4234-8234-123456789abc";
+    @Test public void emailLinksAcceptOnlyTrustedVerificationEndpoints() {
+        String frontend = "https://app.example", api = "https://api.example";
+        for (String url : new String[]{frontend + "/verify?token=test", api + "/v1/auth/magic-link/verify?token=test"})
+            assertEquals(url, Protocol.emailLink(url, frontend, api, false));
+        for (String url : new String[]{"https://evil.example/verify?token=test", "https://app.example@evil.example/verify?token=test", api + "/other?token=test", frontend + "/verify", frontend + "/verify?token=test#fragment", "http://app.example/verify?token=test"}) {
+            try { Protocol.emailLink(url, frontend, api, false); fail(url); } catch (IllegalArgumentException expected) { }
+        }
+    }
     @Test public void validQr() { assertEquals(id, Protocol.parseQr("rooiam://device-login?server=https%3A%2F%2Fauth.example&public_id=" + id, "https://auth.example", false)); }
     @Test public void rejectsSubstitutionAndAmbiguousInput() {
         for (String qr : new String[] {

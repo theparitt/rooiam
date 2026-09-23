@@ -50,7 +50,13 @@ export function createReferenceApp(rawConfig, hooks = {}) {
   widget.searchParams.set('workspace_id', config.workspaceId)
   widget.searchParams.set('client_id', config.clientId)
   const callbackUri = `${config.appBaseUrl}/callback`
+  const endSessionUrl = new URL(`${config.apiBase}/oidc/end-session`)
+  if (!['http:', 'https:'].includes(endSessionUrl.protocol) || endSessionUrl.username || endSessionUrl.password) throw new Error('ROOIAM_API_BASE must use HTTP(S) without credentials.')
   const hostedLogin = config.hostedLoginOrigin ? new URL('/', config.hostedLoginOrigin) : null
+  if (hostedLogin) {
+    hostedLogin.searchParams.set('workspace_id', config.workspaceId)
+    hostedLogin.searchParams.set('client_id', config.clientId)
+  }
   const app = express()
   const pending = hooks.pending || new Map()
   const sessions = hooks.sessions || new Map()
@@ -65,7 +71,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     res.set('Referrer-Policy', 'no-referrer')
     res.set('X-Content-Type-Options', 'nosniff')
     res.locals.scriptNonce = random(18)
-    res.set('Content-Security-Policy', `default-src 'self'; frame-src ${widget.origin}; script-src 'nonce-${res.locals.scriptNonce}'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`)
+    res.set('Content-Security-Policy', `default-src 'self'; frame-src ${widget.origin}; script-src 'nonce-${res.locals.scriptNonce}'; style-src 'unsafe-inline'; form-action 'self' ${endSessionUrl.origin}; base-uri 'none'; frame-ancestors 'none'`)
     next()
   })
 
@@ -98,7 +104,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     pending.set(transactionId, { state: random(), verifier, challenge: sha256(verifier), authorizationStarted: false, expiresAt: now() + TX_TTL_MS })
     res.setHeader('Set-Cookie', cookie(TX_COOKIE, transactionId, { secure: config.secureCookie, maxAge: TX_TTL_MS / 1000, path: '/callback' }))
     const body = `<h1>Sign in</h1><p class="muted">Rooiam owns authentication. This example backend owns OAuth state, PKCE, callback exchange, and the resulting app session.</p><iframe id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
-    const phoneLink = hostedLogin ? `<p><a class="button" target="_blank" rel="noopener noreferrer" href="${escapeHtml(hostedLogin.toString())}">Open phone login</a></p><p>Sign in in the new tab, then return here and continue with your Rooiam session.</p>` : ''
+    const phoneLink = hostedLogin ? `<p><a class="button" href="${escapeHtml(hostedLogin.toString())}">Sign in with your phone</a></p>` : ''
     const existingSession = '<p>Already signed in to Rooiam in this browser? <a href="/callback">Continue with your Rooiam session</a></p>'
     res.type('html').send(page('Sign in', phoneLink + existingSession + body.replace('<iframe ', '<iframe referrerpolicy="origin" ')))
   })
@@ -167,7 +173,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     if (!session || !same(req.body.csrf, session.csrf)) return res.status(403).json({ error: { message: 'Invalid logout request.' } })
     sessions.delete(session.id)
     res.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', { secure: config.secureCookie, maxAge: 0 }))
-    const end = new URL(`${config.apiBase}/oidc/end-session`)
+    const end = new URL(endSessionUrl)
     end.searchParams.set('client_id', config.clientId)
     end.searchParams.set('post_logout_redirect_uri', `${config.appBaseUrl}/`)
     return res.redirect(303, end.toString())

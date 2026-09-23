@@ -1,6 +1,6 @@
 # Rooiam Android preview
 
-Native enrollment, QR scan/paste, explicit approve/deny and revocation for the existing device-login v1 API. This is an implementation preview, not a certified release. Android 8/API 26 or later is required; the scanner and Play Integrity need Google Play services.
+Native enrollment, QR scan/paste, explicit approve/deny and revocation for the existing device-login v1 API. This is an implementation preview, not a certified release. Android 8/API 26 or later is required. QR decoding runs locally inside Rooiam using the Camera permission; only Play Integrity needs Google Play services.
 
 ## Build and install
 
@@ -20,6 +20,12 @@ Enable USB debugging and accept the phone's authorization prompt. For a local te
 4. Scan or paste the QR. Compare server/application context, six-digit request code and the displayed number. Approve or deny explicitly. Finish any required MFA in the browser.
 5. Revoke from this app or **My Security → Trusted phones**. Re-enroll with a new identity after revocation. A lost/cleared app must not reuse a backup of its key.
 
+The alpha.2 scanner stays in Rooiam instead of launching an external Google scanner. Camera access is paused in the background; saved activity state restores an interrupted scan. Once decoded, the public QR request is saved before fetching its preview, so reopening the app restores the review after process death. Restoration revalidates the origin, signed-in identity, request status and expiry with the server. It never approves automatically. Cancel/close clears the saved review; an explicit approve/deny clears it before sending the decision so process recovery cannot resend a decision. If camera access is denied, use **Paste QR text**.
+
+The email-link button accepts the exact verification endpoints on the configured API or its hosted frontend. It does not accept arbitrary origins or navigation paths. You can paste the original API link from the email without rewriting it.
+
+Upgrade a test installation using `adb install -r` or open the new APK from Downloads; keep the existing package and signing certificate to preserve enrollment. A successful APK signature check does not establish Play Protect acceptance. If installation reports `INSTALL_FAILED_VERIFICATION_FAILURE`, record the full warning and APK hash, then follow [Google's developer guidance](https://developers.google.com/android/play-protect/warning-dev-guidance). Do not count installation with Play Protect disabled as passing protected-installation certification.
+
 ## Security and attestation
 
 The Ed25519 seed and random device token are encrypted with a non-exportable Android Keystore AES-GCM wrapping key. Ed25519 signing is performed in app memory, not hardware. App backups and device transfers are excluded. No JavaScript bridge is installed; login uses the existing hosted UI. Production origins require HTTPS, and QR origin substitution is rejected before sending credentials. Debug HTTP is limited to loopback/emulator host.
@@ -30,4 +36,4 @@ See the [protocol](../docs/internal/44_mobile_device_login_contract.md) and [cer
 
 On a dedicated test installation, `./gradlew :app:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection. **It clears the app's test vault.** The instrumented test APK is also buildable with `:app:assembleDebugAndroidTest`; building it does not execute it on hardware.
 
-Platform references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [standard Play Integrity requests](https://developer.android.com/google/play/integrity/standard), [Google code scanner](https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner).
+Platform references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [standard Play Integrity requests](https://developer.android.com/google/play/integrity/standard), [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), [Android activity lifecycle](https://developer.android.com/guide/components/activities/activity-lifecycle).

@@ -2,13 +2,13 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.rooiam.mobile'
     compileSdk 34
-    defaultConfig { applicationId 'com.rooiam.mobile'; minSdk 26; targetSdk 34; versionCode 1; versionName '0.2.0-alpha.1'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    defaultConfig { applicationId 'com.rooiam.mobile'; minSdk 26; targetSdk 34; versionCode 2; versionName '0.2.0-alpha.2'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     buildFeatures { buildConfig true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
-    implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.google.android.play:integrity:1.3.0'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:runner:1.5.2'

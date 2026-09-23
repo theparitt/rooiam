@@ -58,10 +58,11 @@ async function begin(base) {
   assert.equal(html.includes('server-only-secret'), false)
   // The widget server validates the embedding origin; no-referrer would reject the iframe.
   assert.match(html, /<iframe referrerpolicy="origin" /)
-  const phoneUrl = new URL(/href="([^"]+)">Open phone login/.exec(html)[1].replaceAll('&amp;', '&'))
+  const phoneUrl = new URL(/href="([^"]+)">Sign in with your phone/.exec(html)[1].replaceAll('&amp;', '&'))
   assert.equal(phoneUrl.origin, 'http://hosted.test')
-  assert.equal(phoneUrl.search, '')
-  assert.match(html, /target="_blank" rel="noopener noreferrer"/)
+  assert.equal(phoneUrl.searchParams.get('workspace_id'), 'workspace-1')
+  assert.equal(phoneUrl.searchParams.get('client_id'), 'reference-web')
+  assert.equal(phoneUrl.searchParams.has('redirect_uri'), false)
   assert.match(html, /href="\/callback">Continue with your Rooiam session/)
   const nonce = /<script nonce="([^"]+)">/.exec(html)?.[1]
   assert.ok(nonce)
@@ -108,6 +109,8 @@ test('server-owned PKCE callback creates one opaque application session', async 
   const logout = await fetch(f.base + '/logout', { method: 'POST', redirect: 'manual', headers: { Cookie: sessionCookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: data.csrf }) })
   assert.equal(logout.status, 303)
   assert.equal(new URL(logout.headers.get('location')).pathname, '/v1/oidc/end-session')
+  const logoutOrigin = new URL(logout.headers.get('location')).origin
+  assert.ok(logout.headers.get('content-security-policy').includes(`form-action 'self' ${logoutOrigin};`))
   assert.match(setCookies(logout)[0], /reference_app_session=;.*Max-Age=0/)
 })
 

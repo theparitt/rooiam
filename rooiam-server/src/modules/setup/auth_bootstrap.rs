@@ -474,6 +474,9 @@ pub async fn get_login_bootstrap(
             return Err(err);
         }
     };
+    if (workspace_id.is_some() || workspace_slug.is_some()) && resolved_workspace.is_none() {
+        return Err(AppError::Validation("The requested workspace does not exist.".into()));
+    }
     let workspace = resolved_workspace
         .as_ref()
         .map(|org| LoginBootstrapBrandingResponse {

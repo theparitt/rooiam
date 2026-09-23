@@ -42,7 +42,19 @@ For automated Chromium coverage after the HTTP runner, install Playwright in a s
 
 SQLx offline query metadata is committed under `rooiam-server/.sqlx` so fresh builds do not depend on a developer's ignored cache. When compile-time SQL changes, regenerate it against a disposable migrated database using SQLx CLI 0.8: `DATABASE_URL=... SQLX_OFFLINE=false cargo sqlx prepare -- --lib --tests` in `rooiam-server`.
 
+For the continuous reference-app QR regression, enable device login on the disposable **Rooiam Test** workspace, keep its test-only unattested-device policy, and run:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/rooiam-browser-tools/node_modules/playwright/index.mjs node test/reference-app-phone-browser.mjs
+```
+
+This starts a temporary reference app on port 15475, provisions a confidential client and fake signing device, and removes/revokes those fixtures afterward. The API and hosted frontend must already be running on 15470/15472. It validates browser QR completion, client/workspace binding, exact downstream subject, existing-session return, invalid-client rejection and callback tampering. `ROOIAM_BROWSER_TEST_DATABASE` may select the separate disposable PostgreSQL on port 15440 used for the phone walkthrough; the script rejects non-loopback hosts, other ports and database names. This is browser regression evidence, not a physical scan or Play Integrity result.
+
+For alpha.2 physical acceptance, update the existing phone app without clearing its data. Test camera permission denial and the paste fallback, cancel and rescan, rotate/background/return while scanning, and reopen while the approval review is visible. A restored review must fetch current status and require a new explicit approval. Do not rerun the vault-clearing instrumented test against an enrollment you want to preserve. Retest installation with Play Protect enabled separately from camera functionality.
+
 ## Upgrade and operations
+
+**Test-mode startup wipes and reseeds the entire dedicated database.** Do not restart a phone walkthrough API expecting enrollment, clients or sessions to survive. Take a restricted-access database backup before replacing its binary and restore it only in this disposable environment. Use production mode against an isolated database for persistence/restart certification; test-mode reseeding is not a restart-recovery test.
 
 For local production-mode throttling checks, copy the example environment to a private temporary file, change mode to `production`, API/server port to 15473 and Redis URL to `redis://127.0.0.1:15479/2`, and supply a random `ROOIAM_SETUP_TOKEN`. Keep the disposable database. Run a second server with that file, then `node test/device-login-limits.mjs`. This verifies test-login absence, ordinary identity routing, start 10/min and status 120/min limits. It is a focused limit test, not a comprehensive abuse certification.
 

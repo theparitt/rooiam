@@ -8,7 +8,11 @@ import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.*;
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import com.journeyapps.barcodescanner.DecoratedBarcodeView;
+import com.journeyapps.barcodescanner.DefaultDecoderFactory;
+import com.google.zxing.BarcodeFormat;
 import com.google.android.play.core.integrity.IntegrityManagerFactory;
 import com.google.android.play.core.integrity.StandardIntegrityManager;
 import com.google.android.gms.tasks.Tasks;
@@ -26,11 +30,21 @@ public final class MainActivity extends Activity {
     private TextView status;
     private LinearLayout layout;
     private boolean busy;
+    private DecoratedBarcodeView scanner;
+    private boolean scanning;
+    private String pendingQr;
     interface Work { String run() throws Exception; }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         vault = new DeviceVault(this); home();
+        pendingQr = getPreferences(0).getString("pending_qr", null);
+        if (pendingQr != null) {
+            String recovered = pendingQr;
+            status.post(() -> preview(recovered));
+        } else if (state != null && state.getBoolean("scanning")) {
+            status.post(this::startScanner);
+        }
     }
     private void home() {
         layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32,48,32,32);
@@ -49,11 +63,7 @@ public final class MainActivity extends Activity {
             return "Sign in using an existing account, then return here to enroll.";
         }));
         button("2. Enroll this phone", () -> work(this::enroll));
-        button("3. Scan a sign-in QR", () -> {
-            if (busy) return;
-            GmsBarcodeScanning.getClient(this).startScan().addOnSuccessListener(code -> preview(code.getRawValue()))
-                .addOnFailureListener(e -> status.setText("Scanner unavailable: " + e.getMessage()));
-        });
+        button("3. Scan a sign-in QR", this::startScanner);
         button("Paste QR text", () -> {
             EditText input = new EditText(this); input.setHint("rooiam://device-login?…");
             new AlertDialog.Builder(this).setTitle("Sign-in request").setView(input).setPositiveButton("Preview", (d,w) -> preview(input.getText().toString())).setNegativeButton("Cancel", null).show();
@@ -68,6 +78,49 @@ public final class MainActivity extends Activity {
         status = new TextView(this); status.setText("Enroll your phone with the server you trust. Only approve sign-ins you started."); status.setPadding(0,24,0,0); layout.addView(status);
     }
     private void button(String label, Runnable action) { Button b = new Button(this); b.setText(label); b.setOnClickListener(v -> action.run()); layout.addView(b); }
+    private void startScanner() {
+        if (busy || isFinishing() || isDestroyed()) return;
+        try {
+            String origin = Protocol.origin(server.getText().toString(), BuildConfig.DEBUG);
+            getPreferences(0).edit().putString("server", origin).putString("project", project.getText().toString()).apply();
+        } catch (Exception e) { status.setText(e.getMessage()); return; }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 42); return;
+        }
+        scanning = true;
+        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL);
+        Button cancel = new Button(this); cancel.setText("Cancel scan"); panel.addView(cancel);
+        scanner = new DecoratedBarcodeView(this);
+        scanner.getBarcodeView().setDecoderFactory(new DefaultDecoderFactory(java.util.Collections.singletonList(BarcodeFormat.QR_CODE)));
+        scanner.setStatusText("Scan the QR in the browser you started.");
+        panel.addView(scanner, new LinearLayout.LayoutParams(-1, 0, 1));
+        setContentView(panel);
+        cancel.setOnClickListener(v -> { stopScanner(); home(); status.setText("Scan cancelled. You can scan again or paste QR text."); });
+        scanner.decodeSingle(result -> {
+            if (!scanning || isFinishing() || isDestroyed()) return;
+            String qr = result.getText(); stopScanner(); home(); preview(qr);
+        });
+        scanner.resume();
+    }
+    private void stopScanner() {
+        if (scanner != null) { scanner.pause(); scanner = null; }
+        scanning = false;
+    }
+    private void clearPendingQr() {
+        if (isDestroyed()) return; // A replaced activity must not erase the new activity's review.
+        pendingQr = null; getPreferences(0).edit().remove("pending_qr").commit();
+    }
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 42) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startScanner();
+            else status.setText("Camera permission was not granted. Use Paste QR text, or allow Camera in app settings.");
+        }
+    }
+    @Override protected void onSaveInstanceState(Bundle state) { state.putBoolean("scanning", scanning); super.onSaveInstanceState(state); }
+    @Override protected void onResume() { super.onResume(); if (scanner != null) scanner.resume(); }
+    @Override protected void onPause() { if (scanner != null) scanner.pause(); CookieManager.getInstance().flush(); super.onPause(); }
+    @Override public void onBackPressed() { if (scanning) { stopScanner(); home(); } else super.onBackPressed(); }
     private String configuredOrigin;
     private String configuredProject;
     private void work(Work action) {
@@ -79,7 +132,7 @@ public final class MainActivity extends Activity {
             String result;
             try { result = action.run(); } catch (Exception e) { result = e.getMessage() == null ? "Operation failed. Try again." : e.getMessage(); }
             String message = result;
-            runOnUiThread(() -> { busy = false; if (!isFinishing()) status.setText(message); });
+            runOnUiThread(() -> { busy = false; if (!isFinishing() && !isDestroyed()) status.setText(message); });
         });
     }
     private String serverOrigin() {
@@ -108,8 +161,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Open", (d,w) -> {
                     try {
                         java.net.URI link = new java.net.URI(input.getText().toString().trim());
-                        if (link.getRawUserInfo() != null || !frontend.equals(Protocol.origin(link.getScheme() + "://" + link.getRawAuthority(), BuildConfig.DEBUG))) throw new IllegalArgumentException();
-                        web.loadUrl(link.toASCIIString());
+                        web.loadUrl(Protocol.emailLink(link.toASCIIString(), frontend, getPreferences(0).getString("server", ""), BuildConfig.DEBUG));
                     } catch (Exception e) { new AlertDialog.Builder(this).setMessage("Use a sign-in link from " + frontend).setPositiveButton("OK", null).show(); }
                 }).setNegativeButton("Cancel", null).show();
         });
@@ -155,7 +207,14 @@ public final class MainActivity extends Activity {
         return device;
     }
     private void preview(String qr) {
+        if (busy) return;
+        try {
+            Protocol.parseQr(qr, server.getText().toString(), BuildConfig.DEBUG);
+            pendingQr = qr;
+            if (!getPreferences(0).edit().putString("pending_qr", qr).commit()) throw new IllegalStateException("Could not save the scan. Please scan again.");
+        } catch (Exception e) { clearPendingQr(); status.setText(e.getMessage()); return; }
         work(() -> {
+            try {
             if (qr == null) throw new IllegalArgumentException("Empty QR code.");
             // Origin validation happens before even the identity request sends credentials.
             String id = Protocol.parseQr(qr, serverOrigin(), BuildConfig.DEBUG);
@@ -163,11 +222,16 @@ public final class MainActivity extends Activity {
             JSONObject request = api.request("/v1/identity/device-login/intents/" + id, null);
             if (request.optInt("protocol_version", 0) != 1 || !request.getString("public_id").equals(id) || !request.getString("status").equals("pending")) throw new IllegalStateException("This request is unavailable or uses an unsupported protocol.");
             if (java.time.Instant.parse(request.getString("expires_at")).isBefore(java.time.Instant.now())) throw new IllegalStateException("This request expired.");
-            runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Approve this browser?")
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                new AlertDialog.Builder(this).setTitle("Approve this browser?")
                 .setMessage("Server: " + device.optString("origin") + "\nApplication: " + request.optString("redirect_uri", "Rooiam portal") + "\nWorkspace: " + request.optString("workspace_id", "Rooiam") + "\n\nRequest code: " + request.optString("display_code") + "\nMatching number: " + request.optInt("match_number") + "\n\nCompare the request code and number with the browser you started.")
-                .setPositiveButton("Codes match — approve", (d,w) -> decide(device, request, true))
-                .setNegativeButton("Deny", (d,w) -> decide(device, request, false)).setNeutralButton("Close", null).show());
+                .setPositiveButton("Codes match — approve", (d,w) -> { clearPendingQr(); decide(device, request, true); })
+                .setNegativeButton("Deny", (d,w) -> { clearPendingQr(); decide(device, request, false); })
+                .setNeutralButton("Close", (d,w) -> clearPendingQr()).setOnCancelListener(d -> clearPendingQr()).show();
+            });
             return "Review the server, request code and number before approving.";
+            } catch (Exception e) { clearPendingQr(); throw e; }
         });
     }
     private void decide(JSONObject device, JSONObject request, boolean approve) {
@@ -179,5 +243,5 @@ public final class MainActivity extends Activity {
             return approve ? "Approved. Return to your browser to finish sign-in and any required MFA." : "Request denied.";
         });
     }
-    @Override protected void onDestroy() { worker.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { stopScanner(); worker.shutdown(); super.onDestroy(); }
 }

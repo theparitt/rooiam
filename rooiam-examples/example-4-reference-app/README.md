@@ -34,10 +34,12 @@ npm test
 npm run dev
 ```
 
-Open `http://localhost:5194` and choose **Sign in with Rooiam**. If you already signed in to Rooiam in this browser, choose **Continue with your Rooiam session** to perform the backend OIDC exchange. Otherwise, configure `ROOIAM_HOSTED_LOGIN_ORIGIN` with the `rooiam-app` origin and choose **Open phone login** to open its QR-capable portal in a new tab. Complete phone approval there, return to the reference app tab, and choose **Continue with your Rooiam session**. The sample then performs the registered OIDC callback and creates its application-owned session. Keep both tabs in the same browser profile. This two-tab path currently authenticates in the portal first; it does not yet demonstrate a single continuous client-bound QR-to-application callback journey.
+Open `http://localhost:5194` and choose **Sign in with Rooiam**, then **Sign in with your phone**. Configure `ROOIAM_HOSTED_LOGIN_ORIGIN` with the `rooiam-app` origin. The hosted page obtains the registered callback from the server using the workspace/client IDs, displays QR login, and returns to the reference callback after approval and any required MFA. The backend performs the OIDC code exchange and creates its own session. If the browser already has a Rooiam session, the hosted page returns to the registered callback directly. **Continue with your Rooiam session** remains a shortcut for an existing session. No caller-supplied redirect URL is passed to the hosted page.
 
 The embedded widget remains available for its supported login methods. Its iframe sends only the embedding origin using `referrerpolicy="origin"`, which Rooiam requires to check the allowed embed origin. Callback responses retain `Referrer-Policy: no-referrer`.
 
 The tests use a fake OIDC issuer to prove state and PKCE handling, confidential-client exchange, exact identity mapping, callback concurrency/replay rejection, code-reuse failure, cookie flags, logout CSRF, and HTTPS enforcement. They do not replace the real Rooiam/phone walkthrough.
 
 The repository runbook also includes `test/reference-app-live.mjs`. It provisions a temporary confidential client in the isolated test database and verifies the real Rooiam authorize, code exchange, userinfo, subject mapping, opaque session, and replay behavior. It removes the temporary client afterward.
+
+`test/reference-app-phone-browser.mjs` exercises the continuous hosted QR → application callback in Chromium against the real test API. It verifies the exact account, client/workspace binding, already-signed-in return, rejection of invalid clients and ignoring a malicious URL callback. Its signer is simulated; physical-camera acceptance is recorded separately.

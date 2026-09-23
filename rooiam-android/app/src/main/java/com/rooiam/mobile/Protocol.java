@@ -9,6 +9,16 @@ import java.util.UUID;
 
 /** Pure protocol checks shared by the client and JVM tests. */
 public final class Protocol {
+    /** Accept only the trusted frontend or the exact API email-verification endpoint. */
+    public static String emailLink(String value, String frontend, String api, boolean debug) {
+        URI link = URI.create(value.trim());
+        if (link.getRawUserInfo() != null || link.getFragment() != null) throw new IllegalArgumentException("Invalid sign-in link.");
+        String linkOrigin = origin(link.getScheme() + "://" + link.getRawAuthority(), debug);
+        boolean frontendLink = linkOrigin.equals(origin(frontend, debug)) && "/verify".equals(link.getRawPath());
+        boolean apiLink = linkOrigin.equals(origin(api, debug)) && "/v1/auth/magic-link/verify".equals(link.getRawPath());
+        if ((!frontendLink && !apiLink) || link.getRawQuery() == null) throw new IllegalArgumentException("Use the sign-in link from your trusted server.");
+        return link.toASCIIString();
+    }
     public static String origin(String value, boolean debug) {
         URI uri = URI.create(value.trim());
         boolean local = debug && "http".equals(uri.getScheme()) &&
