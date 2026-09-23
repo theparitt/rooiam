@@ -93,7 +93,8 @@ export default function Roadmap()
                         Release gate: a real Android-to-browser flow, replay and revocation checks,
                         tenant isolation, and a demo developers can run from a fresh clone.
                         The hosted flow, Android preview, and application-owned reference session are implemented.
-                        Physical-phone approval works via pasted QR text. Camera recovery and release certification remain open.
+                        An assisted test passed physical-phone approval via pasted QR text and the subsequent reference-app session.
+                        Camera recovery, a continuous QR-to-app flow, and release certification remain open.
                     </p>
                     <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
                         Read the phases and release criteria →
