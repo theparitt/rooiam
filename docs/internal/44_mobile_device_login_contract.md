@@ -16,9 +16,9 @@ Updated: 2026-09-23.
 - Android v1 uses an Ed25519 seed encrypted at rest by an Android Keystore AES-GCM key. Signing occurs in process memory; this is **not hardware-backed Ed25519 signing**. Backups/transfers of app identity are excluded. Clearing/reinstalling requires fresh enrollment; lost phones are revoked in My Security.
 - Platform `tenant_login_device_enabled` and workspace `allow_device_login` must both permit workspace flows. Workspace opt-in defaults to false. `GET/PUT /v1/identity/device-login/workspace-policy` requires the current workspace's `org:update` permission. Platform policy cannot be overridden by a tenant.
 
-Reference implementations: `rooiam-android`, `rooiam-app/src/components/DeviceLogin.tsx`, and `rooiam-examples/device-login`. See [current evidence](./45_v0.2_current_status_2026-09-23.md) before making release claims.
+Reference implementations: `rooiam-examples/example-5-android-reference-app`, `rooiam-app/src/components/DeviceLogin.tsx`, and `rooiam-examples/device-login`. See [current evidence](./45_v0.2_current_status_2026-09-23.md) before making release claims.
 
-This document is the implementation guide for `rooiam-android`, `rooiam-ios`,
+This document is the implementation guide for `rooiam-examples/example-5-android-reference-app`, `rooiam-ios`,
 and any fake-phone/dev tester that participates in Rooiam QR login.
 
 Use this together with [40_device_login_plan.md](./40_device_login_plan.md).

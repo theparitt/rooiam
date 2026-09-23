@@ -1,6 +1,6 @@
-# Rooiam Android SDK and reference app
+# Example 5 — Android reference app
 
-The Gradle build contains `:sdk`, a reusable Android library, and `:app`, the reference consumer. Start with the [SDK integration guide](./sdk/README.md) for dependency setup, API usage, session/attestation adapters and host responsibilities. Alpha.3 separates the library from UI. Its assisted Redmi Note 9 regression passed a new camera scan through the application callback/session while retaining the alpha.2 enrollment. Lifecycle and vendor certification remain separate.
+This is a reference consumer of the [Android SDK](../../rooiam-sdk/android/README.md), which lives separately in `rooiam-sdk/android`. Open this directory in Android Studio. Its Gradle settings include the SDK as `:sdk` from the same repository; the application is the root project. Alpha.3's assisted Redmi Note 9 regression passed a new camera scan through the application callback/session while retaining the alpha.2 enrollment. Lifecycle and vendor certification remain separate.
 
 The SDK owns origin/QR validation, enrollment, protected credentials, request review, signing and revocation. The reference app owns its WebView login, camera permission/scanner, review dialog and lifecycle restoration. Play Integrity is supplied by the host through an adapter; the SDK has no camera or Google Play dependency.
 
@@ -8,19 +8,19 @@ Native enrollment, QR scan/paste, explicit approve/deny and revocation for the e
 
 ## Build and install
 
-Install JDK 17 and Android SDK platform/build-tools 34, set `ANDROID_HOME`, then:
+Install JDK 17 and Android SDK platform/build-tools 34, set `ANDROID_HOME`, then run from this directory:
 
 ```sh
-./gradlew :sdk:assembleRelease :sdk:testDebugUnitTest :sdk:lintDebug :app:assembleDebug :app:lintDebug
+./gradlew assembleDebug lintDebug
 adb devices -l
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r build/outputs/apk/debug/RooiamAndroidReferenceApp-debug.apk
 ```
 
 Enable USB debugging and accept the phone's authorization prompt. For a local test API and hosted frontend, use `adb reverse tcp:15470 tcp:15470` and `adb reverse tcp:15472 tcp:15472`. Both services must run on the host where ADB can reach them. WSL users may need Windows ADB or USB passthrough; a successful build is not proof of phone connectivity.
 
 1. Enter your trusted API origin. The operator supplies the Google Cloud project number for Play Integrity.
 2. Sign in through the server's configured hosted frontend using an existing account. For email login, paste the emailed link using the button inside the login view so its session stays in the app's WebView cookie store. Return to enrollment.
-3. Enroll the phone, then open hosted login in a separate browser and choose **Show QR code**. Platform and workspace policies must permit device login.
+3. Enroll the phone, then choose **Sign in with your phone** in the browser's login widget. The hosted page additionally asks you to choose **Show QR code**. Platform and workspace policies must permit device login.
 4. Scan or paste the QR. Compare server/application context, six-digit request code and the displayed number. Approve or deny explicitly. Finish any required MFA in the browser.
 5. Revoke from this app or **My Security → Trusted phones**. Re-enroll with a new identity after revocation. A lost/cleared app must not reuse a backup of its key.
 
@@ -36,7 +36,7 @@ The Ed25519 seed and random device token are encrypted with a non-exportable And
 
 Release enrollment requires a Play Integrity project number. The backend must be configured with its Google verification credentials, expected app/package and signing-certificate policy. Install/distribute the app through the operator's supported Play test track for real vendor certification. The debug app can enroll without attestation, but the server's default verified-attestation policy rejects its approvals. Do not relax production policy to make a sideloaded build pass.
 
-See the [protocol](../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../test/device-login.md). Vendor attestation has not been certified with this app yet.
+See the [protocol](../../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../../test/device-login.md). Vendor attestation has not been certified with this app yet.
 
 On a dedicated test installation, `./gradlew :sdk:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection in the SDK test application's sandbox. **It clears that test vault.** The instrumented test APK is also buildable with `:sdk:assembleDebugAndroidTest`; building it does not execute it on hardware.
 

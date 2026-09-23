@@ -1,5 +1,6 @@
 # ── Secrets & Config ─────────────────────────────────────────────────────────
 .env
+/.local/
 .env.local
 .env.*.local
 .env.backup

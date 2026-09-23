@@ -22,9 +22,9 @@ Build/source and APK integrity can be recorded using:
 
 ```sh
 git rev-parse HEAD
-sha256sum rooiam-android/app/build/outputs/apk/debug/app-debug.apk
-"$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs rooiam-android/app/build/outputs/apk/debug/app-debug.apk
-"$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions rooiam-android/app/build/outputs/apk/debug/app-debug.apk
+sha256sum rooiam-examples/example-5-android-reference-app/build/outputs/apk/debug/RooiamAndroidReferenceApp-debug.apk
+"$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs rooiam-examples/example-5-android-reference-app/build/outputs/apk/debug/RooiamAndroidReferenceApp-debug.apk
+"$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions rooiam-examples/example-5-android-reference-app/build/outputs/apk/debug/RooiamAndroidReferenceApp-debug.apk
 ```
 
 Do not reuse a previous APK hash after rebuilding. Do not include account cookies, private signing keys or phone enrollment secrets in a report.

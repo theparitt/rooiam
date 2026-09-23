@@ -23,7 +23,7 @@ Build order remains:
 1. `rooiam-server`
 2. web/downstream demo surface
 3. fake phone tester
-4. `rooiam-android`
+4. `rooiam-examples/example-5-android-reference-app`
 5. `rooiam-ios`
 
 ## Current Implementation Snapshot
@@ -601,7 +601,7 @@ browser_start -> phone_preview -> phone_sign -> phone_approve -> browser_complet
 v0.2   OpenAPI / SDK / self-host polish
 v0.3   trusted device + server device-login foundation
 v0.4   hosted widget / downstream QR login
-v0.5   rooiam-android MVP
+v0.5   Android reference app MVP
 v0.6   device management + audit/risk hardening
 v0.7   push approval
 v0.8   rooiam-ios

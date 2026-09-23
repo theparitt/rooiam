@@ -282,7 +282,7 @@ Once the spec is complete and the TS SDKs are proven:
       endpoints beyond integrations)
 - [ ] Generate server SDKs for the languages `rooiam-examples` use
       (`openapi-generator`)
-- [ ] Mobile auth client (OIDC + PKCE + device-code) that `rooiam-android`
+- [ ] Mobile auth client (OIDC + PKCE + device-code) that `rooiam-examples/example-5-android-reference-app`
       consumes — feeds the API-login + device-login roadmap items
       ([40_device_login_plan.md](./40_device_login_plan.md),
       [release_roadmap.md](./release_roadmap.md))

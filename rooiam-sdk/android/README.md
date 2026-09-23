@@ -1,22 +1,22 @@
 # Rooiam Android SDK (preview)
 
-Android library for device-login v1. The sibling `:app` is the reference consumer, not the SDK. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.3`. This package has **not** been published to Maven Central.
+Standalone Android library for device-login v1. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.3`. This package has **not** been published to Maven Central.
 
 ## Add to an application
 
-Inside this Gradle build:
+The reference app includes this directory as its `:sdk` project and uses:
 
 ```groovy
 dependencies { implementation project(':sdk') }
 ```
 
-For another Android project, generate the Maven repository (AAR, sources, POM and transitive dependency metadata):
+For another Android project, generate the Maven repository (AAR, sources, POM and transitive dependency metadata) from `rooiam-sdk/android`:
 
 ```sh
-./gradlew :sdk:publishReleasePublicationToLocalPreviewRepository
+./gradlew publishReleasePublicationToLocalPreviewRepository
 ```
 
-Add the generated `rooiam-android/sdk/build/repository` directory to that project's `dependencyResolutionManagement.repositories` using `maven { url = uri('/absolute/path/to/repository') }`, alongside `google()` and `mavenCentral()`. Then use:
+Add the generated `rooiam-sdk/android/build/repository` directory to that project's `dependencyResolutionManagement.repositories` using `maven { url = uri('/absolute/path/to/repository') }`, alongside `google()` and `mavenCentral()`. Then use:
 
 ```groovy
 dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.3' }
@@ -64,8 +64,7 @@ Rooiam owns API/protocol correctness, origin/account binding, key handling and s
 ## Validation
 
 ```sh
-./gradlew :sdk:assembleRelease :sdk:testDebugUnitTest :sdk:lintDebug \
-  :sdk:assembleDebugAndroidTest :app:assembleDebug :app:lintDebug
+./gradlew assembleRelease testDebugUnitTest lintDebug assembleDebugAndroidTest
 ```
 
-JVM tests cover origin/QR/email-link validation and HTTP redirect/credential isolation, status handling and no retry. `:sdk:connectedDebugAndroidTest` tests Keystore persistence/signing/tamper detection in the SDK test application's sandbox. It clears that test vault; use a dedicated test device. Building the test APK does not execute it. The alpha.3 assisted Redmi Note 9 regression passed camera scan, approval and downstream application session using the existing alpha.2 enrollment; see the [evidence snapshot](../../docs/internal/45_v0.2_current_status_2026-09-23.md). Lifecycle recovery, independent integration and vendor verification remain separate gates.
+Run these commands from this SDK directory. JVM tests cover origin/QR/email-link validation and HTTP redirect/credential isolation, status handling and no retry. `connectedDebugAndroidTest` tests Keystore persistence/signing/tamper detection in the SDK test application's sandbox. It clears that test vault; use a dedicated test device. Building the test APK does not execute it. The alpha.3 assisted Redmi Note 9 regression passed camera scan, approval and downstream application session using the existing alpha.2 enrollment; see the [evidence snapshot](../../docs/internal/45_v0.2_current_status_2026-09-23.md). Lifecycle recovery, independent integration and vendor verification remain separate gates.

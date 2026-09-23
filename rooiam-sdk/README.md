@@ -4,6 +4,11 @@ RooIAM SDK is the integration surface for downstream applications that want to u
 
 This repo currently contains:
 
+- [android](./android)
+  - standalone Android device-login SDK (alpha.3 preview)
+  - protocol, protected credentials, enrollment and signed approval
+  - consumed by [example-5-android-reference-app](../rooiam-examples/example-5-android-reference-app)
+
 - [packages/js-browser](./packages/js-browser)
   - browser-side SDK
   - public login flows

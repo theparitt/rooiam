@@ -16,6 +16,10 @@ Structure:
 - `example-4-reference-app`
   - complete OIDC relying party with backend-owned callback, PKCE and application session
   - target local port: `5194`
+- [`example-5-android-reference-app`](./example-5-android-reference-app)
+  - Android consumer of [`rooiam-sdk/android`](../rooiam-sdk/android)
+  - phone enrollment, camera scanning and explicit approve/deny UI
+  - open this directory in Android Studio; no separate web port
 
 Recommended doctrine:
 

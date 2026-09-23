@@ -157,7 +157,7 @@ rooiam-sdk/
     python/         rooiam-sdk              (PyPI)   — server-side    (later)
     go/             .../rooiam-go                    — server-side    (later)
     rust/           rooiam-sdk              (crates) — server-side    (later)
-    kotlin/         (auth client for rooiam-android) — native         (later)
+    kotlin/         (auth client for the Android reference app) — native         (later)
     swift/          (auth client for rooiam-ios)     — native         (later)
   spec/
     openapi.yaml    — the API contract (added when generation starts; see below)
@@ -235,7 +235,7 @@ every language SDK is generated/derived from that spec.
 
 ## Android / device-login tie-in
 
-`rooiam-android` is just another consumer of the same login contract:
+`rooiam-examples/example-5-android-reference-app` is just another consumer of the same login contract:
 - It uses the **OIDC + PKCE (+ device-code grant)** login path — the same one
   `sdk-server` formalizes — to sign in.
 - Once signed in, it acts as the **trusted authenticator** for device login

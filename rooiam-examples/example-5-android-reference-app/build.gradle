@@ -1,4 +1,7 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application' version '8.3.2'
+    id 'com.android.library' version '8.3.2' apply false
+}
 android {
     namespace 'com.rooiam.mobile'
     compileSdk 34

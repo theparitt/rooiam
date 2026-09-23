@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# SQLx hashes migration bytes; every checkout must compile the same LF files.
+rooiam-server/migrations/*.sql text eol=lf
+**/gradlew text eol=lf

@@ -40,6 +40,6 @@ public final class Integration {
     }
 }
 JAVA
-"$repo_root/rooiam-android/gradlew" -p "$consumer_dir" \
-    -PsdkRepository="$repo_root/rooiam-android/sdk/build/repository" assembleDebug
+"$repo_root/rooiam-sdk/android/gradlew" -p "$consumer_dir" \
+    -PsdkRepository="$repo_root/rooiam-sdk/android/build/repository" assembleDebug
 printf '%s\n' 'PASS: separate Android application assembled using published SDK and transitive dependencies.'
