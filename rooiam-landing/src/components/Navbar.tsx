@@ -45,6 +45,10 @@ export default function Navbar()
                     <a href="#features" className="font-bold text-gray-700" onClick={() => setOpen(false)}>Features</a>
                     <a href="#how-it-works" className="font-bold text-gray-700" onClick={() => setOpen(false)}>Self-Host Guide</a>
                     <a href={DOCS_HOME_URL} className="font-bold text-gray-700" onClick={() => setOpen(false)}>Docs</a>
+                    <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
+                        className="flex items-center gap-1.5 font-bold text-gray-700" onClick={() => setOpen(false)}>
+                        <Github className="w-4 h-4" /> GitHub
+                    </a>
                     <a href={DOCS_GETTING_STARTED_URL} className="text-center py-3 rounded-2xl font-black text-sm shadow-md"
                         style={{ background: 'linear-gradient(135deg, #FFB5C8, #D5B7FF)', color: '#5a2d3f' }}>
                         Get Started →
