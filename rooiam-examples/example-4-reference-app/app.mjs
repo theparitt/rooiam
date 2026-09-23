@@ -53,11 +53,6 @@ export function createReferenceApp(rawConfig, hooks = {}) {
   const callbackUri = `${config.appBaseUrl}/callback`
   const endSessionUrl = new URL(`${config.apiBase}/oidc/end-session`)
   if (!['http:', 'https:'].includes(endSessionUrl.protocol) || endSessionUrl.username || endSessionUrl.password) throw new Error('ROOIAM_API_BASE must use HTTP(S) without credentials.')
-  const hostedLogin = config.hostedLoginOrigin ? new URL('/', config.hostedLoginOrigin) : null
-  if (hostedLogin) {
-    hostedLogin.searchParams.set('workspace_id', config.workspaceId)
-    hostedLogin.searchParams.set('client_id', config.clientId)
-  }
   const app = express()
   const pending = hooks.pending || new Map()
   const sessions = hooks.sessions || new Map()
@@ -105,8 +100,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     const verifier = random(48)
     pending.set(transactionId, { state: random(), verifier, challenge: sha256(verifier), authorizationStarted: false, expiresAt: now() + TX_TTL_MS })
     res.setHeader('Set-Cookie', cookie(TX_COOKIE, transactionId, { secure: config.secureCookie, maxAge: TX_TTL_MS / 1000, path: '/callback' }))
-    const phoneLink = hostedLogin ? `<div class="phone-option"><span class="eyebrow">YOUR PHONE, YOUR APPROVAL</span><p>Scan a QR code and approve the sign-in on your enrolled phone.</p><a class="button" href="${escapeHtml(hostedLogin.toString())}">Sign in with your phone</a></div><div class="divider"><span>or choose another method</span></div>` : ''
-    const body = `<span class="eyebrow">WELCOME BACK</span><h1>Sign in</h1><p class="intro">Choose how you'd like to continue to your app.</p>${phoneLink}<iframe referrerpolicy="origin" id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><p class="existing-session">Already signed in?<br><a href="/callback">Continue with your Rooiam session</a></p><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
+    const body = `<span class="eyebrow">WELCOME BACK</span><h1>Sign in</h1><p class="intro">Choose how you'd like to continue to your app.</p><iframe referrerpolicy="origin" id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><p class="existing-session">Already signed in?<br><a href="/callback">Continue with your Rooiam session</a></p><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
     res.type('html').send(page('Sign in', body))
   })
 

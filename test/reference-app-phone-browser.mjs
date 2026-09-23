@@ -30,15 +30,18 @@ async function api(path, body, cookie, method = body ? 'POST' : 'GET') {
   assert.equal(r.status, 200, `API ${path}: ${r.status}`)
   return { response: r, data: await r.json() }
 }
-let server, browser, clientUuid, deviceId, phoneCookie
+let server, browser, clientUuid, deviceId, phoneCookie, workspace, savedOrder
 try {
   const login = await api('/test/login', { email: 'owner@rooiam.test' })
   phoneCookie = login.response.headers.get('set-cookie').split(';')[0]
   const { data: owner } = await api('/identity/me', null, phoneCookie)
   const org = sql("SELECT id FROM organizations WHERE name='Rooiam Test' AND status='active'")
+  workspace = org
+  savedOrder = sql("SELECT login_method_order::text FROM organizations WHERE id=:'org'", { org })
   assert.match(org, /^[0-9a-f-]{36}$/)
   assert.equal(sql("SELECT allow_device_login FROM organizations WHERE id=:'org'", { org }), 't', 'Enable device login in the disposable workspace first')
   assert.equal(sql("SELECT value FROM system_settings WHERE key='device_attestation_required_for_qr_login'"), 'false', 'Requires the disposable unattested-device policy')
+  await api('/orgs/switch', { organization_id: org }, phoneCookie)
   const generated = spawnSync('cargo', ['run', '--quiet', '--example', 'generate_client_secret'], {
     cwd: new URL('../rooiam-server', import.meta.url), encoding: 'utf8', env: { ...process.env, SQLX_OFFLINE: 'true' },
   })
@@ -60,14 +63,13 @@ try {
   const widgetResponse = await widget
   assert.equal(widgetResponse.status(), 200)
   assert.equal(await widgetResponse.request().headerValue('referer'), `${appOrigin}/`)
-  // A malicious URL destination must not override the server's registered callback.
-  const phoneLink = await page.getByRole('link', { name: 'Sign in with your phone', exact: true }).getAttribute('href')
-  const destination = new URL(phoneLink); destination.searchParams.set('redirect_uri', 'https://attacker.invalid/callback')
-  await page.goto(destination.toString())
+  const frame = page.frameLocator('iframe')
   const started = page.waitForResponse(r => r.url().endsWith('/auth/device-login/start'))
-  await page.getByRole('button', { name: 'Show QR code', exact: true }).click()
+  await frame.getByRole('button', { name: 'Sign in with your phone', exact: true }).click()
   const startResponse = await started; assert.equal(startResponse.status(), 200)
-  assert.equal(startResponse.request().postDataJSON().redirect_uri, `${appOrigin}/callback`)
+  assert.ok(startResponse.request().postDataJSON().widget_login_context)
+  assert.equal(startResponse.request().postDataJSON().widget_embed_origin, appOrigin)
+  assert.equal(startResponse.request().postDataJSON().redirect_uri, undefined)
   const intent = await startResponse.json()
   assert.equal(sql("SELECT oauth_client_id::text || ':' || workspace_id::text FROM device_login_intents WHERE public_id=:'id'", { id: intent.public_id }), `${clientUuid}:${org}`)
   const { data: preview } = await api(`/identity/device-login/intents/${intent.public_id}`, null, phoneCookie)
@@ -79,14 +81,42 @@ try {
   assert.equal(reference.stores.sessions.size, 1)
   // Existing IAM session must also hand back to the app rather than portal home.
   await page.goto(`${appOrigin}/login`)
-  await page.getByRole('link', { name: 'Sign in with your phone', exact: true }).click()
+  // A malicious URL destination must not override the registered callback.
+  await page.goto(`${hosted}/?workspace_id=${org}&client_id=${clientId}&redirect_uri=https://attacker.invalid/callback`)
   await page.getByRole('heading', { name: 'Application session', exact: true }).waitFor()
   assert.equal(new URL(page.url()).origin, appOrigin)
   // A real form submission must complete cross-origin RP logout under the CSP.
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await page.getByRole('link', { name: 'Sign in with Rooiam', exact: true }).waitFor({ timeout: 15000 })
   await page.getByRole('link', { name: 'Sign in with Rooiam', exact: true }).click()
-  await page.getByRole('link', { name: 'Sign in with your phone', exact: true }).click()
+  await frame.getByRole('button', { name: 'Sign in with your phone', exact: true }).waitFor()
+  const cancelledStart = page.waitForResponse(r => r.url().endsWith('/auth/device-login/start'))
+  await frame.getByRole('button', { name: 'Sign in with your phone', exact: true }).click()
+  const cancelledIntent = await (await cancelledStart).json()
+  await frame.getByRole('button', { name: 'Cancel sign-in', exact: true }).click()
+  await frame.getByText('Sign-in cancelled.', { exact: true }).waitFor()
+  assert.equal(sql("SELECT status FROM device_login_intents WHERE public_id=:'id'", { id: cancelledIntent.public_id }), 'cancelled')
+  await frame.getByRole('button', { name: 'Back to sign-in methods', exact: true }).click()
+  await frame.getByRole('button', { name: 'Sign in with your phone', exact: true }).waitFor()
+  await api('/orgs/current/branding', { login_method_order: ['device', 'device', 'invalid', 'magic_link', 'passkey', 'google', 'microsoft'] }, phoneCookie, 'PATCH')
+  assert.equal(sql("SELECT login_method_order::text FROM organizations WHERE id=:'org'", { org }), '{device,magic_link,passkey,google,microsoft}')
+  await page.reload()
+  const phoneButton = frame.getByRole('button', { name: 'Sign in with your phone', exact: true })
+  await phoneButton.waitFor()
+  const phoneBox = await phoneButton.boundingBox()
+  const magicBox = await frame.getByRole('button', { name: 'Send Magic Link', exact: true }).boundingBox()
+  assert.ok(phoneBox.y < magicBox.y, 'Phone can be ordered above magic link')
+  assert.ok(await phoneButton.evaluate(button => Boolean(button.compareDocumentPosition(document.getElementById('magic-form')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'Keyboard order follows visible method order')
+  await api('/identity/device-login/workspace-policy', { enabled: false }, phoneCookie, 'PUT')
+  await page.reload()
+  await frame.getByRole('button', { name: 'Send Magic Link', exact: true }).waitFor()
+  assert.equal(await phoneButton.count(), 0, 'Disabled method must disappear from widget')
+  await page.goto(`${hosted}/?workspace_id=${org}&client_id=${clientId}`)
+  await page.getByRole('button', { name: 'Send Magic Link', exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Sign in with your phone', exact: true }).count(), 0)
+  await api('/identity/device-login/workspace-policy', { enabled: true }, phoneCookie, 'PUT')
+  await page.goto(`${hosted}/?workspace_id=${org}&client_id=${clientId}`)
+  await page.getByRole('button', { name: 'Sign in with your phone', exact: true }).click()
   await page.getByRole('button', { name: 'Show QR code', exact: true }).waitFor({ timeout: 15000 })
   // Invalid client and unknown workspace fail closed.
   await page.goto(`${hosted}/?workspace_id=${org}&client_id=nonexistent-${randomUUID()}`)
@@ -99,8 +129,9 @@ try {
   await page.getByText(/Could not validate this application|This application has no valid registered callback/, { exact: false }).first().waitFor()
   assert.equal(await page.getByRole('button', { name: 'Show QR code', exact: true }).count(), 0)
   assert.deepEqual(errors, [])
-  console.log('PASS continuous QR -> registered client/workspace -> OIDC callback -> exact application session; existing-session return; logout -> fresh QR; callback tampering, invalid-client and unknown-workspace rejection; iframe origin validation.')
+  console.log('PASS embedded QR -> exact application session; signed client/workspace context; cancel/back; saved method order normalization; workspace disable/enable in widget and hosted page; logout; existing-session return; callback tampering and invalid client/workspace rejection.')
 } finally {
+  if (workspace && savedOrder) sql("UPDATE organizations SET allow_device_login=true, login_method_order=:'ordering'::text[] WHERE id=:'org'", { org: workspace, ordering: savedOrder })
   if (browser) await browser.close()
   if (server) { server.close(); await once(server, 'close') }
   if (deviceId) await api(`/identity/me/devices/${deviceId}`, null, phoneCookie, 'DELETE')

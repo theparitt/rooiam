@@ -405,13 +405,13 @@ impl OrganizationService {
             for item in items {
                 if matches!(
                     item.as_str(),
-                    "magic_link" | "passkey" | "google" | "microsoft"
+                    "magic_link" | "passkey" | "google" | "microsoft" | "device"
                 ) && seen.insert(item.clone())
                 {
                     cleaned.push(item);
                 }
             }
-            for default in ["magic_link", "passkey", "google", "microsoft"] {
+            for default in ["magic_link", "passkey", "google", "microsoft", "device"] {
                 if seen.insert(default.to_string()) {
                     cleaned.push(default.to_string());
                 }

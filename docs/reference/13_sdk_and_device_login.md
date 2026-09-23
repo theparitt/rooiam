@@ -34,6 +34,10 @@ Read the [callback flow](./11_downstream_hosted_widget_callback_flow.md) for app
 
 ## Trusted-device login
 
+**Phone sign-in** is a normal login method in the hosted page and embedded widget. Workspace administrators enable or disable it in **Access → Login Methods**; **Login Widget → Sign-In Method Order** also exposes its toggle and move-up/move-down controls. Its method key is `device`. Existing stored orders keep their previous positions, with phone appended until reordered. The platform phone policy remains an upper limit, and existing attestation and MFA requirements still apply.
+
+The reference app uses the widget's QR screen; it no longer needs a separate phone-login link. Embedded requests use the server-issued widget context and validated embedding origin, preserving the registered app callback.
+
 The server has a trusted-device login protocol separate from WebAuthn. The mobile side registers a device token and Ed25519 public key; login approval uses the device credential and signed approval data, subject to attestation policy.
 
 | Surface | Routes |

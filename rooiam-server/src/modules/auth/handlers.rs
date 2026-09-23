@@ -1356,7 +1356,14 @@ const HOSTED_LOGIN_CSS: &str = r#"
   .secondary { margin-top:0; background:white; border:1px solid var(--border); color:#334155; box-shadow:0 2px 10px rgba(15,23,42,.04); }
   .filled-buttons .secondary { background:#fff4fa; border:0; color:#5a2d3f; box-shadow:0 4px 14px -2px rgba(255,181,200,0.18); }
   .outline-buttons .secondary { background:white; border:1.5px solid var(--border); color:#334155; box-shadow:0 2px 10px rgba(15,23,42,.04); }
-  .stack { margin-top:14px; display:grid; gap:14px; }
+  #login-view { display:flex; flex-direction:column; gap:14px; margin-top:16px; }
+  #login-view.hidden { display:none; }
+  #magic-form { margin:0; }
+  .stack { display:contents; }
+  #device-view { text-align:center; padding-top:16px; }
+  #device-view img { max-width:100%; height:auto; }
+  #device-view p { font-size:14px; }
+  #device-view .device-code { font-size:28px; font-weight:900; letter-spacing:.15em; }
   .sent-view { margin-top:8px; display:grid; gap:12px; justify-items:center; text-align:center; padding:8px 0 4px; }
   .sent-icon-shell { display:grid; place-items:center; }
   .sent-icon-shell span { font-size:44px; line-height:1; }
@@ -1430,6 +1437,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       </form>
       <div id="oauth-buttons" class="stack"></div>
     </section>
+    <section id="device-view" class="hidden" aria-label="Phone sign-in"></section>
     <section id="sent-view" class="sent-view hidden">
       <div class="sent-icon-shell" aria-hidden="true"><span>💌</span></div>
       <h2 class="sent-title">Magic link sent!</h2>
@@ -1445,6 +1453,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     <div id="notice" class="notice"></div>
     <div id="footer" class="footer"><img src="/assets/rooiam-powered-by.svg" alt="Powered by Rooiam"></div>
   </main>
+  <script src="/assets/device-login.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     const apiBase = `${window.location.origin}/v1`;
@@ -1577,6 +1586,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       if (provider === 'google') return 'Continue with Google';
       if (provider === 'microsoft') return 'Continue with Microsoft';
       if (provider === 'passkey') return 'Continue with Passkey';
+      if (provider === 'device') return 'Sign in with your phone';
       return 'Send Magic Link';
     }
     function setWidgetBusy(nextBusy, busyProvider='') {
@@ -1608,7 +1618,32 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     function resetWidgetBusyState() {
       setWidgetBusy(false);
     }
+    async function startPhoneLogin() {
+      if (widgetBusy) return;
+      if (previewMode) { setNotice('Phone sign-in preview. Open the live widget to scan a QR code.'); return; }
+      setWidgetBusy(true, 'device');
+      try {
+        await loadBootstrap();
+        if (!authState.device_login_enabled || !widgetLoginContext) throw new Error('Phone sign-in is unavailable for this workspace.');
+        if (!window.RooiamDeviceLogin) throw new Error('Phone sign-in could not load. Refresh and try again.');
+        const view = document.getElementById('device-view');
+        loginViewEl.classList.add('hidden'); view.classList.remove('hidden'); setNotice('');
+        await window.RooiamDeviceLogin({ element: view, apiBase,
+          input: { widget_login_context: widgetLoginContext, widget_embed_origin: widgetEmbedOrigin, surface },
+          onResize: reportSize,
+          onBack: () => { view.classList.add('hidden'); loginViewEl.classList.remove('hidden'); reportSize(); },
+          onComplete: result => {
+            if (result.mfa_enrollment_required && result.challenge_id) openVerify({ mfa_enrollment_challenge: result.challenge_id, redirect_uri: result.redirect_uri || redirectUri });
+            else if (result.mfa_required && result.challenge_id) openVerify({ mfa_challenge: result.challenge_id, redirect_uri: result.redirect_uri || redirectUri });
+            else if (result.ok && result.user_id) redirectTop(result.redirect_uri || redirectUri || '/');
+            else { setNotice('Phone approval did not complete sign-in. Start again.', 'error'); reportSize(); }
+          }
+        });
+      } catch (error) { setNotice(error.message || 'Could not start phone sign-in.', 'error'); reportSize(); }
+      finally { setWidgetBusy(false); }
+    }
     function iconForProvider(provider) {
+      if (provider === 'device') return '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>';
       if (provider === 'google') {
         return `
           <svg class='btn-icon' viewBox='0 0 24 24' aria-hidden='true'>
@@ -1878,6 +1913,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       const branding = data.workspace || null;
       const auth = data.auth || {};
       const appConfig = data.app || null;
+      redirectUri = appConfig?.redirect_uri || '';
       if (appConfig && appConfig.widget_login_context) {
         widgetLoginContext = appConfig.widget_login_context;
       }
@@ -1908,6 +1944,7 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         passkey: Boolean(auth.passkey_enabled),
         google: Boolean(auth.google_enabled),
         microsoft: Boolean(auth.microsoft_enabled),
+        device: Boolean(auth.device_login_enabled) && (previewMode || Boolean(widgetLoginContext)),
       };
       if (formEl) {
         formEl.classList.toggle('hidden', !allowedProviders.magic_link);
@@ -1915,21 +1952,19 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       if (!allowedProviders.magic_link && magicView === 'sent') {
         setMagicView('login');
       }
-      const orderedMethods = Array.isArray(branding?.login_method_order) && branding.login_method_order.length > 0
-        ? branding.login_method_order
-        : ['magic_link', 'passkey', 'google', 'microsoft'];
-      const providers = orderedMethods
-        .filter(method => method !== 'magic_link' && allowedProviders[method])
-        .map(method => [method, method === 'passkey'
-          ? 'Continue with Passkey'
-          : method === 'google'
-            ? 'Continue with Google'
-            : 'Continue with Microsoft']);
-      oauthButtons.innerHTML = providers.map(([provider,label]) => `<button ${provider === 'passkey' ? 'id="passkey-submit"' : ''} class="secondary" type="button" data-provider="${provider}"><span class="btn-inner">${iconForProvider(provider)}<span>${label}</span></span></button>`).join('');
+      const defaults = ['magic_link', 'passkey', 'google', 'microsoft', 'device'];
+      const orderedMethods = [...new Set([...(Array.isArray(branding?.login_method_order) ? branding.login_method_order : []), ...defaults])].filter(method => defaults.includes(method));
+      formEl.style.order = String(orderedMethods.indexOf('magic_link'));
+      const providers = orderedMethods.filter(method => method !== 'magic_link' && allowedProviders[method]);
+      oauthButtons.innerHTML = providers.map(provider => `<button ${provider === 'passkey' ? 'id="passkey-submit"' : ''} class="secondary" type="button" data-provider="${provider}" style="order:${orderedMethods.indexOf(provider)}"><span class="btn-inner">${iconForProvider(provider)}<span>${buttonLabel(provider)}</span></span></button>`).join('');
+      // Keep keyboard navigation in the same order as the visible methods.
+      const afterMagic = [...oauthButtons.children].find(button => Number(button.style.order) > orderedMethods.indexOf('magic_link'));
+      oauthButtons.insertBefore(formEl, afterMagic || null);
       oauthButtons.querySelectorAll('button[data-provider]').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (widgetBusy) return;
           const provider = btn.getAttribute('data-provider');
+          if (provider === 'device') { startPhoneLogin(); return; }
           if (provider === 'passkey') {
             handlePasskey();
             return;

@@ -58,11 +58,11 @@ async function begin(base) {
   assert.equal(html.includes('server-only-secret'), false)
   // The widget server validates the embedding origin; no-referrer would reject the iframe.
   assert.match(html, /<iframe referrerpolicy="origin" /)
-  const phoneUrl = new URL(/href="([^"]+)">Sign in with your phone/.exec(html)[1].replaceAll('&amp;', '&'))
-  assert.equal(phoneUrl.origin, 'http://hosted.test')
-  assert.equal(phoneUrl.searchParams.get('workspace_id'), 'workspace-1')
-  assert.equal(phoneUrl.searchParams.get('client_id'), 'reference-web')
-  assert.equal(phoneUrl.searchParams.has('redirect_uri'), false)
+  assert.equal(html.includes('>Sign in with your phone</a>'), false)
+  const widgetUrl = new URL(/<iframe[^>]+src="([^"]+)"/.exec(html)[1].replaceAll('&amp;', '&'))
+  assert.equal(widgetUrl.searchParams.get('workspace_id'), 'workspace-1')
+  assert.equal(widgetUrl.searchParams.get('client_id'), 'reference-web')
+  assert.equal(widgetUrl.searchParams.has('redirect_uri'), false)
   assert.match(html, /href="\/callback">Continue with your Rooiam session/)
   const nonce = /<script nonce="([^"]+)">/.exec(html)?.[1]
   assert.ok(nonce)

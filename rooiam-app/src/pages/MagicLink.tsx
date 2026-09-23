@@ -86,6 +86,7 @@ export default function MagicLinkPage()
     const [passkeyLoading, setPasskeyLoading] = useState(false)
     const [mfaLoading, setMfaLoading] = useState(false)
     const [mfaCode, setMfaCode] = useState('')
+    const [phoneSelected, setPhoneSelected] = useState(false)
     const [mfaChallengeId, setMfaChallengeId] = useState(params.get('mfa_challenge') || '')
     const [mfaRedirectUri, setMfaRedirectUri] = useState('')
     const [error, setError] = useState(() => params.get('error') || '')
@@ -635,11 +636,13 @@ export default function MagicLinkPage()
         if (method === 'passkey') return authMethods.passkey_enabled
         if (method === 'google') return authMethods.google_enabled
         if (method === 'microsoft') return authMethods.microsoft_enabled
+        if (method === 'device') return Boolean(authMethods.device_login_enabled && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext))
         return false
     })
 
     const renderMethodButtons = (tone: 'root' | 'workspace') =>
         rootLoginMethods.map(method => {
+            if (method === 'device') return <button key={method} type="button" onClick={() => setPhoneSelected(true)} className="flex w-full items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-gray-700">Sign in with your phone</button>
             if (method === 'magic_link') {
                 return (
                     <form key={method} onSubmit={handleSend}>
@@ -831,80 +834,19 @@ export default function MagicLinkPage()
                                     </p>
                                 </div>
                                 <h2 className="text-xl font-bold text-center mb-6">
-                                    Sign in with ✨ Magic Link
+                                    Choose how to sign in
                                 </h2>
-                                <form onSubmit={handleSend} className="space-y-4">
-                                    <div className="relative">
-                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'hsl(var(--muted-foreground))' }} />
-                                        <input
-                                            type="email"
-                                            placeholder="your@email.com"
-                                            value={email}
-                                            onChange={e => setEmail(e.target.value)}
-                                            className="w-full pl-11 pr-4 py-3 rounded-2xl text-sm font-medium outline-none transition-all"
-                                            style={{
-                                                background: 'hsl(var(--muted))',
-                                                border: '1.5px solid hsl(var(--border))',
-                                            }}
-                                            required
-                                            autoFocus
-                                        />
-                                    </div>
-                                    {error && (
-                                        <p className="text-xs font-semibold px-4 py-2 rounded-2xl" style={{ color: '#ef4444', background: '#fef2f2' }}>
-                                            {error}
-                                        </p>
-                                    )}
-                                    <button
-                                        type="submit"
-                                        disabled={loading || !email}
-                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm transition-all hover:scale-[1.02] disabled:opacity-50 shadow-md"
-                                        style={{ background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}
-                                    >
-                                        {loading ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <>Send Magic Link <ArrowRight className="w-4 h-4" /></>
-                                        )}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handlePasskey}
-                                        disabled={passkeyLoading || !email.trim()}
-                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm border-2 border-gray-100 hover:bg-gray-50 transition-all disabled:opacity-50"
-                                    >
-                                        {passkeyLoading ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <>
-                                                <KeyRound className="w-4 h-4" />
-                                                Continue with Passkey
-                                            </>
-                                        )}
-                                    </button>
-                                </form>
-                                {(authMethods.google_enabled || authMethods.microsoft_enabled) && (
-                                    <div className="pt-3 space-y-3">
-                                            {authMethods.google_enabled && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOAuth('google')}
-                                                    className="w-full py-3 rounded-2xl font-bold text-sm border-2 border-gray-100 hover:bg-gray-50 transition-all"
-                                                >
-                                                    Continue with Google
-                                                </button>
-                                            )}
-                                            {authMethods.microsoft_enabled && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOAuth('microsoft')}
-                                                    className="w-full py-3 rounded-2xl font-bold text-sm border-2 border-gray-100 hover:bg-gray-50 transition-all"
-                                                >
-                                                    Continue with Microsoft
-                                                </button>
-                                            )}
-                                        </div>
-                                )}
+                                <div className="space-y-4">
+                                    {(authMethods.magic_link_enabled || authMethods.passkey_enabled) && <input
+                                        type="email" placeholder="your@email.com" value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        aria-label="Email"
+                                        className="w-full px-4 py-3 rounded-2xl border border-gray-200 text-sm"
+                                        autoFocus
+                                    />}
+                                    {renderMethodButtons('root')}
+                                    {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
+                                </div>
                                 {authMethodsError && (
                                     <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-bold text-amber-700">{authMethodsError}</p>
                                 )}
@@ -990,6 +932,7 @@ export default function MagicLinkPage()
                                         passkey: authMethods.passkey_enabled,
                                         google: authMethods.google_enabled,
                                         microsoft: authMethods.microsoft_enabled,
+                                        device: Boolean(authMethods.device_login_enabled && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext)),
                                     }}
                                     methodOrder={methodOrder}
                                     interactive={true}
@@ -1002,6 +945,7 @@ export default function MagicLinkPage()
                                         onPasskey: handlePasskey,
                                         onGoogle: () => handleOAuth('google'),
                                         onMicrosoft: () => handleOAuth('microsoft'),
+                                        onDevice: () => setPhoneSelected(true),
                                     }}
                                     error={error}
                                     showMagicLinkUnavailable={!authMethods.magic_link_enabled}
@@ -1014,7 +958,7 @@ export default function MagicLinkPage()
                             </>
                         )}
                     </div>
-                    {authMethods.device_login_enabled && !mfaChallengeId && !sent && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext) && (
+                    {phoneSelected && authMethods.device_login_enabled && !mfaChallengeId && !sent && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext) && (
                         <DeviceLogin input={{
                             redirect_uri: isEmbedded ? undefined : redirectUri || undefined,
                             widget_login_context: widgetLoginContext || undefined,

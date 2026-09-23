@@ -25,6 +25,7 @@ try {
   page.on('pageerror', e => errors.push(e.message))
   const start = async () => {
     await page.goto('http://127.0.0.1:15472/')
+    await page.getByRole('button', { name: 'Sign in with your phone', exact: true }).click()
     const response = page.waitForResponse(r => r.url().endsWith('/auth/device-login/start'))
     await page.getByRole('button', { name: 'Show QR code' }).click()
     const r = await response; assert.equal(r.status(), 200)

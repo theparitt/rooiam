@@ -1,5 +1,5 @@
 export const DEFAULT_BRAND = '#c96b8a'
-export const DEFAULT_LOGIN_METHOD_ORDER = ['magic_link', 'passkey', 'google', 'microsoft'] as const
+export const DEFAULT_LOGIN_METHOD_ORDER = ['magic_link', 'passkey', 'google', 'microsoft', 'device'] as const
 export type LoginMethodKey = (typeof DEFAULT_LOGIN_METHOD_ORDER)[number]
 export type WidgetRadius = 'sharp' | 'compact' | 'rounded' | 'pill'
 export type CardRadius = 'sharp' | 'compact' | 'rounded'

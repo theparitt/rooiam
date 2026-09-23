@@ -22,7 +22,7 @@ const nextRelease: Item[] = [
     { text: 'Freeze and verify the existing device-login contract' },
     { text: 'Prove device trust and one-time browser completion', note: 'replay, revocation, tenant isolation' },
     { text: 'Android enrollment, QR scan and number-match approval' },
-    { text: 'Hosted-login QR flow with workspace policy and MFA' },
+    { text: 'Phone sign-in in hosted and embedded widgets, with workspace enable/disable and ordering' },
     { text: 'TypeScript SDK helpers and a fresh-clone reference demo' },
     { text: 'Security release checks and self-host guidance' },
 ]

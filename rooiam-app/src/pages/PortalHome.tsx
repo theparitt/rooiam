@@ -1670,6 +1670,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         setBrandingForm={setBrandingForm}
                         authPolicyForm={authPolicyForm}
                         canManageBranding={canManageBranding}
+                        canManageAuthPolicy={canManageAuthPolicy}
                         savingBranding={savingBranding}
                         saveMessage={saveMessage}
                         onSaveBranding={saveBranding}

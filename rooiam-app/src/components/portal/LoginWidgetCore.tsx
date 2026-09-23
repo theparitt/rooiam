@@ -8,7 +8,7 @@
  *   - interactive=true  → live, handlers wired up (real login)
  */
 import React from 'react'
-import { Mail, ArrowRight, Loader2, KeyRound } from 'lucide-react'
+import { Mail, ArrowRight, Loader2, KeyRound, Smartphone } from 'lucide-react'
 import { DEFAULT_BRAND, LoginMethodKey, LogoContainer, WidgetRadius } from '../../lib/portal-types'
 import { radiusClass, cardRadiusClass, shadowClass, cardBgCss } from '../../lib/login-style'
 import DemoBadge from '../DemoBadge'
@@ -44,6 +44,7 @@ export type LoginWidgetMethods = {
     passkey: boolean
     google: boolean
     microsoft: boolean
+    device?: boolean
 }
 
 export type LoginWidgetHandlers = {
@@ -55,6 +56,7 @@ export type LoginWidgetHandlers = {
     onPasskey: () => void
     onGoogle: () => void
     onMicrosoft: () => void
+    onDevice?: () => void
 }
 
 type Props = {
@@ -170,6 +172,9 @@ export default function LoginWidgetCore({
                     ) : null}
 
                     {methodOrder.map(method => {
+                        if (method === 'device') {
+                            return methods.device ? <button key={method} type="button" className={secondaryBtnClass} onClick={interactive ? handlers?.onDevice : undefined}><Smartphone className="w-4 h-4" />Sign in with your phone</button> : null
+                        }
                         if (method === 'magic_link') {
                             if (!methods.magic_link) return null
                             const btn = (

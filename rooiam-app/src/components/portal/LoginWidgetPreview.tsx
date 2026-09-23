@@ -87,6 +87,7 @@ export default function LoginWidgetPreview({
                     passkey: Boolean(enabledMethods.passkey),
                     google: Boolean(enabledMethods.google),
                     microsoft: Boolean(enabledMethods.microsoft),
+                    device: Boolean(enabledMethods.device),
                 }}
                 methodOrder={orderedMethods}
                 interactive={false}

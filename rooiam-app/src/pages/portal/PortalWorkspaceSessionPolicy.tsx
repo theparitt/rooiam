@@ -5,7 +5,6 @@ import PortalConfigChangeNote from '../../components/portal/PortalConfigChangeNo
 import PortalContentCard from '../../components/portal/PortalContentCard'
 import PortalSettingRow from '../../components/portal/PortalSettingRow'
 import PortalSaveActionFooter from '../../components/portal/PortalSaveActionFooter'
-import DeviceLoginPolicy from '../../components/portal/DeviceLoginPolicy'
 import type { AuthPolicyForm, Organization, OrganizationActivityItem } from '../../lib/portal-types'
 
 type Props = {
@@ -36,7 +35,6 @@ export default function PortalWorkspaceSessionPolicy({
 }: Props) {
     return (
         <div className="space-y-5 sm:space-y-6 animate-slide-up">
-            {currentOrg && canManageAuthPolicy && <DeviceLoginPolicy key={currentOrg.id} workspaceId={currentOrg.id} disabled={demoMode || !canManageAuthPolicy} />}
             <PortalPageHeader
                 eyebrow="Workspace"
                 title="Workspace Session Policy"

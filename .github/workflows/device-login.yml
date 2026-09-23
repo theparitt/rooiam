@@ -28,6 +28,7 @@ jobs:
       - run: node --test rooiam-examples/device-login/fake-phone.test.mjs
       - run: npm ci --prefix rooiam-examples/example-4-reference-app && npm test --prefix rooiam-examples/example-4-reference-app
       - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app
+      - run: node rooiam-server/widget/build.mjs && git diff --exit-code -- rooiam-server/assets/device-login.js
   android:
     runs-on: ubuntu-latest
     steps:

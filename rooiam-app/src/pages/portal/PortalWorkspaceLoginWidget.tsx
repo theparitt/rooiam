@@ -1,3 +1,4 @@
+import DeviceLoginPolicy from '../../components/portal/DeviceLoginPolicy'
 import { buildHostedLoginUrl } from '@rooiam/sdk-browser'
 import React from 'react'
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Code2, Eye, Monitor, Sparkles } from 'lucide-react'
@@ -6,7 +7,7 @@ import PortalSectionCard from '../../components/portal/PortalSectionCard'
 import { getApiOrigin } from '../../lib/api-base'
 import { LOGIN_WIDGET_LABEL } from '../../lib/domain-labels'
 import { BrandingForm, DEFAULT_LOGIN_METHOD_ORDER, OrgClient, Organization } from '../../lib/portal-types'
-import { LOGIN_METHOD_LABELS } from '../../lib/login-style'
+import { LOGIN_METHOD_LABELS, normalizeLoginMethodOrder } from '../../lib/login-style'
 
 type AuthPolicyForm = {
     allow_magic_link: boolean
@@ -28,6 +29,7 @@ type Props = {
     setBrandingForm: React.Dispatch<React.SetStateAction<BrandingForm>>
     authPolicyForm: AuthPolicyForm
     canManageBranding: boolean
+    canManageAuthPolicy: boolean
     savingBranding: boolean
     saveMessage: string
     onSaveBranding: (e: React.FormEvent) => void | Promise<void>
@@ -46,6 +48,7 @@ export default function PortalWorkspaceLoginWidget({
     setBrandingForm,
     authPolicyForm,
     canManageBranding,
+    canManageAuthPolicy,
     savingBranding,
     saveMessage,
     onSaveBranding,
@@ -108,7 +111,7 @@ export default function PortalWorkspaceLoginWidget({
     // edits do not change the iframe URL. The local form state still drives
     // page UI such as labels, ordering controls, and preview-sync state.
     const brandColor = brandingForm.brand_color || currentOrg.brand_color
-    const methodOrder = brandingForm.login_method_order || currentOrg.login_method_order || [...DEFAULT_LOGIN_METHOD_ORDER]
+    const methodOrder = normalizeLoginMethodOrder(brandingForm.login_method_order || currentOrg.login_method_order)
     const effectiveCardBorderColor = brandingForm.card_border_color || brandColor || '#8d72d9'
 
     const apiOrigin = getApiOrigin()
@@ -307,8 +310,8 @@ export default function PortalWorkspaceLoginWidget({
     const moveMethod = (index: number, direction: -1 | 1) => {
         setBrandingForm(current => {
             const nextIndex = index + direction
-            if (nextIndex < 0 || nextIndex >= current.login_method_order.length) return current
-            const order = [...current.login_method_order]
+            if (nextIndex < 0 || nextIndex >= normalizeLoginMethodOrder(current.login_method_order).length) return current
+            const order = normalizeLoginMethodOrder(current.login_method_order)
             const [moved] = order.splice(index, 1)
             order.splice(nextIndex, 0, moved)
             return { ...current, login_method_order: order }
@@ -575,9 +578,10 @@ export default function PortalWorkspaceLoginWidget({
                                             ]
                                             return (
                                                 <div key={method} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-muted/20 px-4 py-3">
-                                                    <div>
+                                                    <div className="flex-1">
+                                                        {method === 'device' ? <DeviceLoginPolicy key={currentOrg.id} workspaceId={currentOrg.id} disabled={demoMode || !canManageAuthPolicy} compact onSaved={() => setPreviewReloadKey(k => k + 1)} /> : <>
                                                         <p className="text-sm font-bold">{LOGIN_METHOD_LABELS[method]}</p>
-                                                        <p className="text-xs font-medium text-muted-foreground">{enabled ? 'Enabled for this workspace' : 'Currently disabled in Login'}</p>
+                                                        <p className="text-xs font-medium text-muted-foreground">{enabled ? 'Enabled for this workspace' : 'Currently disabled in Login'}</p></>}
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <button

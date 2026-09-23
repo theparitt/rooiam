@@ -5,6 +5,7 @@ export const LOGIN_METHOD_LABELS: Record<LoginMethodKey, string> = {
     passkey: 'Passkey',
     google: 'Google',
     microsoft: 'Microsoft',
+    device: 'Phone sign-in',
 }
 
 export function normalizeLoginMethodOrder(order?: string[] | null): LoginMethodKey[] {

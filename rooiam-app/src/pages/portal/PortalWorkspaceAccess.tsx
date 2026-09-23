@@ -1,3 +1,4 @@
+import DeviceLoginPolicy from '../../components/portal/DeviceLoginPolicy'
 import React from 'react'
 import { Network, ShieldCheck } from 'lucide-react'
 import PortalPageHeader from '../../components/portal/PortalPageHeader'
@@ -116,6 +117,7 @@ export default function PortalWorkspaceAccess({
                                         Which methods end-users can use to sign into this workspace.
                                     </p>
                                     <div className="space-y-3">
+                                        <DeviceLoginPolicy workspaceId={currentOrg.id} disabled={demoMode || !canManageAuthPolicy} compact />
                                         <PortalToggleRow
                                             checked={authPolicyForm.allow_magic_link}
                                             onChange={value => setAuthPolicyForm((prev: AuthPolicyForm) => ({ ...prev, allow_magic_link: value }))}
