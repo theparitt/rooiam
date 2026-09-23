@@ -1,6 +1,6 @@
 # Device-login certification runbook
 
-This runbook separates automated local evidence from real-phone/vendor acceptance. Current results are in [the milestone snapshot](../docs/internal/45_v0.2_current_status_2026-09-23.md).
+This runbook separates automated local evidence from real-phone/vendor acceptance. Current results are in [the closeout evidence](../docs/internal/49_v0.2_closeout_evidence_2026-09-23.md); the [earlier snapshot](../docs/internal/45_v0.2_current_status_2026-09-23.md) is historical.
 
 ## Isolated local stack
 
@@ -33,6 +33,10 @@ npm run build --prefix rooiam-app
 ```
 
 The live runner is hard-bound to the above isolated ports/database. It first verifies the test-only login endpoint works, creates disposable identities and explicitly relaxes attestation only there. It resets this Redis instance's `rl:*` counters between scenarios; rate limits remain active within race scenarios. Repository tests separately execute all 50 concurrent database insert attempts without HTTP throttling. Local HTTP success does not establish real vendor attestation or production-mode certification.
+
+For the full 0.2 closeout runner, create a **different, disposable** PostgreSQL 16 container on loopback port **15441** with database `rooiam_test`, and use Redis **15479 DB 4**. Install `psql`, build `rooiam-server/target/debug/rooiam-server`, and copy `test/device-login.env.example` to private `.local/v02-closeout/server.env`. Set `ROOIAM_MODE=test`, `ROOIAM_PORT=15473`, `ROOIAM_DATABASE_URL=postgres://postgres:rooiam-local-test@127.0.0.1:15441/rooiam_test`, `ROOIAM_REDIS_URL=redis://127.0.0.1:15479/4`, and a random `ROOIAM_SETUP_TOKEN`; configure matching local frontend/API URLs from the example. Review every other setting before running. Keep port 15473 free. The runner refuses other database/port settings, but it **reseeds this dedicated database** and deletes its Redis DB 4 rate counters. It never targets the phone walkthrough database on port 15440.
+
+Run `node test/device-login-closeout.mjs --matrix-only` for production routing, rate budgets, malformed requests, binding, MFA, restart and lost-response cases. Run `node test/device-login-closeout.mjs` for the same matrix plus 1,000 sequential isolation flows. The runner first seeds in test mode, then restarts its own server in production mode without restoring or reseeding. It writes private logs under `.local/v02-closeout/`; do not publish these. This is a functional gate with simulated signing devices and relaxed attestation, not a load benchmark or a real Play Integrity verdict.
 
 With the isolated API still running, execute `node test/reference-app-live.mjs`. It generates an Argon2 client secret through the server's own helper, provisions a temporary confidential client in the disposable database, and verifies the real authorize/code/userinfo/application-session flow on port 15474. It removes the temporary client afterward. This test bypasses the interactive hosted-login UI by using test login, so combine it with the Chromium and physical-phone walkthroughs rather than treating it as phone evidence.
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { readFileSync, writeFileSync, openSync, closeSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHmac } from 'node:crypto'
 import { createServer, request as httpRequest } from 'node:http'
 import { generateIdentity, approval } from '../rooiam-examples/device-login/fake-phone.mjs'
 
@@ -12,6 +12,8 @@ const origin = 'http://127.0.0.1:15473'
 const db = 'postgres://postgres:rooiam-local-test@127.0.0.1:15441/rooiam_test'
 const envPath = '.local/v02-closeout/server.env'
 const logPath = '.local/v02-closeout/closeout-server.log'
+assert.ok(process.argv.slice(2).every(arg => arg === '--matrix-only'), 'Only --matrix-only is supported')
+const flowCount = process.argv.includes('--matrix-only') ? 0 : 1000
 const originalEnv = readFileSync(envPath, 'utf8')
 for (const line of ['ROOIAM_MODE=test', 'ROOIAM_PORT=15473', `ROOIAM_DATABASE_URL=${db}`, 'ROOIAM_REDIS_URL=redis://127.0.0.1:15479/4'])
   assert.ok(originalEnv.split(/\r?\n/).includes(line), `Required isolated setting: ${line}`)
@@ -55,6 +57,16 @@ async function req(path, body, cookie, method = body ? 'POST' : 'GET', base = or
 const ok = r => { assert.equal(r.status, 200, JSON.stringify(r.data)); return r }
 const fail = r => { assert.ok(r.status >= 400 && r.status < 500, `Expected rejection, got ${r.status}`); assert.equal(r.cookie, undefined); return r }
 const binding = i => ({ public_id: i.public_id, browser_nonce: i.browser_nonce })
+function totp(secret) {
+  const bits = [...secret.replace(/=+$/, '').toUpperCase()].map(c => {
+    const value = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c); assert.ok(value >= 0)
+    return value.toString(2).padStart(5, '0')
+  }).join('')
+  const key = Buffer.from((bits.match(/.{8}/g) || []).map(b => parseInt(b, 2)))
+  const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)))
+  const mac = createHmac('sha1', key).update(counter).digest()
+  return String((mac.readUInt32BE(mac[19] & 15) & 0x7fffffff) % 1000000).padStart(6, '0')
+}
 const actors = []
 const intents = []
 async function start(actor = actors[0]) {
@@ -104,6 +116,38 @@ try {
   for (let n = 0; n < 121; n++) assert.equal((await req('/auth/device-login/00000000-0000-0000-0000-000000000000/status?browser_nonce=' + 'x'.repeat(43))).status, n < 120 ? 404 : 429)
   console.log('PASS production routes and start/status limits (no resets within each burst)')
 
+  const zero = '00000000-0000-0000-0000-000000000000'
+  for (const [path, method, limit, authenticated] of [
+    ['/auth/device-login/complete', 'POST', 30, false],
+    ['/auth/device-login/cancel', 'POST', 30, false],
+    ['/identity/device-login/approve', 'POST', 30, true],
+    ['/identity/device-login/reject', 'POST', 30, true],
+    [`/identity/device-login/intents/${zero}`, 'GET', 120, true],
+    ['/identity/me/devices', 'GET', 10, true],
+    ['/identity/me/devices', 'POST', 10, true],
+    ['/identity/me/devices/attestation-challenge', 'POST', 10, true],
+    [`/identity/me/devices/${zero}`, 'DELETE', 30, true],
+    [`/identity/me/devices/${zero}/push-token`, 'PUT', 30, true],
+  ]) {
+    resetLimits()
+    for (let n = 0; n <= limit; n++) {
+      const r = await req(path, ['GET', 'DELETE'].includes(method) ? undefined : {}, authenticated ? actors[0].cookie : undefined, method)
+      if (n === limit) assert.equal(r.status, 429, `${method} ${path}`)
+      else assert.ok(r.status < 500 && r.status !== 429, `${method} ${path} limited before attempt ${limit + 1}: ${r.status}`)
+      assert.equal(r.cookie, undefined)
+    }
+  }
+  console.log('PASS endpoint limits for completion, cancellation, preview, approval, denial, device list/enrollment/revocation/push and attestation challenge')
+
+  for (const raw of ['{', 'null', '[]', '{"surface":42}', '{"surface":"tenant","unknown":true}',
+    '{"surface":"tenant","surface":"admin"}', '{"surface":"' + 'x'.repeat(2_100_000) + '"}']) {
+    resetLimits()
+    const response = await fetch(origin + '/v1/auth/device-login/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: raw, signal: AbortSignal.timeout(15000) })
+    assert.ok([400, 413].includes(response.status), `Malformed body returned ${response.status}`)
+    assert.equal(response.headers.get('set-cookie'), null); await response.text()
+  }
+  console.log('PASS malformed, duplicate, unknown, wrong-type and oversized JSON fails without session')
+
   let i = await start(); let p = await preview(i)
   const signed = approval(actors[0].identity, p, p.match_number)
   fail(await req('/identity/device-login/approve', signed, actors[1].cookie))
@@ -127,8 +171,25 @@ try {
   assert.equal(mfa.data.mfa_enrollment_required, true); assert.equal(mfa.cookie, undefined)
   assert.equal(sql(`SELECT status FROM device_login_intents WHERE public_id='${i.public_id}'`), 'consumed')
   fail(await req('/auth/device-login/complete', binding(i)))
+  const enrollment = ok(await req('/mfa/login/enroll/start', { challenge_id: mfa.data.challenge_id })).data
+  secrets.add(enrollment.secret)
+  const finished = ok(await req('/mfa/login/enroll/finish', { challenge_id: mfa.data.challenge_id, code: totp(enrollment.secret) }))
+  assert.equal(finished.data.redirect_uri, actors[0].redirect)
+  assert.equal(ok(await req('/identity/me', undefined, finished.cookie)).data.id, actors[0].user)
+  for (const code of finished.data.recovery_codes) secrets.add(code)
+  fail(await req('/mfa/login/enroll/finish', { challenge_id: mfa.data.challenge_id, code: totp(enrollment.secret) }))
+  i = await start(); await approve(i)
+  const challenge = ok(await req('/auth/device-login/complete', binding(i)))
+  assert.equal(challenge.data.mfa_required, true); assert.equal(challenge.cookie, undefined)
+  fail(await req('/mfa/login/verify', { challenge_id: challenge.data.challenge_id, code: 'invalid' }))
+  const verified = ok(await req('/mfa/login/verify', { challenge_id: challenge.data.challenge_id, code: totp(enrollment.secret) }))
+  assert.equal(verified.data.redirect_uri, actors[0].redirect)
+  assert.equal(ok(await req('/identity/me', undefined, verified.cookie)).data.id, actors[0].user)
+  fail(await req('/mfa/login/verify', { challenge_id: challenge.data.challenge_id, code: totp(enrollment.secret) }))
+  // Remove only this disposable fixture's MFA, without revoking its test session.
+  sql(`DELETE FROM user_mfa_methods WHERE user_id='${actors[0].user}'; DELETE FROM user_mfa_backup_codes WHERE user_id='${actors[0].user}'`)
   sql(`UPDATE organizations SET require_mfa=false WHERE id='${actors[0].org}'`)
-  console.log('PASS two identities/devices; workspace disable/suspend, callback removal, and MFA policy changed after approval')
+  console.log('PASS two identities/devices; workspace disable/suspend, callback removal, MFA enrollment and existing-TOTP completion with callback/replay checks')
 
   const pending = await start(), approved = await start(), denied = await start(), cancelled = await start()
   await approve(approved)
@@ -157,7 +218,7 @@ try {
   fail(await req('/auth/device-login/complete', binding(i)))
   console.log('PASS lost completion response creates one result; replay fails before and after process restart')
 
-  for (let n = 0; n < 1000; n++) {
+  for (let n = 0; n < flowCount; n++) {
     const a = actors[n % 2]
     i = await start(a); p = await preview(i, a)
     assert.equal(p.workspace_id, a.org); assert.equal(p.application_id, a.client); assert.equal(p.redirect_uri, a.redirect)
@@ -169,7 +230,11 @@ try {
   fail(await req('/auth/device-login/complete', binding(i)))
   await stop()
   const logs = readFileSync(logPath, 'utf8')
-  for (const value of secrets) if (value && value.length >= 20) assert.equal(logs.includes(value), false, 'Secret fixture leaked in server logs')
+  const audits = sql('SELECT metadata::text FROM audit_logs')
+  for (const value of secrets) if (value && value.length >= 20) {
+    assert.equal(logs.includes(value), false, 'Secret fixture leaked in server logs')
+    assert.equal(audits.includes(value), false, 'Secret fixture leaked in audit metadata')
+  }
   console.log(`PASS revocation; server log inspection against ${secrets.size} nonce/token/cookie/signature fixtures`)
   console.log('Closeout HTTP checks passed. Simulated devices; relaxed attestation; sequential functional run, not a throughput benchmark or real-vendor acceptance.')
 } finally {

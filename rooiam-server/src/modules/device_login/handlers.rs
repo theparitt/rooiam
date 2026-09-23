@@ -114,6 +114,20 @@ pub struct StartDeviceLoginRequest {
     pub surface: Option<String>,
 }
 
+pub(crate) fn validate_device_login_start(input: &StartDeviceLoginRequest) -> Result<(), AppError> {
+    match input.surface.as_deref() {
+        None | Some("tenant") => {},
+        Some("admin") => return Err(AppError::Validation("QR device login is not available on the admin console.".into())),
+        Some(_) => return Err(AppError::Validation("Unsupported device login surface. Use tenant.".into())),
+    }
+    if input.redirect_uri.as_ref().is_some_and(|v| v.len() > 4096)
+        || input.widget_embed_origin.as_ref().is_some_and(|v| v.len() > 2048)
+        || input.widget_login_context.as_ref().is_some_and(|v| v.len() > 8192) {
+        return Err(AppError::Validation("Device login context exceeds the supported size.".into()));
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct StartDeviceLoginResponse {
     pub ok: bool,
@@ -460,6 +474,7 @@ pub async fn start_device_login(
     state: web::Data<AppState>,
     body: web::Json<StartDeviceLoginRequest>,
 ) -> Result<HttpResponse, AppError> {
+    validate_device_login_start(&body)?;
     let ip = client_ip_string_from_http_request(&req, state.config.as_ref());
     let user_agent = request_user_agent(&req);
 
@@ -512,12 +527,6 @@ pub async fn start_device_login(
             .or_else(|| body.redirect_uri.clone()),
     )
     .await?;
-
-    if matches!(body.surface.as_deref(), Some("admin")) {
-        return Err(AppError::Validation(
-            "QR device login is not available on the admin console.".into(),
-        ));
-    }
 
     let (_, effective_ip_policy) =
         resolve_effective_ip_policy_for_redirect(&state.db, effective_redirect_uri.as_deref())

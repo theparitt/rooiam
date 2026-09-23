@@ -1,13 +1,33 @@
 plugins {
-    id 'com.android.application' version '8.3.2'
-    id 'com.android.library' version '8.3.2' apply false
+    id 'com.android.application' version '8.10.1'
+    id 'com.android.library' version '8.10.1' apply false
 }
 android {
     namespace 'com.rooiam.mobile'
-    compileSdk 34
-    defaultConfig { applicationId 'com.rooiam.mobile'; minSdk 26; targetSdk 34; versionCode 4; versionName '0.2.0-alpha.4'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    compileSdk 36
+    defaultConfig {
+        // Keep existing debug enrollments; Play certification uses a separate app.
+        applicationId providers.gradleProperty('rooiamApplicationId').getOrElse('com.rooiam.mobile')
+        minSdk 26; targetSdk 36; versionCode 5; versionName '0.2.0-alpha.5'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
     buildFeatures { buildConfig true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    def uploadStore = System.getenv('ROOIAM_ANDROID_KEYSTORE_PATH')
+    if (uploadStore) {
+        ['ROOIAM_ANDROID_STORE_PASSWORD', 'ROOIAM_ANDROID_KEY_ALIAS', 'ROOIAM_ANDROID_KEY_PASSWORD'].each {
+            if (!System.getenv(it)) throw new GradleException("Missing release signing environment variable: ${it}")
+        }
+        signingConfigs {
+            playUpload {
+                storeFile file(uploadStore)
+                storePassword System.getenv('ROOIAM_ANDROID_STORE_PASSWORD')
+                keyAlias System.getenv('ROOIAM_ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ROOIAM_ANDROID_KEY_PASSWORD')
+            }
+        }
+        buildTypes { release { signingConfig signingConfigs.playUpload } }
+    }
 }
 dependencies {
     implementation project(':sdk')

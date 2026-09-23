@@ -36,6 +36,22 @@ public final class MainActivity extends Activity {
     private static final String UNCERTAIN_DECISION = "The last decision may have reached the server. Check your browser. If sign-in did not finish, start a new request there and scan again. This app will not resend the decision.";
     interface Work { String run() throws Exception; }
 
+    private void content(android.view.View root) {
+        // Target 36 uses edge-to-edge on recent Android versions. Keep controls
+        // outside system bars/cutouts and above the keyboard on every screen.
+        if (android.os.Build.VERSION.SDK_INT >= 35) {
+            int left = root.getPaddingLeft(), top = root.getPaddingTop();
+            int right = root.getPaddingRight(), bottom = root.getPaddingBottom();
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets safe = insets.getInsets(android.view.WindowInsets.Type.systemBars()
+                    | android.view.WindowInsets.Type.displayCutout() | android.view.WindowInsets.Type.ime());
+                view.setPadding(left + safe.left, top + safe.top, right + safe.right, bottom + safe.bottom);
+                return insets;
+            });
+        }
+        setContentView(root); root.requestApplyInsets();
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         home();
@@ -48,7 +64,7 @@ public final class MainActivity extends Activity {
     }
     private void home() {
         layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32,48,32,32);
-        ScrollView scroll = new ScrollView(this); scroll.addView(layout); setContentView(scroll);
+        ScrollView scroll = new ScrollView(this); scroll.addView(layout); content(scroll);
         TextView title = new TextView(this); title.setText("Rooiam Reference\nScan. Match. Approve."); title.setTextSize(26); layout.addView(title);
         server = new EditText(this); server.setHint("https://your-rooiam-api.example"); server.setSingleLine(true);
         server.setText(getPreferences(0).getString("server", "")); layout.addView(server);
@@ -92,7 +108,7 @@ public final class MainActivity extends Activity {
         scanner.getBarcodeView().setDecoderFactory(new DefaultDecoderFactory(java.util.Collections.singletonList(BarcodeFormat.QR_CODE)));
         scanner.setStatusText("Scan the QR in the browser you started.");
         panel.addView(scanner, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(panel);
+        content(panel);
         cancel.setOnClickListener(v -> { stopScanner(); home(); status.setText("Scan cancelled. You can scan again or paste QR text."); });
         scanner.decodeSingle(result -> {
             if (!scanning || isFinishing() || isDestroyed()) return;
@@ -190,7 +206,7 @@ public final class MainActivity extends Activity {
                     } catch (Exception e) { new AlertDialog.Builder(this).setMessage("Use a sign-in link from " + frontend).setPositiveButton("OK", null).show(); }
                 }).setNegativeButton("Cancel", null).show();
         });
-        setContentView(panel); web.loadUrl(frontend + "/");
+        content(panel); web.loadUrl(frontend + "/");
     }
     private RooiamClient client() {
         return new RooiamClient(this, serverOrigin(), origin -> CookieManager.getInstance().getCookie(origin), BuildConfig.DEBUG);

@@ -15,7 +15,7 @@ dependencyResolutionManagement {
 rootProject.name = 'IndependentSdkConsumer'
 GRADLE
 cat > "$consumer_dir/build.gradle" <<'GRADLE'
-plugins { id 'com.android.application' version '8.3.2' }
+plugins { id 'com.android.application' version '8.10.1' }
 android {
     namespace 'example.consumer'
     compileSdk 34

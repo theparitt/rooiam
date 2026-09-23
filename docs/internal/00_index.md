@@ -8,7 +8,8 @@ This section is for engineering notes that are useful inside the repo but are no
 
 - [Release roadmap: 0.2–1.0](./release_roadmap.md) — canonical version scope and proposal adaptations.
 - [0.2 remaining acceptance](./48_v0.2_exit_checklist.md) — exact completion status, ordered tasks and evidence requirements.
-- [0.2 evidence snapshot](./45_v0.2_current_status_2026-09-23.md) — recorded results and limitations.
+- [0.2 latest closeout evidence](./49_v0.2_closeout_evidence_2026-09-23.md) — recovery fixes, physical Keystore/lifecycle tests, server matrix, 1,000 flows and simulated fresh-checkout results.
+- [0.2 historical evidence snapshot](./45_v0.2_current_status_2026-09-23.md) — earlier results and limitations.
 - [0.3 sensitive identity action approval](./47_v0.3_sensitive_action_approval.md) — planned first journey, protocol boundaries, dependencies, task IDs and acceptance matrix.
 
 For a new implementation session, start with these documents and product policy. Older numbered phases and dated strategy notes below do not override the current release sequence.

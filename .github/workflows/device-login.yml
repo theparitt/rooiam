@@ -41,7 +41,7 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+      - run: sdkmanager 'platforms;android-34' 'platforms;android-36' 'build-tools;35.0.0'
       - run: ./gradlew --no-daemon assembleRelease testDebugUnitTest assembleDebugAndroidTest lintDebug publishReleasePublicationToLocalPreviewRepository
         working-directory: rooiam-sdk/android
       - run: ./gradlew --no-daemon assembleDebug lintDebug

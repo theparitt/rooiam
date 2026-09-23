@@ -1,4 +1,4 @@
-plugins { id 'com.android.library' version '8.3.2'; id 'maven-publish' }
+plugins { id 'com.android.library' version '8.10.1'; id 'maven-publish' }
 android {
     namespace 'com.rooiam.sdk'
     compileSdk 34

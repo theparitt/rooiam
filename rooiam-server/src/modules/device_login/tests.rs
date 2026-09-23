@@ -1402,6 +1402,28 @@ async fn mfa_callback_requires_the_exact_approved_device_intent(pool: sqlx::PgPo
     assert!(bound.normalize_login_redirect(Some(callback.into())).await.is_err());
 }
 
+#[test]
+fn start_context_rejects_unbounded_or_unsupported_values_before_logging() {
+    use super::handlers::{StartDeviceLoginRequest, validate_device_login_start};
+    let mut input = StartDeviceLoginRequest { redirect_uri: None, widget_login_context: None, widget_embed_origin: None, surface: None };
+    assert!(validate_device_login_start(&input).is_ok());
+    input.surface = Some("tenant".into());
+    assert!(validate_device_login_start(&input).is_ok());
+    for surface in ["admin", "unknown", "tenant\nforged-log", &"x".repeat(2_100_000)] {
+        input.surface = Some(surface.into());
+        assert!(validate_device_login_start(&input).is_err());
+    }
+    input.surface = None;
+    input.redirect_uri = Some("x".repeat(4097));
+    assert!(validate_device_login_start(&input).is_err());
+    input.redirect_uri = None;
+    input.widget_embed_origin = Some("x".repeat(2049));
+    assert!(validate_device_login_start(&input).is_err());
+    input.widget_embed_origin = None;
+    input.widget_login_context = Some("x".repeat(8193));
+    assert!(validate_device_login_start(&input).is_err());
+}
+
 fn build_test_trusted_device(
     platform: &str,
     attestation_format: Option<&str>,

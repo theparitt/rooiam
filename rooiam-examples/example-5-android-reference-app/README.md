@@ -1,6 +1,6 @@
 # Example 5 — Android reference app
 
-This is a reference consumer of the [Android SDK](../../rooiam-sdk/android/README.md), which lives separately in `rooiam-sdk/android`. Open this directory in Android Studio. Its Gradle settings include the SDK as `:sdk` from the same repository; the application is the root project. Alpha.3's assisted Redmi Note 9 regression passed a new camera scan through the application callback/session while retaining the alpha.2 enrollment. Lifecycle and vendor certification remain separate.
+This is a reference consumer of the [Android SDK](../../rooiam-sdk/android/README.md), which lives separately in `rooiam-sdk/android`. Open this directory in Android Studio. Its Gradle settings include the SDK as `:sdk` from the same repository; the application is the root project. An assisted Redmi Note 9 camera sign-in and alpha.4 lifecycle recovery checks passed while retaining the original enrollment. Vendor certification remains separate.
 
 The SDK owns origin/QR validation, enrollment, protected credentials, request review, signing and revocation. The reference app owns its WebView login, camera permission/scanner, review dialog and lifecycle restoration. Play Integrity is supplied by the host through an adapter; the SDK has no camera or Google Play dependency.
 
@@ -8,7 +8,7 @@ Native enrollment, QR scan/paste, explicit approve/deny and revocation for the e
 
 ## Build and install
 
-Install JDK 17 and Android SDK platform/build-tools 34, set `ANDROID_HOME`, then run from this directory:
+Install JDK 17, Android SDK platforms 34 (library) and 36 (reference app), and build-tools 35.0.0. Set `ANDROID_HOME`, then run from this directory. The wrappers pin Gradle 8.11.1 and AGP 8.10.1; the reference app targets API 36:
 
 ```sh
 ./gradlew assembleDebug lintDebug
@@ -16,9 +16,11 @@ adb devices -l
 adb install -r build/outputs/apk/debug/RooiamAndroidReferenceApp-debug.apk
 ```
 
+For the separate Play Console certification app, build with `-ProoiamApplicationId=com.rooiam.reference`. Release signing reads `ROOIAM_ANDROID_KEYSTORE_PATH`, `ROOIAM_ANDROID_STORE_PASSWORD`, `ROOIAM_ANDROID_KEY_ALIAS` and `ROOIAM_ANDROID_KEY_PASSWORD` from the build environment. With these configured, `./gradlew -ProoiamApplicationId=com.rooiam.reference bundleRelease` produces the signed upload bundle. Keep the keystore/passwords private and backed up; never use the debug key for Play distribution. See the [Play setup guide](../../docs/production/23_android_play_integrity.md).
+
 Enable USB debugging and accept the phone's authorization prompt. For a local test API and hosted frontend, use `adb reverse tcp:15470 tcp:15470` and `adb reverse tcp:15472 tcp:15472`. Both services must run on the host where ADB can reach them. WSL users may need Windows ADB or USB passthrough; a successful build is not proof of phone connectivity.
 
-1. Enter your trusted API origin. The operator supplies the Google Cloud project number for Play Integrity.
+1. Enter your trusted API origin. For the repository's Play Console app `com.rooiam.reference`, enter Google Cloud project number **`1028955371558`** after confirming the project is linked. Other application owners enter their own linked project number.
 2. Sign in through the server's configured hosted frontend using an existing account. For email login, paste the emailed link using the button inside the login view so its session stays in the app's WebView cookie store. Return to enrollment.
 3. Enroll the phone, then choose **Sign in with your phone** in the browser's login widget. The hosted page additionally asks you to choose **Show QR code**. Platform and workspace policies must permit device login.
 4. Scan or paste the QR. Compare server/application context, six-digit request code and the displayed number. Approve or deny explicitly. Finish any required MFA in the browser.

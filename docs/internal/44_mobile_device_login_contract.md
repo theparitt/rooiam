@@ -71,6 +71,8 @@ Browser-side endpoints exist separately:
 - `POST /v1/auth/device-login/complete`
 - `POST /v1/auth/device-login/cancel`
 
+`start` accepts `surface: "tenant"` or an omitted surface; admin and unsupported values are rejected before widget-context consumption or audit logging. Input limits are 4,096 bytes for `redirect_uri`, 2,048 for `widget_embed_origin`, and 8,192 for `widget_login_context`. The original signed widget/client binding checks still apply within those bounds.
+
 ## QR Format
 
 The QR code currently carries a deep-link style value:

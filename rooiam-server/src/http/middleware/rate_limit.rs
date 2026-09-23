@@ -18,6 +18,7 @@ use crate::shared::request_ip::client_ip_string_from_service_request;
 #[derive(Clone, Copy)]
 pub enum RateLimitKeyMode {
     PerEndpoint,
+    PerEndpointScoped { scope: &'static str },
     GlobalPerIp { scope: &'static str },
 }
 
@@ -36,6 +37,12 @@ impl RateLimit {
             window_seconds,
             key_mode: RateLimitKeyMode::PerEndpoint,
         }
+    }
+
+    /// Give an outer scope its own per-path counter when a nested endpoint also
+    /// has a limit. Sharing a Redis key increments twice and halves the budget.
+    pub fn per_endpoint_scoped(scope: &'static str, max_requests: u64, window_seconds: u64) -> Self {
+        Self { max_requests, window_seconds, key_mode: RateLimitKeyMode::PerEndpointScoped { scope } }
     }
 
     /// Global per-IP limit — one counter across all endpoints in this scope.
@@ -57,6 +64,7 @@ impl RateLimit {
 pub fn build_rate_limit_key(mode: RateLimitKeyMode, ip: &str, method: &str, path: &str) -> String {
     match mode {
         RateLimitKeyMode::PerEndpoint => format!("rl:ep:{}:{}:{}", ip, method, path),
+        RateLimitKeyMode::PerEndpointScoped { scope } => format!("rl:scope_ep:{}:{}:{}:{}", scope, ip, method, path),
         RateLimitKeyMode::GlobalPerIp { scope } => format!("rl:gip:{}:{}", scope, ip),
     }
 }
@@ -161,6 +169,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_scope_and_endpoint_counters_are_independent() {
+        let path = "/v1/identity/device-login/approve";
+        let inner = build_rate_limit_key(RateLimitKeyMode::PerEndpoint, "127.0.0.1", "POST", path);
+        let outer = build_rate_limit_key(RateLimitKeyMode::PerEndpointScoped { scope: "identity" }, "127.0.0.1", "POST", path);
+        assert_ne!(inner, outer);
+        assert_ne!(outer, build_rate_limit_key(RateLimitKeyMode::PerEndpointScoped { scope: "identity" }, "127.0.0.1", "GET", path));
+    }
 
     // ── Key construction ──────────────────────────────────────────────────
 
