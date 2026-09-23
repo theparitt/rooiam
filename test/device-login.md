@@ -26,11 +26,15 @@ npm test --prefix rooiam-sdk/packages/js-server
 npm run build --prefix rooiam-sdk/packages/js-browser
 npm run build --prefix rooiam-sdk/packages/js-server
 node --test rooiam-examples/device-login/fake-phone.test.mjs
+npm ci --prefix rooiam-examples/example-4-reference-app
+npm test --prefix rooiam-examples/example-4-reference-app
 npm ci --prefix rooiam-app
 npm run build --prefix rooiam-app
 ```
 
 The live runner is hard-bound to the above isolated ports/database. It first verifies the test-only login endpoint works, creates disposable identities and explicitly relaxes attestation only there. It resets this Redis instance's `rl:*` counters between scenarios; rate limits remain active within race scenarios. Repository tests separately execute all 50 concurrent database insert attempts without HTTP throttling. Local HTTP success does not establish real vendor attestation or production-mode certification.
+
+With the isolated API still running, execute `node test/reference-app-live.mjs`. It generates an Argon2 client secret through the server's own helper, provisions a temporary confidential client in the disposable database, and verifies the real authorize/code/userinfo/application-session flow on port 15474. It removes the temporary client afterward. This test bypasses the interactive hosted-login UI by using test login, so combine it with the Chromium and physical-phone walkthroughs rather than treating it as phone evidence.
 
 For browser/phone testing, run `VITE_API_URL=http://127.0.0.1:15470/v1 npm run dev --prefix rooiam-app -- --host 127.0.0.1 --port 15472 --strictPort` and follow [Android instructions](../rooiam-android/README.md). Existing email/provider login and phone networking must be configured; the API containers alone do not supply those prerequisites.
 

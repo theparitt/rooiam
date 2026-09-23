@@ -48,6 +48,8 @@ Implementation modules include Apple App Attest and Google Play Integrity verifi
 
 The development checkout includes `rooiam-android`, the hosted QR screen, and a real-signing Node harness in `rooiam-examples/device-login`. They are previews; real-phone/vendor and release certification are still pending.
 
+For the downstream boundary after authentication, use [`example-4-reference-app`](../../rooiam-examples/example-4-reference-app/README.md). It demonstrates a confidential web client whose backend owns OAuth state, PKCE verifier, callback exchange, local subject mapping and an opaque application cookie. The browser never receives the client secret or Rooiam tokens. Phone approval changes the authentication method inside Rooiam; it does not change the relying party's OIDC callback/session contract.
+
 `RooiamBrowser.deviceLogin` exposes `start`, `status`, `complete` and `cancel`, with optional abort signals. Keep the returned browser nonce in memory and poll status approximately every two seconds. Complete once after approval; follow the returned MFA challenge before showing success. Mutations are not automatically retried. After a lost completion response or reload, start a new request. `trustedDevices.list()` and `trustedDevices.revoke(id)` use the existing account cookie; never put phone private keys/device tokens in browser code.
 
 Regenerate the contract with `node rooiam-sdk/scripts/sync-openapi.mjs`; `--check` detects server/spec/schema drift. Workspace phone login defaults off and requires both platform policy and workspace opt-in. Use the [API/SDK smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) to validate a deployment and its native clients.

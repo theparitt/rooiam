@@ -13,6 +13,9 @@ Structure:
 - `example-3-backend`
   - backend-heavy integration example
   - target local port: `5193`
+- `example-4-reference-app`
+  - complete OIDC relying party with backend-owned callback, PKCE and application session
+  - target local port: `5194`
 
 Recommended doctrine:
 
@@ -22,6 +25,8 @@ Recommended doctrine:
   - richer account example
 - `5193`
   - advanced backend / server-side integration
+- `5194`
+  - production-shaped end-user OIDC session boundary
 
 This keeps the examples progressive instead of overloading one app with every concept at once.
 
@@ -62,6 +67,8 @@ Port map:
   - `example-2-account`
 - `5193`
   - `example-3-backend`
+- `5194`
+  - `example-4-reference-app`
 
 ## Real Product Path
 
@@ -101,6 +108,9 @@ Example usage:
   - callback, sessions, passkeys, MFA, and audit activity
 - `example-3-backend`
   - backend / API-key integration example
+- `example-4-reference-app`
+  - complete end-user OIDC callback and application-owned session boundary
+  - use this as the starting point for a production downstream login integration
 
 If you use Docker:
 

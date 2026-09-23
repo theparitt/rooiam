@@ -92,7 +92,8 @@ export default function Roadmap()
                     <p className="mt-3 text-sm text-gray-600 max-w-3xl">
                         Release gate: a real Android-to-browser flow, replay and revocation checks,
                         tenant isolation, and a demo developers can run from a fresh clone.
-                        The implementation preview is in development. Real-device and release certification are still pending.
+                        The hosted flow, Android preview, and application-owned reference session are implemented.
+                        Real-device and release certification are still pending.
                     </p>
                     <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
                         Read the phases and release criteria →
