@@ -93,10 +93,11 @@ export default function Roadmap()
                         Release gate: a real Android-to-browser flow, replay and revocation checks,
                         tenant isolation, and a demo developers can run from a fresh clone.
                         The hosted flow, Android preview, and application-owned reference session are implemented.
-                        An assisted test passed physical-phone approval via pasted QR text and the subsequent reference-app session.
-                        Continuous QR-to-app login and logout now pass automated browser testing.
-                        Camera recovery is implemented in the Android preview; physical retesting,
-                        protected installation, and release certification remain open.
+                        An assisted Redmi Note 9 test passed camera scanning, phone approval,
+                        and the continuous callback into the reference app's own session.
+                        Login and logout also pass automated browser testing.
+                        Lifecycle recovery testing, protected installation, an independent walkthrough,
+                        and release certification remain open.
                     </p>
                     <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
                         Read the phases and release criteria →
