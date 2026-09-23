@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
+use google_cloud_auth::credentials::{AccessTokenCredentials, Builder as GoogleCredentialsBuilder};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::OnceCell;
 
-use crate::bootstrap::config::AppConfig;
+use crate::bootstrap::config::DeviceAttestationConfig;
 
 use super::models::UserTrustedDevice;
 use super::service::DeviceAttestationPolicy;
@@ -15,10 +17,20 @@ const GOOGLE_PLAY_INTEGRITY_API_BASE: &str = "https://playintegrity.googleapis.c
 
 #[derive(Clone, Debug)]
 pub(crate) struct GooglePlayIntegrityVerifierConfig {
-    pub service_account_email: String,
-    pub private_key_pem: String,
-    pub token_uri: String,
+    credential_source: GooglePlayCredentialSource,
 }
+
+#[derive(Clone, Debug)]
+enum GooglePlayCredentialSource {
+    ServiceAccountKey {
+        email: String,
+        private_key_pem: String,
+        token_uri: String,
+    },
+    ApplicationDefault,
+}
+
+static GOOGLE_PLAY_ADC: OnceCell<AccessTokenCredentials> = OnceCell::const_new();
 
 #[derive(Clone, Debug)]
 pub(crate) struct GooglePlayVerifiedAttestation {
@@ -108,10 +120,20 @@ pub(crate) struct GooglePlayTestingDetails {
 }
 
 pub(crate) fn load_google_play_integrity_verifier_config(
-    config: &AppConfig,
+    config: &DeviceAttestationConfig,
 ) -> Result<GooglePlayIntegrityVerifierConfig, GooglePlayVerificationError> {
+    if config.google_play_use_adc {
+        if config.google_play_service_account_private_key_pem.is_some() {
+            return Err(GooglePlayVerificationError::Unavailable(
+                "Configure either Google Play ADC or a service-account private key, not both."
+                    .into(),
+            ));
+        }
+        return Ok(GooglePlayIntegrityVerifierConfig {
+            credential_source: GooglePlayCredentialSource::ApplicationDefault,
+        });
+    }
     let service_account_email = config
-        .device_attestation
         .google_play_service_account_email
         .as_deref()
         .map(str::trim)
@@ -123,7 +145,6 @@ pub(crate) fn load_google_play_integrity_verifier_config(
             )
         })?;
     let private_key_pem = config
-        .device_attestation
         .google_play_service_account_private_key_pem
         .as_deref()
         .map(str::trim)
@@ -136,13 +157,11 @@ pub(crate) fn load_google_play_integrity_verifier_config(
         })?;
 
     Ok(GooglePlayIntegrityVerifierConfig {
-        service_account_email: service_account_email.to_string(),
-        private_key_pem: private_key_pem.to_string(),
-        token_uri: config
-            .device_attestation
-            .google_play_token_uri
-            .trim()
-            .to_string(),
+        credential_source: GooglePlayCredentialSource::ServiceAccountKey {
+            email: service_account_email.to_string(),
+            private_key_pem: private_key_pem.to_string(),
+            token_uri: config.google_play_token_uri.trim().to_string(),
+        },
     })
 }
 
@@ -382,18 +401,48 @@ async fn fetch_google_access_token(
     http_client: &Client,
     config: &GooglePlayIntegrityVerifierConfig,
 ) -> Result<String, GooglePlayVerificationError> {
+    let GooglePlayCredentialSource::ServiceAccountKey {
+        email,
+        private_key_pem,
+        token_uri,
+    } = &config.credential_source
+    else {
+        let credentials = GOOGLE_PLAY_ADC
+            .get_or_try_init(|| async {
+                GoogleCredentialsBuilder::default()
+                    .with_scopes([GOOGLE_PLAY_INTEGRITY_SCOPE])
+                    .build_access_token_credentials()
+                    .map_err(|_| {
+                        GooglePlayVerificationError::Unavailable(
+                            "Google Application Default Credentials are not configured for Play Integrity."
+                                .into(),
+                        )
+                    })
+            })
+            .await?;
+        return credentials
+            .access_token()
+            .await
+            .map(|token| token.token)
+            .map_err(|_| {
+                GooglePlayVerificationError::Unavailable(
+                    "Google Application Default Credentials could not obtain a Play Integrity access token."
+                        .into(),
+                )
+            });
+    };
     let now = Utc::now();
     let claims = GoogleServiceAccountClaims {
-        iss: &config.service_account_email,
+        iss: email,
         scope: GOOGLE_PLAY_INTEGRITY_SCOPE,
-        aud: &config.token_uri,
+        aud: token_uri,
         iat: now.timestamp() as usize,
         exp: (now + chrono::Duration::minutes(55)).timestamp() as usize,
     };
     let assertion = jsonwebtoken::encode(
         &Header::new(Algorithm::RS256),
         &claims,
-        &EncodingKey::from_rsa_pem(config.private_key_pem.as_bytes()).map_err(|error| {
+        &EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|error| {
             GooglePlayVerificationError::Unavailable(format!(
                 "Google service-account private key is invalid: {}",
                 error
@@ -408,7 +457,7 @@ async fn fetch_google_access_token(
     })?;
 
     let response = http_client
-        .post(&config.token_uri)
+        .post(token_uri)
         .form(&[
             ("grant_type", GOOGLE_OAUTH_GRANT_TYPE_JWT_BEARER),
             ("assertion", assertion.as_str()),
@@ -470,4 +519,56 @@ fn sha256_hex(raw: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    fn config() -> DeviceAttestationConfig {
+        DeviceAttestationConfig {
+            apple_app_id_prefix: None,
+            google_play_service_account_email: None,
+            google_play_service_account_private_key_pem: None,
+            google_play_use_adc: false,
+            google_play_token_uri: "https://oauth2.googleapis.com/token".into(),
+        }
+    }
+
+    #[test]
+    fn adc_requires_explicit_opt_in_and_rejects_mixed_credentials() {
+        let mut settings = config();
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings),
+            Err(GooglePlayVerificationError::Unavailable(_))
+        ));
+
+        settings.google_play_use_adc = true;
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings)
+                .unwrap()
+                .credential_source,
+            GooglePlayCredentialSource::ApplicationDefault
+        ));
+
+        settings.google_play_service_account_private_key_pem = Some("private key".into());
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings),
+            Err(GooglePlayVerificationError::Unavailable(_))
+        ));
+    }
+
+    #[test]
+    fn existing_service_account_key_mode_remains_explicit() {
+        let mut settings = config();
+        settings.google_play_service_account_email =
+            Some("verify@example.iam.gserviceaccount.com".into());
+        settings.google_play_service_account_private_key_pem = Some("private key".into());
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings)
+                .unwrap()
+                .credential_source,
+            GooglePlayCredentialSource::ServiceAccountKey { .. }
+        ));
+    }
 }

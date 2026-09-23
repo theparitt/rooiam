@@ -183,6 +183,7 @@ mod tests {
                 apple_app_id_prefix: None,
                 google_play_service_account_email: None,
                 google_play_service_account_private_key_pem: None,
+                google_play_use_adc: false,
                 google_play_token_uri: "https://oauth2.googleapis.com/token".into(),
             },
             rate_limit: RateLimitConfig {

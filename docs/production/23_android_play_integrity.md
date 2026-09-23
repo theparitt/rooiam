@@ -17,7 +17,17 @@ From `rooiam-examples/example-5-android-reference-app`, select the certification
 
 ## Configure Rooiam's verifier
 
-Create the backend service account in the linked project and give it the access needed to decode Play Integrity tokens. Follow the server-side setup under [standard requests](https://developer.android.com/google/play/integrity/standard). Keep its credentials on the server, never in the APK, repository or chat.
+Create a backend service account in the linked project for Play Integrity token decoding. Google documents the [server-side decode request](https://developer.android.com/google/play/integrity/standard). Prefer [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) with an attached service account on Google Cloud or [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) for a self-hosted deployment. If organization policy disables service-account key creation, keep that policy enabled; Rooiam can use ADC without a key.
+
+For keyless verification, configure the server:
+
+```dotenv
+ROOIAM_GOOGLE_PLAY_USE_ADC=true
+```
+
+The server process must have ADC for the linked project's service account, scoped to `https://www.googleapis.com/auth/playintegrity`. On Google Cloud, attach that service account to the workload. On another host, set `GOOGLE_APPLICATION_CREDENTIALS` to a Workload Identity Federation credential **configuration** file and grant that external workload access to impersonate the service account. For a local certification run, Google also supports `gcloud auth application-default login --impersonate-service-account=SERVICE_ACCOUNT_EMAIL --scopes=https://www.googleapis.com/auth/playintegrity`; the signed-in operator needs permission to impersonate the account. This local login is a test credential, not a permanent server deployment. Keep credential configuration files and local ADC state private. See [Google's ADC guidance](https://cloud.google.com/docs/authentication/application-default-credentials) and [workload federation setup](https://cloud.google.com/iam/docs/workload-download-cred-and-grant-access).
+
+The older explicit-key configuration remains available where organizational policy permits it:
 
 Configure these existing server environment variables:
 
@@ -26,7 +36,7 @@ ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_EMAIL=your-service-account@your-project.iam.g
 ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH=/run/secrets/play-integrity-private-key.pem
 ```
 
-The private-key path expects the PEM private key, not the whole downloaded service-account JSON. Restrict file permissions. Leave the token URI override unset to use the normal Google endpoint.
+The private-key path expects the PEM private key, not the whole downloaded service-account JSON. Restrict file permissions. Leave the token URI override unset to use the normal Google endpoint. Do not configure `ROOIAM_GOOGLE_PLAY_USE_ADC=true` and a private key together; Rooiam rejects this ambiguous setup.
 
 In platform device-attestation settings, use:
 

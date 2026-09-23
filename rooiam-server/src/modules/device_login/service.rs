@@ -644,7 +644,9 @@ impl DeviceLoginService {
             ));
         };
 
-        let verifier_config = match load_google_play_integrity_verifier_config(&self.config) {
+        let verifier_config = match load_google_play_integrity_verifier_config(
+            &self.config.device_attestation,
+        ) {
             Ok(value) => value,
             Err(GooglePlayVerificationError::Unavailable(message)) => {
                 return VendorAttestationDecision::Unavailable(message);

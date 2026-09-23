@@ -30,6 +30,9 @@ sha2 = "0.10"
 hmac = "0.12"
 base64 = "0.22"
 jsonwebtoken = "9"
+google-cloud-auth = "=1.13.0"
+# Keep the ADC stack within this server's Rust 1.88 toolchain.
+google-cloud-gax = "=1.13.0"
 rsa = { version = "0.9", features = ["pem"] }
 webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }

@@ -215,6 +215,7 @@ pub struct DeviceAttestationConfig {
     pub apple_app_id_prefix: Option<String>,
     pub google_play_service_account_email: Option<String>,
     pub google_play_service_account_private_key_pem: Option<String>,
+    pub google_play_use_adc: bool,
     pub google_play_token_uri: String,
 }
 
@@ -462,6 +463,10 @@ impl AppConfig {
             "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
             "path to Google service-account private key PEM for Play Integrity",
         );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_USE_ADC",
+            "use Application Default Credentials for keyless Play Integrity verification",
+        );
         check_optional_secret(
             "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM",
             "inline Google service-account private key PEM for Play Integrity",
@@ -695,6 +700,10 @@ impl AppConfig {
                     "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
                 )
                 .map(|value| value.replace("\\n", "\n")),
+                google_play_use_adc: env::var("ROOIAM_GOOGLE_PLAY_USE_ADC")
+                    .ok()
+                    .and_then(|value| parse_bool_like(&value))
+                    .unwrap_or(false),
                 google_play_token_uri: env::var("ROOIAM_GOOGLE_PLAY_TOKEN_URI")
                     .unwrap_or_else(|_| "https://oauth2.googleapis.com/token".to_string()),
             },
