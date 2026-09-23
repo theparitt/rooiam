@@ -1,6 +1,6 @@
 # Rooiam Android SDK and reference app
 
-The Gradle build contains `:sdk`, a reusable Android library, and `:app`, the reference consumer. Start with the [SDK integration guide](./sdk/README.md) for dependency setup, API usage, session/attestation adapters and host responsibilities. Alpha.3 separates the library from UI; the earlier alpha.2 physical-camera evidence does not automatically certify this refactor.
+The Gradle build contains `:sdk`, a reusable Android library, and `:app`, the reference consumer. Start with the [SDK integration guide](./sdk/README.md) for dependency setup, API usage, session/attestation adapters and host responsibilities. Alpha.3 separates the library from UI. Its assisted Redmi Note 9 regression passed a new camera scan through the application callback/session while retaining the alpha.2 enrollment. Lifecycle and vendor certification remain separate.
 
 The SDK owns origin/QR validation, enrollment, protected credentials, request review, signing and revocation. The reference app owns its WebView login, camera permission/scanner, review dialog and lifecycle restoration. Play Integrity is supplied by the host through an adapter; the SDK has no camera or Google Play dependency.
 

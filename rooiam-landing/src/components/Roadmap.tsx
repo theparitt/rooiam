@@ -97,8 +97,9 @@ export default function Roadmap()
                         developers supply their own login, camera, and approval UI.
                         An assisted Redmi Note 9 test passed camera scanning, phone approval,
                         and the continuous callback into the reference app's own session.
+                        The SDK-based alpha.3 reference app also passed after upgrade, preserving the existing phone enrollment.
                         Login and logout also pass automated browser testing.
-                        SDK extraction device regression, lifecycle recovery testing, an independent walkthrough,
+                        Lifecycle recovery testing, an independent walkthrough,
                         and release certification remain open.
                     </p>
                     <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
