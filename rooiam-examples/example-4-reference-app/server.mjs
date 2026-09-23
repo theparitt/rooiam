@@ -8,6 +8,7 @@ const { app } = createReferenceApp({
   appBaseUrl: process.env.APP_BASE_URL || `http://localhost:${port}`,
   apiBase: process.env.ROOIAM_API_BASE || 'http://localhost:5170/v1',
   widgetUrl: process.env.ROOIAM_WIDGET_URL || 'http://localhost:5170/login-widget',
+  hostedLoginOrigin: process.env.ROOIAM_HOSTED_LOGIN_ORIGIN,
   workspaceId: process.env.ROOIAM_WORKSPACE_ID,
   clientId: process.env.ROOIAM_CLIENT_ID,
   clientSecret: process.env.ROOIAM_CLIENT_SECRET,

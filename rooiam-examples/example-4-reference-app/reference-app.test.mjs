@@ -41,6 +41,7 @@ async function fixture() {
   const oidcBase = `http://127.0.0.1:${oidc.address().port}`
   const reference = createReferenceApp({
     appBaseUrl: 'http://reference.test', apiBase: `${oidcBase}/v1`, widgetUrl: `${oidcBase}/login-widget`,
+    hostedLoginOrigin: 'http://hosted.test',
     workspaceId: 'workspace-1', clientId: 'reference-web', clientSecret: 'server-only-secret', secureCookie: false,
   })
   const server = reference.app.listen(0, '127.0.0.1')
@@ -55,6 +56,13 @@ async function begin(base) {
   const html = await login.text()
   assert.ok(html.includes('Rooiam owns authentication'))
   assert.equal(html.includes('server-only-secret'), false)
+  // The widget server validates the embedding origin; no-referrer would reject the iframe.
+  assert.match(html, /<iframe referrerpolicy="origin" /)
+  const phoneUrl = new URL(/href="([^"]+)">Open phone login/.exec(html)[1].replaceAll('&amp;', '&'))
+  assert.equal(phoneUrl.origin, 'http://hosted.test')
+  assert.equal(phoneUrl.search, '')
+  assert.match(html, /target="_blank" rel="noopener noreferrer"/)
+  assert.match(html, /href="\/callback">Continue with your Rooiam session/)
   const nonce = /<script nonce="([^"]+)">/.exec(html)?.[1]
   assert.ok(nonce)
   assert.ok(login.headers.get('content-security-policy').includes(`script-src 'nonce-${nonce}'`))

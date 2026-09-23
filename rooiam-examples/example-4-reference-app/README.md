@@ -34,7 +34,9 @@ npm test
 npm run dev
 ```
 
-Open `http://localhost:5194`, choose **Sign in with Rooiam**, and complete login in the hosted widget. Phone approval is one Rooiam authentication method; after it succeeds, the same OIDC callback and application-owned session flow applies.
+Open `http://localhost:5194` and choose **Sign in with Rooiam**. If you already signed in to Rooiam in this browser, choose **Continue with your Rooiam session** to perform the backend OIDC exchange. Otherwise, configure `ROOIAM_HOSTED_LOGIN_ORIGIN` with the `rooiam-app` origin and choose **Open phone login** to open its QR-capable portal in a new tab. Complete phone approval there, return to the reference app tab, and choose **Continue with your Rooiam session**. The sample then performs the registered OIDC callback and creates its application-owned session. Keep both tabs in the same browser profile. This two-tab path currently authenticates in the portal first; it does not yet demonstrate a single continuous client-bound QR-to-application callback journey.
+
+The embedded widget remains available for its supported login methods. Its iframe sends only the embedding origin using `referrerpolicy="origin"`, which Rooiam requires to check the allowed embed origin. Callback responses retain `Referrer-Policy: no-referrer`.
 
 The tests use a fake OIDC issuer to prove state and PKCE handling, confidential-client exchange, exact identity mapping, callback concurrency/replay rejection, code-reuse failure, cookie flags, logout CSRF, and HTTPS enforcement. They do not replace the real Rooiam/phone walkthrough.
 

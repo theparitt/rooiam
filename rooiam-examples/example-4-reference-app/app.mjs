@@ -37,6 +37,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     appBaseUrl: exactBaseUrl(rawConfig.appBaseUrl, 'APP_BASE_URL'),
     apiBase: String(rawConfig.apiBase).replace(/\/+$/, ''),
     widgetUrl: String(rawConfig.widgetUrl),
+    hostedLoginOrigin: rawConfig.hostedLoginOrigin ? exactBaseUrl(rawConfig.hostedLoginOrigin, 'ROOIAM_HOSTED_LOGIN_ORIGIN') : null,
     workspaceId: String(rawConfig.workspaceId || '').trim(),
     clientId: String(rawConfig.clientId || '').trim(),
     clientSecret: String(rawConfig.clientSecret || ''),
@@ -49,6 +50,7 @@ export function createReferenceApp(rawConfig, hooks = {}) {
   widget.searchParams.set('workspace_id', config.workspaceId)
   widget.searchParams.set('client_id', config.clientId)
   const callbackUri = `${config.appBaseUrl}/callback`
+  const hostedLogin = config.hostedLoginOrigin ? new URL('/', config.hostedLoginOrigin) : null
   const app = express()
   const pending = hooks.pending || new Map()
   const sessions = hooks.sessions || new Map()
@@ -96,7 +98,9 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     pending.set(transactionId, { state: random(), verifier, challenge: sha256(verifier), authorizationStarted: false, expiresAt: now() + TX_TTL_MS })
     res.setHeader('Set-Cookie', cookie(TX_COOKIE, transactionId, { secure: config.secureCookie, maxAge: TX_TTL_MS / 1000, path: '/callback' }))
     const body = `<h1>Sign in</h1><p class="muted">Rooiam owns authentication. This example backend owns OAuth state, PKCE, callback exchange, and the resulting app session.</p><iframe id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
-    res.type('html').send(page('Sign in', body))
+    const phoneLink = hostedLogin ? `<p><a class="button" target="_blank" rel="noopener noreferrer" href="${escapeHtml(hostedLogin.toString())}">Open phone login</a></p><p>Sign in in the new tab, then return here and continue with your Rooiam session.</p>` : ''
+    const existingSession = '<p>Already signed in to Rooiam in this browser? <a href="/callback">Continue with your Rooiam session</a></p>'
+    res.type('html').send(page('Sign in', phoneLink + existingSession + body.replace('<iframe ', '<iframe referrerpolicy="origin" ')))
   })
 
   app.get('/callback', async (req, res) => {
