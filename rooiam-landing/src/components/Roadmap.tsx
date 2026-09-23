@@ -1,45 +1,32 @@
 import { Check, Smartphone, Calendar } from 'lucide-react'
-import { DOCS_ROADMAP_URL, GITHUB_REPO_URL } from '../lib/site'
+import { DOCS_ROADMAP_URL } from '../lib/site'
 
 type Item = { text: string; note?: string }
 
 const done: Item[] = [
-    { text: 'Magic link login' },
-    { text: 'Google & Microsoft OAuth' },
-    { text: 'TOTP MFA (authenticator app)' },
-    { text: 'WebAuthn passkeys' },
-    { text: 'Opaque session cookies with revocation' },
-    { text: 'Multi-tenant workspaces, roles & invites' },
-    { text: 'OIDC authorization code flow with PKCE' },
-    { text: 'Per-workspace branding and access policy' },
-    { text: 'Platform and workspace audit surfaces' },
-    { text: 'Docker API and infrastructure stacks' },
-    { text: 'OpenAPI snapshots and TypeScript SDK packages' },
-    { text: 'Trusted-device login server protocol' },
-    { text: 'Android SDK and separate reference app', note: 'alpha.3 preview' },
-    { text: 'Phone sign-in in hosted and embedded widgets', note: 'workspace enable/disable and ordering' },
+    { text: 'Passwordless sign-in with magic links, passkeys and social login' },
+    { text: 'Workspace branding, access policies and MFA' },
+    { text: 'App integration with OIDC and TypeScript SDKs' },
+    { text: 'Self-hosting with Docker' },
+    { text: 'Android phone sign-in', note: 'preview' },
 ]
 
 const nextRelease: Item[] = [
-    { text: 'Real-phone recovery after app termination' },
-    { text: 'Independent fresh-clone SDK integration walkthrough' },
-    { text: 'Play Integrity / attestation verification under the intended policy' },
-    { text: 'Reference app installation with Play Protect enabled' },
-    { text: 'Final security and self-host release checks', note: 'replay, revocation, tenant isolation' },
+    { text: 'Bring Android phone sign-in beyond preview' },
+    { text: 'Make the mobile sign-in experience reliable across app restarts' },
+    { text: 'Help developers get from setup to their first phone sign-in' },
 ]
 
 const planned: Item[] = [
-    { text: 'Tenant and operator polish informed by real usage' },
-    { text: 'iOS and push approval', note: 'follow-up candidates' },
-    { text: 'Rust SDK when a real integration needs it' },
-    { text: 'v1.0: stable platform for multi-tenant SaaS teams' },
-    { text: 'Enterprise expansion only after real market demand' },
+    { text: 'iOS support and push approvals', note: 'under consideration' },
+    { text: 'Workspace administration improvements guided by user feedback' },
+    { text: 'More integration options as developers need them' },
 ]
 
 const columns = [
     {
-        label: 'Available foundation',
-        version: 'current checkout',
+        label: 'Available today',
+        version: 'build with Rooiam',
         color: '#B5EFD5',
         border: '#90DDB5',
         iconColor: '#2a8a5a',
@@ -47,7 +34,7 @@ const columns = [
         icon: <Check className="w-3.5 h-3.5" />,
     },
     {
-        label: 'Remaining release gates',
+        label: 'Up next',
         version: '0.2 · in progress',
         color: '#B5D5FF',
         border: '#7aadff',
@@ -56,8 +43,8 @@ const columns = [
         icon: <Smartphone className="w-3.5 h-3.5" />,
     },
     {
-        label: 'After 0.2',
-        version: 'direction',
+        label: 'Looking ahead',
+        version: 'exploring',
         color: '#FFE8A0',
         border: '#e8c832',
         iconColor: '#8a6a00',
@@ -79,43 +66,8 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Rooiam 0.2 focuses on one complete trusted-device login journey, built on our self-hosted passwordless IAM foundation.
+                        Our next focus is bringing phone approval to more sign-in journeys, while keeping developers and workspaces in control.
                     </p>
-                </div>
-
-                <div className="rounded-3xl border-2 border-purple-200 bg-white p-6 md:p-8 mb-8">
-                    <p className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">Android preview available · Trusted Device &amp; QR Authentication</p>
-                    <h3 className="text-3xl font-black text-gray-800 mb-3">Scan. Match. Approve.</h3>
-                    <p className="text-base font-semibold text-gray-600 max-w-3xl">
-                        Enroll an Android phone. Scan the browser QR. Verify the number and request details.
-                        Approve on your phone, then securely finish signing in to the requesting browser.
-                    </p>
-                    <p className="mt-3 text-sm text-gray-600 max-w-3xl">
-                        The Android SDK handles device enrollment, protected credentials and signed approval.
-                        A separate reference app demonstrates login, camera scanning and approval UI.
-                        Phone sign-in appears alongside the other login methods, with workspace enable/disable and ordering controls.
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                        <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-sdk/android`} target="_blank" rel="noreferrer"
-                            className="rounded-xl bg-purple-100 px-4 py-2 text-sm font-bold text-purple-800 hover:bg-purple-200">
-                            Explore the Android SDK →
-                        </a>
-                        <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-examples/example-5-android-reference-app`} target="_blank" rel="noreferrer"
-                            className="rounded-xl border border-purple-200 px-4 py-2 text-sm font-bold text-purple-700 hover:bg-purple-50">
-                            Run the Android reference app →
-                        </a>
-                    </div>
-                    <p className="mt-4 text-sm text-gray-600 max-w-3xl">
-                        An assisted Redmi Note 9 test passed camera scanning, phone approval,
-                        and the continuous callback into the reference app's own session.
-                        The SDK-based alpha.3 reference app also passed after upgrade, preserving the existing phone enrollment.
-                        Login and logout also pass automated browser testing.
-                        Lifecycle recovery testing, an independent walkthrough,
-                        and release certification remain open.
-                    </p>
-                    <a href={DOCS_ROADMAP_URL} className="inline-block mt-4 font-bold text-purple-700 underline underline-offset-4">
-                        Read the phases and release criteria →
-                    </a>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-3">
@@ -151,10 +103,10 @@ export default function Roadmap()
                 </div>
 
                 <div className="mt-8 text-center">
-                    <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
+                    <a href={DOCS_ROADMAP_URL}
                         className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm border-2 hover:bg-white transition-all"
                         style={{ borderColor: '#B5D5FF', color: '#2255bb' }}>
-                        Follow progress on GitHub →
+                        Explore the roadmap →
                     </a>
                 </div>
             </div>

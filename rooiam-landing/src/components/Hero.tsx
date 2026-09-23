@@ -1,6 +1,6 @@
 import { BookOpen, Copy, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { DOCS_GETTING_STARTED_URL, DOCS_ROADMAP_URL, DEMO_APP_URL, GITHUB_REPO_URL } from '../lib/site'
+import { DOCS_GETTING_STARTED_URL, DEMO_APP_URL, GITHUB_REPO_URL } from '../lib/site'
 
 const dockerSnippet = `git clone ${GITHUB_REPO_URL}\ncd rooiam\n# Create .env.docker.local.demo from the Quick Start guide\ndocker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d`
 
@@ -64,15 +64,15 @@ export default function Hero()
                     </a>
                 </div>
 
-                <a href={DOCS_ROADMAP_URL}
+                <a href="#phone-sign-in"
                     className="block max-w-2xl rounded-2xl border border-purple-200 bg-purple-50 p-5 mb-8 hover:bg-purple-100 transition-colors">
-                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Android SDK &amp; reference app · 0.2 preview</span>
-                    <span className="block mt-2 text-xl font-black text-gray-800">Scan. Match. Approve.</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Android preview</span>
+                    <span className="block mt-2 text-xl font-black text-gray-800">A new way to sign in. From your phone.</span>
                     <span className="block mt-2 text-sm font-semibold text-gray-600">
-                        Scan a browser QR code, compare the number, and approve sign-in from your enrolled Android phone.
-                        The SDK and reference app are available in the repository. Release certification is still in progress.
+                        Let users scan a QR code and approve sign-in from their Android phone.
+                        Bring the experience into your app with Rooiam’s SDK.
                     </span>
-                    <span className="block mt-3 text-sm font-bold text-purple-700">See preview progress and release criteria →</span>
+                    <span className="block mt-3 text-sm font-bold text-purple-700">Explore phone sign-in →</span>
                 </a>
 
                 {/* Docker snippet */}

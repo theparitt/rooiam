@@ -2,7 +2,7 @@ const features = [
     {
         emoji: '📱',
         title: 'Android Phone Sign-In · Preview',
-        desc: 'An Android SDK and reference app for enrollment, QR scanning and explicit approval. Workspaces can enable, disable and reorder phone sign-in in hosted and embedded widgets. Release certification is pending.',
+        desc: 'Let users approve browser sign-ins from their Android phone. Add it to your app with the SDK, and let each workspace choose whether to offer it.',
         color: '#D5B7FF',
         border: '#B07FFF',
     },

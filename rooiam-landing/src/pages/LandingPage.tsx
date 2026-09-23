@@ -3,6 +3,7 @@ import Hero from '../components/Hero'
 import DemoShowcase from '../components/DemoShowcase'
 import Stats from '../components/Stats'
 import Features from '../components/Features'
+import PhoneSignIn from '../components/PhoneSignIn'
 import HowItWorks from '../components/HowItWorks'
 import OpenSource from '../components/OpenSource'
 import Roadmap from '../components/Roadmap'
@@ -18,6 +19,7 @@ export default function LandingPage()
             <DemoShowcase />
             <Stats />
             <Features />
+            <PhoneSignIn />
             <HowItWorks />
             <OpenSource />
             <Roadmap />
