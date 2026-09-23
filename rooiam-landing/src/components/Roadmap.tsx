@@ -16,15 +16,16 @@ const done: Item[] = [
     { text: 'Docker API and infrastructure stacks' },
     { text: 'OpenAPI snapshots and TypeScript SDK packages' },
     { text: 'Trusted-device login server protocol' },
+    { text: 'Android SDK and separate reference app', note: 'alpha.3 preview' },
+    { text: 'Phone sign-in in hosted and embedded widgets', note: 'workspace enable/disable and ordering' },
 ]
 
 const nextRelease: Item[] = [
-    { text: 'Freeze and verify the existing device-login contract' },
-    { text: 'Prove device trust and one-time browser completion', note: 'replay, revocation, tenant isolation' },
-    { text: 'Android enrollment, QR scan and number-match approval' },
-    { text: 'Phone sign-in in hosted and embedded widgets, with workspace enable/disable and ordering' },
-    { text: 'TypeScript SDK helpers and a fresh-clone reference demo' },
-    { text: 'Security release checks and self-host guidance' },
+    { text: 'Real-phone recovery after app termination' },
+    { text: 'Independent fresh-clone SDK integration walkthrough' },
+    { text: 'Play Integrity / attestation verification under the intended policy' },
+    { text: 'Reference app installation with Play Protect enabled' },
+    { text: 'Final security and self-host release checks', note: 'replay, revocation, tenant isolation' },
 ]
 
 const planned: Item[] = [
@@ -46,8 +47,8 @@ const columns = [
         icon: <Check className="w-3.5 h-3.5" />,
     },
     {
-        label: 'Next milestone',
-        version: '0.2 · planned',
+        label: 'Remaining release gates',
+        version: '0.2 · in progress',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
@@ -83,18 +84,28 @@ export default function Roadmap()
                 </div>
 
                 <div className="rounded-3xl border-2 border-purple-200 bg-white p-6 md:p-8 mb-8">
-                    <p className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">0.2 goal · Trusted Device &amp; QR Authentication</p>
+                    <p className="text-xs font-black uppercase tracking-widest text-purple-700 mb-2">Android preview available · Trusted Device &amp; QR Authentication</p>
                     <h3 className="text-3xl font-black text-gray-800 mb-3">Scan. Match. Approve.</h3>
                     <p className="text-base font-semibold text-gray-600 max-w-3xl">
                         Enroll an Android phone. Scan the browser QR. Verify the number and request details.
                         Approve on your phone, then securely finish signing in to the requesting browser.
                     </p>
                     <p className="mt-3 text-sm text-gray-600 max-w-3xl">
-                        Release gate: a real Android-to-browser flow, replay and revocation checks,
-                        tenant isolation, and a demo developers can run from a fresh clone.
-                        The hosted flow, Android preview, and application-owned reference session are implemented.
-                        Android integration is now separated into an SDK and a reference app;
-                        developers supply their own login, camera, and approval UI.
+                        The Android SDK handles device enrollment, protected credentials and signed approval.
+                        A separate reference app demonstrates login, camera scanning and approval UI.
+                        Phone sign-in appears alongside the other login methods, with workspace enable/disable and ordering controls.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                        <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-sdk/android`} target="_blank" rel="noreferrer"
+                            className="rounded-xl bg-purple-100 px-4 py-2 text-sm font-bold text-purple-800 hover:bg-purple-200">
+                            Explore the Android SDK →
+                        </a>
+                        <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-examples/example-5-android-reference-app`} target="_blank" rel="noreferrer"
+                            className="rounded-xl border border-purple-200 px-4 py-2 text-sm font-bold text-purple-700 hover:bg-purple-50">
+                            Run the Android reference app →
+                        </a>
+                    </div>
+                    <p className="mt-4 text-sm text-gray-600 max-w-3xl">
                         An assisted Redmi Note 9 test passed camera scanning, phone approval,
                         and the continuous callback into the reference app's own session.
                         The SDK-based alpha.3 reference app also passed after upgrade, preserving the existing phone enrollment.

@@ -66,13 +66,13 @@ export default function Hero()
 
                 <a href={DOCS_ROADMAP_URL}
                     className="block max-w-2xl rounded-2xl border border-purple-200 bg-purple-50 p-5 mb-8 hover:bg-purple-100 transition-colors">
-                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Next milestone · 0.2 in development</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Android SDK &amp; reference app · 0.2 preview</span>
                     <span className="block mt-2 text-xl font-black text-gray-800">Scan. Match. Approve.</span>
                     <span className="block mt-2 text-sm font-semibold text-gray-600">
-                        Our next goal: scan a browser QR code, verify the number, and approve sign-in from your trusted Android phone.
-                        The server foundation exists; the complete mobile experience is planned.
+                        Scan a browser QR code, compare the number, and approve sign-in from your enrolled Android phone.
+                        The SDK and reference app are available in the repository. Release certification is still in progress.
                     </span>
-                    <span className="block mt-3 text-sm font-bold text-purple-700">Read the 0.2 goals →</span>
+                    <span className="block mt-3 text-sm font-bold text-purple-700">See preview progress and release criteria →</span>
                 </a>
 
                 {/* Docker snippet */}

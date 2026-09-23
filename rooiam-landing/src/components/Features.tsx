@@ -1,5 +1,12 @@
 const features = [
     {
+        emoji: '📱',
+        title: 'Android Phone Sign-In · Preview',
+        desc: 'An Android SDK and reference app for enrollment, QR scanning and explicit approval. Workspaces can enable, disable and reorder phone sign-in in hosted and embedded widgets. Release certification is pending.',
+        color: '#D5B7FF',
+        border: '#B07FFF',
+    },
+    {
         emoji: '✉️',
         title: 'Magic Link Login',
         desc: 'Passwordless email sign-in with server-side rate limiting, secure token verification, and HTML email delivery.',
