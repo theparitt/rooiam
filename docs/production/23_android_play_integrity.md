@@ -2,7 +2,7 @@
 
 Use this guide for an application consuming the Rooiam Android SDK. The application owner supplies its Play Console app, Cloud project, signing and distribution. The SDK does not provide a shared Rooiam Play project for other developers' apps.
 
-The reference app's live vendor verification is still pending. Building or sideloading its debug APK does not establish Play Integrity or Play Protect acceptance.
+The reference app's Play-distributed alpha.5 build passed a real Play Integrity verification and QR approval on a Redmi Note 9 in an isolated strict-policy environment on 2026-09-23. This is evidence for that package, device and test track; it does not certify other apps or Android devices. Play Protect-enabled update acceptance remains a separate distribution check. Building or sideloading a debug APK does not establish either result.
 
 ## Prepare the application
 
