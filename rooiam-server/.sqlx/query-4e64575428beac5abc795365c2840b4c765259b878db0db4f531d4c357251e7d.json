@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT o.id, o.slug, o.name, c.app_name, c.client_id\n        FROM organizations o\n        JOIN oauth_clients c ON c.org_id = o.id\n        WHERE o.slug = ANY($1)\n          AND c.app_type = 'spa'\n          AND c.org_id IS NOT NULL\n          AND c.app_name != 'Rooiam Admin Console'\n        ORDER BY o.name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "app_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "client_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4e64575428beac5abc795365c2840b4c765259b878db0db4f531d4c357251e7d"
+}

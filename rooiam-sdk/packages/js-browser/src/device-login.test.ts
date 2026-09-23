@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest'
 import { RooiamBrowser, RooiamError } from './index.js'
 
 describe('device login browser binding', () => {
+  it('binds the native browser fetch receiver', async () => {
+    const nativeLike = function (this: unknown) {
+      if (this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(new Response(JSON.stringify({ status: 'pending' })))
+    }
+    vi.stubGlobal('fetch', nativeLike)
+    try {
+      const sdk = new RooiamBrowser({ apiBase: 'https://auth.example/v1' })
+      await expect(sdk.deviceLogin.status({ public_id: 'id', browser_nonce: 'nonce' })).resolves.toEqual({ status: 'pending' })
+    } finally { vi.unstubAllGlobals() }
+  })
   it('uses only the initiating nonce and public ID and supports cancellation of polling', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'pending' })))
     const sdk = new RooiamBrowser({ apiBase: 'https://auth.example/v1', fetch })

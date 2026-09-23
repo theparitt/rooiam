@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT EXISTS (\n                SELECT 1 FROM organization_members om\n                JOIN member_roles mr ON mr.member_id = om.id\n                JOIN roles r ON r.id = mr.role_id\n                WHERE om.organization_id = $1\n                  AND om.user_id = $2\n                  AND om.status = 'active'\n                  AND r.code IN ('owner', 'admin')\n            ) AS \"exists!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8cfb7deef7412ba089949d27f7d76edd56adfdc8e934775a5d0c2c12222c6c03"
+}

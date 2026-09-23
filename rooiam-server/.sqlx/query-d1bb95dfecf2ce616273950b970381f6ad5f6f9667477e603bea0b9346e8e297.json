@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE organizations SET\n            max_session_age_hours          = COALESCE($2, max_session_age_hours),\n            magic_link_expiry_minutes      = COALESCE($3, magic_link_expiry_minutes),\n            oidc_access_token_ttl_minutes  = COALESCE($4, oidc_access_token_ttl_minutes),\n            refresh_token_ttl_days         = COALESCE($5, refresh_token_ttl_days),\n            idle_timeout_minutes           = COALESCE($6, idle_timeout_minutes)\n           WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d1bb95dfecf2ce616273950b970381f6ad5f6f9667477e603bea0b9346e8e297"
+}

@@ -34,6 +34,10 @@ The live runner is hard-bound to the above isolated ports/database. It first ver
 
 For browser/phone testing, run `VITE_API_URL=http://127.0.0.1:15470/v1 npm run dev --prefix rooiam-app -- --host 127.0.0.1 --port 15472 --strictPort` and follow [Android instructions](../rooiam-android/README.md). Existing email/provider login and phone networking must be configured; the API containers alone do not supply those prerequisites.
 
+For automated Chromium coverage after the HTTP runner, install Playwright in a separate tools directory (`npm install --prefix /tmp/rooiam-browser-tools playwright`), install its Chromium browser, then run `PLAYWRIGHT_MODULE=/tmp/rooiam-browser-tools/node_modules/playwright/index.mjs node test/device-login-browser.mjs`. `PLAYWRIGHT_EXECUTABLE` may select an existing Chromium binary. This verifies QR/cancel/deny/approve and the resulting browser identity; it does not simulate vendor attestation or replace phone UX testing.
+
+SQLx offline query metadata is committed under `rooiam-server/.sqlx` so fresh builds do not depend on a developer's ignored cache. When compile-time SQL changes, regenerate it against a disposable migrated database using SQLx CLI 0.8: `DATABASE_URL=... SQLX_OFFLINE=false cargo sqlx prepare -- --lib --tests` in `rooiam-server`.
+
 ## Upgrade and operations
 
 For local production-mode throttling checks, copy the example environment to a private temporary file, change mode to `production`, API/server port to 15473 and Redis URL to `redis://127.0.0.1:15479/2`, and supply a random `ROOIAM_SETUP_TOKEN`. Keep the disposable database. Run a second server with that file, then `node test/device-login-limits.mjs`. This verifies test-login absence, ordinary identity routing, start 10/min and status 120/min limits. It is a focused limit test, not a comprehensive abuse certification.

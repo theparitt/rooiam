@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT oidc_access_token_ttl_minutes, refresh_token_ttl_days FROM organizations WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "oidc_access_token_ttl_minutes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "refresh_token_ttl_days",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "f899483e9e36fe15e8a74d2efb55ab48c0c66b76722ccaead477a646cfb6252e"
+}

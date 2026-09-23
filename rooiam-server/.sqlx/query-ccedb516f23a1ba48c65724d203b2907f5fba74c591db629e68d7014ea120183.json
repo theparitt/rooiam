@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, level::TEXT AS \"level!\", organization_id,\n               allow_magic_link, allow_google, allow_microsoft, allow_passkey,\n               require_mfa, ip_allowlist, ip_blocklist,\n               allowed_email_domains, blocked_email_domains\n        FROM operator_policies\n        WHERE level::TEXT = $1\n          AND organization_id IS NOT DISTINCT FROM $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "level!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "allow_magic_link",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "allow_google",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "allow_microsoft",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "allow_passkey",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "require_mfa",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "ip_allowlist",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "ip_blocklist",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "allowed_email_domains",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "blocked_email_domains",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ccedb516f23a1ba48c65724d203b2907f5fba74c591db629e68d7014ea120183"
+}

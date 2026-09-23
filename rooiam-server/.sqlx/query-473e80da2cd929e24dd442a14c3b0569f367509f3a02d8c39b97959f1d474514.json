@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT google_client_id, google_client_secret,\n               microsoft_client_id, microsoft_client_secret, microsoft_tenant_id,\n               smtp_host, smtp_port, smtp_from, smtp_security\n        FROM tenant_auth_config WHERE org_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "google_client_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "google_client_secret",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "microsoft_client_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "microsoft_client_secret",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "microsoft_tenant_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "smtp_host",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "smtp_port",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "smtp_from",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "smtp_security",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "473e80da2cd929e24dd442a14c3b0569f367509f3a02d8c39b97959f1d474514"
+}

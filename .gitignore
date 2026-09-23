@@ -46,7 +46,6 @@ Desktop.ini
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 logs/
-/rooiam-server/.sqlx
 /rooiam-book/.next
 /rooiam-book/.next
 /rooiam-book/.next

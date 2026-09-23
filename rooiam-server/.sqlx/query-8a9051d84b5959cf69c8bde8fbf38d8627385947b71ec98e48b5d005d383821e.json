@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT max_session_age_hours, magic_link_expiry_minutes,\n                  oidc_access_token_ttl_minutes, refresh_token_ttl_days, idle_timeout_minutes\n           FROM organizations WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "max_session_age_hours",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "magic_link_expiry_minutes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "oidc_access_token_ttl_minutes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "refresh_token_ttl_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "idle_timeout_minutes",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "8a9051d84b5959cf69c8bde8fbf38d8627385947b71ec98e48b5d005d383821e"
+}

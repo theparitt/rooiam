@@ -150,7 +150,7 @@ export class RooiamBrowser {
     if (!opts.apiBase) throw new Error('RooiamBrowser: apiBase is required (include /v1)')
     this.apiBase = opts.apiBase.replace(/\/+$/, '')
     this.origin = new URL(this.apiBase).origin
-    this.fetchImpl = opts.fetch ?? globalThis.fetch
+    this.fetchImpl = opts.fetch ?? globalThis.fetch?.bind(globalThis)
     if (!this.fetchImpl) throw new Error('RooiamBrowser: no fetch available; pass opts.fetch')
   }
 
