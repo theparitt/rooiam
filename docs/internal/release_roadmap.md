@@ -9,7 +9,7 @@ Updated: 2026-09-23. This is the current release sequence, superseding the older
 | Version | Goal | Status |
 |---|---|---|
 | 0.1 | Passwordless identity, workspaces, hosted login and OIDC foundation | Current package version; checkout also includes OpenAPI, TypeScript SDKs and device-login server code |
-| 0.2 | Trusted Device & QR Authentication — Scan. Match. Approve. | Planned: prove one complete Android-to-browser journey with security and integration evidence |
+| 0.2 | Trusted Device & QR Authentication — Scan. Match. Approve. | Active: server foundation exists; contract review is the current gate; Android/browser product flow is not implemented |
 | 0.3 | Tenant/operator polish and production confidence | Follow-up direction; scope informed by 0.2 adoption |
 | 1.0 | Stable, credible self-hosted identity for small and mid-size SaaS teams | Requires repeatable installs, upgrades, integrations and operational evidence |
 
@@ -26,6 +26,15 @@ Build sequence:
 5. Collect security, live-server, real-device and fresh-clone release evidence.
 
 OpenAPI and SDK foundations already exist. Extend and verify them rather than treating them as unstarted work. Preserve working passwordless, MFA and OIDC flows. Security and audit tests run throughout delivery.
+
+### Current progress
+
+- **Complete foundation:** device registration/revocation routes, signed approval, number matching, browser-bound status/completion, conditional database transitions, tenant enablement, MFA-aware completion, audit events, endpoint rate limits, attestation verifier paths and OpenAPI annotations.
+- **Verified locally on 2026-09-23:** 53 device-login tests passed; TypeScript SDK unit suites passed (browser 44 with 7 live tests skipped, server 26 with 5 live tests skipped); documentation links passed.
+- **Incomplete:** live PostgreSQL/race/failure evidence, production-mode abuse checks, refreshed SDK OpenAPI snapshot, device-specific SDK helpers, fake-phone harness, hosted-login QR UI, Android client, reference demo and real-device/fresh-clone certification.
+- **Known contract risk:** `/complete` marks an approved intent consumed before session/MFA response construction. Failure recovery and exactly-once session behavior need explicit tests and, if necessary, a transactional redesign.
+
+The canonical progress report is [Current Status — 2026-09-23](./45_v0.2_current_status_2026-09-23.md). Update it when a gate changes; do not infer release readiness from the presence of server routes.
 
 ## Later work and scope limits
 

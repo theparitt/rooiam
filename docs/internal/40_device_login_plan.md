@@ -2,8 +2,8 @@
 
 > Release sequencing update (2026-09-23): the [0.2 implementation plan](./43_v0.2_plan_brief.md) and [release roadmap](./release_roadmap.md) supersede older version assignments in this document. Existing protocol behavior remains governed by the mobile contract and server code.
 
-Status: **SERVER IMPLEMENTED / MOBILE HARDENING ACTIVE**.
-Updated: 2026-06-16.
+Status: **SERVER FOUNDATION IMPLEMENTED / PRODUCT FLOW NOT YET IMPLEMENTED**.
+Updated: 2026-09-23.
 
 ## Goal
 
@@ -53,11 +53,14 @@ Production-grade server hardening now enforced:
 - the server verifies that signature against the registered device key before approval
 - legacy trusted devices without a stored key must be re-registered before they can approve QR login
 
-Not implemented yet:
+Not implemented or not release-verified yet:
 
 - real push delivery through APNs / FCM
-- full platform attestation verification
+- real Android and iOS client enrollment against the vendor attestation paths
+- live production evidence for Google Play Integrity and Apple App Attest verification
 - biometric proof from the mobile device before signing
+- bundled Android app, hosted-login QR UI and fake-phone harness
+- database race/failure certification and real-device end-to-end evidence
 
 Current attestation enforcement boundary:
 

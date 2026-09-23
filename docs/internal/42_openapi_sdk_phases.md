@@ -2,7 +2,7 @@
 
 > Release sequencing update (2026-09-23): the [0.2 implementation plan](./43_v0.2_plan_brief.md) and [release roadmap](./release_roadmap.md) supersede older version assignments in this document. Existing protocol behavior remains governed by the mobile contract and server code.
 
-Status: **In progress — Phases A–D done + 3 D-backfills; browser + OIDC surface 100% covered (2026-06-02). Spec at 76 ops. Next: Phase E (refactor consumers).**
+Status: **Phases A–D and browser/OIDC backfills implemented. The 2026-09-23 audit found contract drift: server-generated OpenAPI has 88 operations and 11 device-login paths, while the committed SDK snapshot remains at 76 operations with zero device-login paths. Refreshing and guarding the snapshot is the next 0.2 task before consumer refactors.**
 
 Goal: a typed, language-agnostic SDK layer so downstream apps integrate with
 Rooiam through generated clients, not hand-rolled `fetch`. The server's OpenAPI
@@ -261,6 +261,8 @@ which belong to a future admin-SDK effort, not the browser/server SDKs.)
 ## Phase E — Refactor consumers onto the proven SDK (one at a time)
 
 Only after C and D pass their stability bars.
+
+> 0.2 sequencing note: first regenerate `rooiam-sdk/spec/openapi.json` from the current server, regenerate both package schemas, add a drift check, and implement/test the frozen device-login client surface. The historical Phase E consumer refactor follows that contract work.
 
 - [ ] candycloud-server / candycloud-web (first — already hand-roll it)
 - [ ] rooiam-admin (replace hand-rolled `api.ts`)

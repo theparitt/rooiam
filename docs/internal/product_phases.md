@@ -203,7 +203,7 @@ Exit criteria:
 
 ## Phase 7: First External Integration Win
 
-Status: In progress (OpenAPI + SDK foundation started 2026-06-02)
+Status: In progress (OpenAPI + TypeScript SDK foundation implemented; device-login snapshot integration and consumer refactors remain)
 
 The technical foundation for fast integration is the **OpenAPI + SDK** track —
 a `utoipa`-generated spec the server emits at `/openapi.json`, plus typed TS
@@ -212,9 +212,12 @@ execution plan and current status: [42_openapi_sdk_phases.md](./42_openapi_sdk_p
 Design rationale: [41_sdk_plan.md](./41_sdk_plan.md).
 
 - [x] OpenAPI foundation on the server (`utoipa`, `/openapi.json`, Swagger UI) — Phase A done
-- [ ] annotate the `/orgs/integrations/*` surface — Phase B
-- [ ] `@rooiam/sdk-server` (typed, generated, tested to 100%) — Phase C
-- [ ] `@rooiam/sdk-browser` (widget + OIDC) — Phase D
+- [x] annotate the `/orgs/integrations/*` surface — Phase B
+- [x] `@rooiam/sdk-server` typed/generated foundation — Phase C
+- [x] `@rooiam/sdk-browser` widget + OIDC foundation — Phase D
+- [ ] refresh the committed OpenAPI snapshot from 76 to the server's current 88 operations, including 11 device-login paths
+- [ ] add an automated server-generated-spec versus committed-snapshot drift check
+- [ ] add device-login helpers/tests after the 0.2 contract is frozen
 - [ ] refactor candycloud / rooiam-admin / rooiam-app onto the proven SDK — Phase E
 - [ ] use `rooiam-demo` as the smallest public reference app for how Rooiam login works in a real product
 - [ ] tighten one best-practice hosted-login integration path
