@@ -1,4 +1,4 @@
-package com.rooiam.mobile;
+package com.rooiam.sdk;
 
 import android.content.Context;
 import androidx.test.platform.app.InstrumentationRegistry;

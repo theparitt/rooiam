@@ -66,4 +66,6 @@ Reverse proxies and telemetry must omit status query strings, cookies, request b
 
 ## Remaining release evidence
 
+Android alpha.3 separates `:sdk` and the reference `:app`. Use the [SDK integration guide](../rooiam-android/sdk/README.md) and `:sdk:testDebugUnitTest`, `:sdk:lintDebug`, `:sdk:assembleDebugAndroidTest` for library checks. Earlier `:app:` test commands in historical evidence predate extraction. Treat reference APK Play Protect/distribution as app-specific evidence; SDK release still needs an independent consuming-project walkthrough and verification of its claimed security behavior. Repeat the real-phone flow after the split rather than carrying alpha.2 acceptance forward automatically.
+
 Record commit, OS/device model, Android version, app signing/distribution, attestation configuration and every pass/fail/skip. Run real-phone enroll/approve/deny/expire/revoke, offline/reload, MFA, two identities/workspaces/clients, restart/disconnect recovery, production limits, secret-log inspection and a fresh-clone walkthrough. The stable gate additionally requires the documented 1,000-flow isolation run and parser fuzz evidence. Do not mark these passed from unit tests or an APK build.

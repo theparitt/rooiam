@@ -1,6 +1,6 @@
-package com.rooiam.mobile;
+package com.rooiam.sdk;
 
-import android.webkit.CookieManager;
+
 import org.json.JSONObject;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -8,9 +8,10 @@ import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
-public final class Api {
+final class Api {
     private final String origin;
-    public Api(String origin) { this.origin = Protocol.origin(origin, BuildConfig.DEBUG); }
+    private final RooiamClient.SessionCookies cookies;
+    Api(String origin, boolean local, RooiamClient.SessionCookies cookies) { this.origin = Protocol.origin(origin, local); this.cookies = cookies; }
     public JSONObject request(String path, JSONObject body) throws Exception { return request(path, body == null ? "GET" : "POST", body); }
     public JSONObject request(String path, String method, JSONObject body) throws Exception {
         if (!path.startsWith("/v1/") || path.contains("..") || path.contains("\\")) throw new IllegalArgumentException("Invalid API path.");
@@ -18,7 +19,7 @@ public final class Api {
         try {
             connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(20000);
             connection.setRequestMethod(method); connection.setRequestProperty("Accept", "application/json");
-            String cookie = CookieManager.getInstance().getCookie(origin);
+            String cookie = cookies.getCookie(origin);
             if (cookie != null) connection.setRequestProperty("Cookie", cookie);
             if (body != null) {
                 connection.setDoOutput(true); connection.setRequestProperty("Content-Type", "application/json");
@@ -26,6 +27,7 @@ public final class Api {
             }
             int status = connection.getResponseCode();
             if (status >= 300 && status < 400) throw new IllegalStateException("Server redirect refused. Check your server origin.");
+            if (status >= 400) throw new RooiamApiException(status);
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             String text = "{}";
             if (stream != null) try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -34,10 +36,6 @@ public final class Api {
                 text = out.toString("UTF-8");
             }
             JSONObject result = text.startsWith("[") ? new JSONObject().put("items", new org.json.JSONArray(text)) : new JSONObject(text);
-            if (status >= 400) {
-                JSONObject error = result.optJSONObject("error");
-                throw new IllegalStateException(error != null ? error.optString("message", "Request failed") : "Request failed (" + status + "). Sign in again if your session expired.");
-            }
             return result;
         } finally { connection.disconnect(); }
     }

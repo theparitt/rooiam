@@ -1,4 +1,4 @@
-package com.rooiam.mobile;
+package com.rooiam.sdk;
 
 import java.net.URI;
 import java.net.URLDecoder;

@@ -1,0 +1,29 @@
+plugins { id 'com.android.library'; id 'maven-publish' }
+android {
+    namespace 'com.rooiam.sdk'
+    compileSdk 34
+    defaultConfig { minSdk 26; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    publishing { singleVariant('release') { withSourcesJar() } }
+}
+dependencies {
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+}
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = 'com.rooiam'
+                artifactId = 'android-sdk'
+                version = '0.2.0-alpha.3'
+            }
+        }
+        repositories { maven { name = 'localPreview'; url = layout.buildDirectory.dir('repository') } }
+    }
+}

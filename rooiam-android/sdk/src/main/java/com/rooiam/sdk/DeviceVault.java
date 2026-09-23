@@ -1,4 +1,4 @@
-package com.rooiam.mobile;
+package com.rooiam.sdk;
 
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
@@ -17,10 +17,10 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
 /** Ed25519 seed and device token are encrypted with a non-exportable Android Keystore AES key.
  * Signing takes place in app memory; this is NOT a claim of hardware-backed Ed25519 signing.
  */
-public final class DeviceVault {
+final class DeviceVault {
     private static final String ALIAS = "rooiam.device.v1";
     private final Context context;
-    public DeviceVault(Context context) { this.context = context; }
+    public DeviceVault(Context context) { this.context = context.getApplicationContext(); }
     public static String encode(byte[] b) { return Base64.encodeToString(b, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING); }
     public static byte[] decode(String s) { return Base64.decode(s, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING); }
     private SecretKey wrappingKey() throws Exception {

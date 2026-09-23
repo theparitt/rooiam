@@ -1,4 +1,8 @@
-# Rooiam Android preview
+# Rooiam Android SDK and reference app
+
+The Gradle build contains `:sdk`, a reusable Android library, and `:app`, the reference consumer. Start with the [SDK integration guide](./sdk/README.md) for dependency setup, API usage, session/attestation adapters and host responsibilities. Alpha.3 separates the library from UI; the earlier alpha.2 physical-camera evidence does not automatically certify this refactor.
+
+The SDK owns origin/QR validation, enrollment, protected credentials, request review, signing and revocation. The reference app owns its WebView login, camera permission/scanner, review dialog and lifecycle restoration. Play Integrity is supplied by the host through an adapter; the SDK has no camera or Google Play dependency.
 
 Native enrollment, QR scan/paste, explicit approve/deny and revocation for the existing device-login v1 API. This is an implementation preview, not a certified release. Android 8/API 26 or later is required. QR decoding runs locally inside Rooiam using the Camera permission; only Play Integrity needs Google Play services.
 
@@ -7,7 +11,7 @@ Native enrollment, QR scan/paste, explicit approve/deny and revocation for the e
 Install JDK 17 and Android SDK platform/build-tools 34, set `ANDROID_HOME`, then:
 
 ```sh
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+./gradlew :sdk:assembleRelease :sdk:testDebugUnitTest :sdk:lintDebug :app:assembleDebug :app:lintDebug
 adb devices -l
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -34,6 +38,6 @@ Release enrollment requires a Play Integrity project number. The backend must be
 
 See the [protocol](../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../test/device-login.md). Vendor attestation has not been certified with this app yet.
 
-On a dedicated test installation, `./gradlew :app:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection. **It clears the app's test vault.** The instrumented test APK is also buildable with `:app:assembleDebugAndroidTest`; building it does not execute it on hardware.
+On a dedicated test installation, `./gradlew :sdk:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection in the SDK test application's sandbox. **It clears that test vault.** The instrumented test APK is also buildable with `:sdk:assembleDebugAndroidTest`; building it does not execute it on hardware.
 
 Platform references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [standard Play Integrity requests](https://developer.android.com/google/play/integrity/standard), [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), [Android activity lifecycle](https://developer.android.com/guide/components/activities/activity-lifecycle).

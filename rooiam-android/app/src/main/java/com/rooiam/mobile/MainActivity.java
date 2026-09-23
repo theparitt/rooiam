@@ -16,16 +16,13 @@ import com.google.zxing.BarcodeFormat;
 import com.google.android.play.core.integrity.IntegrityManagerFactory;
 import com.google.android.play.core.integrity.StandardIntegrityManager;
 import com.google.android.gms.tasks.Tasks;
-import org.json.JSONObject;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.UUID;
+import com.rooiam.sdk.RooiamClient;
+import com.rooiam.sdk.Protocol;
 
 public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private DeviceVault vault;
     private EditText server, project;
     private TextView status;
     private LinearLayout layout;
@@ -37,7 +34,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        vault = new DeviceVault(this); home();
+        home();
         pendingQr = getPreferences(0).getString("pending_qr", null);
         if (pendingQr != null) {
             String recovered = pendingQr;
@@ -49,14 +46,14 @@ public final class MainActivity extends Activity {
     private void home() {
         layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32,48,32,32);
         ScrollView scroll = new ScrollView(this); scroll.addView(layout); setContentView(scroll);
-        TextView title = new TextView(this); title.setText("Rooiam\nScan. Match. Approve."); title.setTextSize(26); layout.addView(title);
+        TextView title = new TextView(this); title.setText("Rooiam Reference\nScan. Match. Approve."); title.setTextSize(26); layout.addView(title);
         server = new EditText(this); server.setHint("https://your-rooiam-api.example"); server.setSingleLine(true);
         server.setText(getPreferences(0).getString("server", "")); layout.addView(server);
         project = new EditText(this); project.setHint("Google Cloud project number (operator provides)"); project.setInputType(2);
         project.setText(getPreferences(0).getString("project", "")); layout.addView(project);
         button("1. Sign in to Rooiam", () -> work(() -> {
             String origin = serverOrigin();
-            String frontend = Protocol.origin(new Api(origin).request("/v1/setup/public-urls", null).getString("frontend_url"), BuildConfig.DEBUG);
+            String frontend = client().hostedLoginOrigin();
             runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Sign in to your server")
                 .setMessage("API: " + origin + "\nLogin: " + frontend)
                 .setPositiveButton("Continue", (d,w) -> login(frontend)).setNegativeButton("Cancel", null).show());
@@ -71,9 +68,7 @@ public final class MainActivity extends Activity {
         button("Revoke this phone", () -> new AlertDialog.Builder(this).setTitle("Revoke this phone?")
             .setMessage("You will need to enroll again before approving requests.")
             .setPositiveButton("Revoke", (d,w) -> work(() -> {
-                JSONObject device = enrolled();
-                new Api(device.getString("origin")).request("/v1/identity/me/devices/" + device.getString("id"), "DELETE", null);
-                vault.clear(); return "Phone revoked. You can enroll it again.";
+                client().revoke(); return "Phone revoked. You can enroll it again.";
             })).setNegativeButton("Cancel", null).show());
         status = new TextView(this); status.setText("Enroll your phone with the server you trust. Only approve sign-ins you started."); status.setPadding(0,24,0,0); layout.addView(status);
     }
@@ -167,44 +162,22 @@ public final class MainActivity extends Activity {
         });
         setContentView(panel); web.loadUrl(frontend + "/");
     }
-    private String enroll() throws Exception {
-        String origin = serverOrigin(); Api api = new Api(origin);
-        String user = api.request("/v1/identity/me", null).getString("id");
-        JSONObject existing = vault.load();
-        if (existing != null && existing.has("id")) throw new IllegalStateException("This phone is already enrolled. Revoke it before switching accounts or servers.");
-        JSONObject device = existing;
-        if (device == null) { device = vault.generate(origin, user); vault.save(device); }
-        if (!device.getString("origin").equals(origin) || !device.getString("user_id").equals(user)) throw new IllegalStateException("Enrollment belongs to another account or server.");
-        // Recover enrollment when the server committed but the previous response was lost.
-        org.json.JSONArray devices = api.request("/v1/identity/me/devices", null).getJSONArray("items");
-        for (int i = 0; i < devices.length(); i++) {
-            JSONObject registered = devices.getJSONObject(i);
-            if (device.getString("device_public_key").equals(registered.optString("device_public_key")) && registered.isNull("revoked_at")) {
-                device.put("id", registered.getString("id")); vault.save(device); return "Recovered existing phone enrollment.";
-            }
-        }
-        JSONObject body = new JSONObject().put("device_label", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL)
-            .put("platform", "android").put("device_token", device.getString("device_token")).put("device_public_key", device.getString("device_public_key"));
-        if (!configuredProject.trim().isEmpty()) {
-            String keyId = device.optString("key_id", UUID.randomUUID().toString()); device.put("key_id", keyId); vault.save(device);
-            String preimage = "rooiam-google-play-attestation/v1\n" + device.getString("device_public_key") + "\n" + getPackageName() + "\n" + keyId + "\nproduction";
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(preimage.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hash = new StringBuilder(); for (byte b : digest) hash.append(String.format("%02x", b & 255));
-            StandardIntegrityManager manager = IntegrityManagerFactory.createStandard(this);
-            StandardIntegrityManager.StandardIntegrityTokenProvider provider = Tasks.await(manager.prepareIntegrityToken(StandardIntegrityManager.PrepareIntegrityTokenRequest.builder().setCloudProjectNumber(Long.parseLong(configuredProject)).build()), 60, java.util.concurrent.TimeUnit.SECONDS);
-            String token = Tasks.await(provider.request(StandardIntegrityManager.StandardIntegrityTokenRequest.builder().setRequestHash(hash.toString()).build()), 60, java.util.concurrent.TimeUnit.SECONDS).token();
-            body.put("attestation", new JSONObject().put("format", "android-play-integrity").put("key_id", keyId).put("app_id", getPackageName()).put("environment", "production").put("statement", token));
-        } else if (!BuildConfig.DEBUG) { throw new IllegalStateException("Your operator must provide a Play Integrity project number for release enrollment."); }
-        JSONObject result = api.request("/v1/identity/me/devices", body);
-        device.put("id", result.getString("id")); vault.save(device);
-        return "Phone enrolled. Attestation: " + result.getJSONObject("attestation").getString("status") + ". Approval remains subject to server policy.";
+    private RooiamClient client() {
+        return new RooiamClient(this, serverOrigin(), origin -> CookieManager.getInstance().getCookie(origin), BuildConfig.DEBUG);
     }
-    private JSONObject enrolled() throws Exception {
-        JSONObject device = vault.load(); if (device == null || !device.has("id")) throw new IllegalStateException("Enroll this phone first.");
-        if (!device.getString("origin").equals(serverOrigin())) throw new IllegalStateException("Use the server where this phone was enrolled.");
-        JSONObject user = new Api(device.getString("origin")).request("/v1/identity/me", null);
-        if (!device.getString("user_id").equals(user.getString("id"))) throw new IllegalStateException("Sign in as the account that enrolled this phone.");
-        return device;
+    private String enroll() throws Exception {
+        RooiamClient.AttestationProvider attestation = null;
+        if (!configuredProject.trim().isEmpty()) {
+            long projectNumber = Long.parseLong(configuredProject);
+            attestation = hash -> {
+                StandardIntegrityManager manager = IntegrityManagerFactory.createStandard(getApplicationContext());
+                StandardIntegrityManager.StandardIntegrityTokenProvider provider = Tasks.await(manager.prepareIntegrityToken(StandardIntegrityManager.PrepareIntegrityTokenRequest.builder().setCloudProjectNumber(projectNumber).build()), 60, java.util.concurrent.TimeUnit.SECONDS);
+                return Tasks.await(provider.request(StandardIntegrityManager.StandardIntegrityTokenRequest.builder().setRequestHash(hash).build()), 60, java.util.concurrent.TimeUnit.SECONDS).token();
+            };
+        }
+        RooiamClient.Enrollment result = client().enroll(android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL, attestation);
+        return result.recovered ? "Recovered existing phone enrollment." :
+            "Phone enrolled. Attestation: " + result.attestationStatus + ". Approval remains subject to server policy.";
     }
     private void preview(String qr) {
         if (busy) return;
@@ -215,31 +188,23 @@ public final class MainActivity extends Activity {
         } catch (Exception e) { clearPendingQr(); status.setText(e.getMessage()); return; }
         work(() -> {
             try {
-            if (qr == null) throw new IllegalArgumentException("Empty QR code.");
-            // Origin validation happens before even the identity request sends credentials.
-            String id = Protocol.parseQr(qr, serverOrigin(), BuildConfig.DEBUG);
-            JSONObject device = enrolled(); Api api = new Api(device.getString("origin"));
-            JSONObject request = api.request("/v1/identity/device-login/intents/" + id, null);
-            if (request.optInt("protocol_version", 0) != 1 || !request.getString("public_id").equals(id) || !request.getString("status").equals("pending")) throw new IllegalStateException("This request is unavailable or uses an unsupported protocol.");
-            if (java.time.Instant.parse(request.getString("expires_at")).isBefore(java.time.Instant.now())) throw new IllegalStateException("This request expired.");
+            RooiamClient sdk = client();
+            RooiamClient.Review request = sdk.preview(qr);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 new AlertDialog.Builder(this).setTitle("Approve this browser?")
-                .setMessage("Server: " + device.optString("origin") + "\nApplication: " + request.optString("redirect_uri", "Rooiam portal") + "\nWorkspace: " + request.optString("workspace_id", "Rooiam") + "\n\nRequest code: " + request.optString("display_code") + "\nMatching number: " + request.optInt("match_number") + "\n\nCompare the request code and number with the browser you started.")
-                .setPositiveButton("Codes match — approve", (d,w) -> { clearPendingQr(); decide(device, request, true); })
-                .setNegativeButton("Deny", (d,w) -> { clearPendingQr(); decide(device, request, false); })
+                .setMessage("Server: " + request.getOrigin() + "\nApplication: " + request.getApplication() + "\nWorkspace: " + request.getWorkspace() + "\n\nRequest code: " + request.getDisplayCode() + "\nMatching number: " + request.getMatchNumber() + "\n\nCompare the request code and number with the browser you started.")
+                .setPositiveButton("Codes match — approve", (d,w) -> { clearPendingQr(); decide(sdk, request, true); })
+                .setNegativeButton("Deny", (d,w) -> { clearPendingQr(); decide(sdk, request, false); })
                 .setNeutralButton("Close", (d,w) -> clearPendingQr()).setOnCancelListener(d -> clearPendingQr()).show();
             });
             return "Review the server, request code and number before approving.";
             } catch (Exception e) { clearPendingQr(); throw e; }
         });
     }
-    private void decide(JSONObject device, JSONObject request, boolean approve) {
+    private void decide(RooiamClient sdk, RooiamClient.Review request, boolean approve) {
         work(() -> {
-            if (java.time.Instant.parse(request.getString("expires_at")).isBefore(java.time.Instant.now())) throw new IllegalStateException("Request expired. Start again in the browser.");
-            JSONObject body = new JSONObject().put("public_id", request.getString("public_id")).put("device_token", device.getString("device_token"));
-            if (approve) body.put("selected_number", request.getInt("match_number")).put("approval_signature", vault.sign(device, request.getString("approval_payload")));
-            new Api(device.getString("origin")).request("/v1/identity/device-login/" + (approve ? "approve" : "reject"), body);
+            if (approve) sdk.approve(request, request.getMatchNumber()); else sdk.deny(request);
             return approve ? "Approved. Return to your browser to finish sign-in and any required MFA." : "Request denied.";
         });
     }
