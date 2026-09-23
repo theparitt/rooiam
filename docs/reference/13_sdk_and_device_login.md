@@ -50,7 +50,7 @@ The server has a trusted-device login protocol separate from WebAuthn. The mobil
 
 Implementation modules include Apple App Attest and Google Play Integrity verification, plus policy-controlled compatibility verification. Exact request bodies, signing payloads, and policy settings are in the [mobile contract](../internal/44_mobile_device_login_contract.md) and current handler/service code. The server stores push tokens but does not itself deliver APNs/FCM notifications.
 
-The development checkout includes `rooiam-examples/example-5-android-reference-app`, the hosted QR screen, and a real-signing Node harness in `rooiam-examples/device-login`. They are previews; real-phone/vendor and release certification are still pending.
+The development checkout includes `rooiam-examples/example-5-android-reference-app`, the hosted QR screen, and a real-signing Node harness in `rooiam-examples/device-login`. These are preview integrations. The assisted physical-phone happy path passes; remaining lifecycle, vendor-policy and independent release verification is in progress.
 
 For the downstream boundary after authentication, use [`example-4-reference-app`](../../rooiam-examples/example-4-reference-app/README.md). It demonstrates a confidential web client whose backend owns OAuth state, PKCE verifier, callback exchange, local subject mapping and an opaque application cookie. The browser never receives the client secret or Rooiam tokens. Phone approval changes the authentication method inside Rooiam; it does not change the relying party's OIDC callback/session contract.
 

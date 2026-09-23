@@ -1,6 +1,6 @@
 # Rooiam Product Phases
 
-This is the current product-facing roadmap for Rooiam. It is intentionally narrower than a generic IAM backlog.
+This is historical workstream planning, retained for context. Its numbered phases and checkboxes are not current release versions or acceptance evidence. Use the [release roadmap](./release_roadmap.md), [0.2 closeout](./48_v0.2_exit_checklist.md) and [0.3 plan](./47_v0.3_sensitive_action_approval.md) for current execution.
 
 Strategic lane:
 
@@ -14,8 +14,8 @@ Strategic lane:
 Release planning note:
 
 - the version roadmap lives in [release_roadmap.md](./release_roadmap.md)
-- `v1` is the active shipping scope now
-- `v2` and `v3` are intentionally deferred until after `v1`
+- historical `v1`/`v2`/`v3` labels below are workstream horizons, not shipped semantic versions
+- current delivery is the 0.2 preview with 0.3 planned next
 
 The direction is:
 

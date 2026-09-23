@@ -12,15 +12,14 @@ const done: Item[] = [
 ]
 
 const nextRelease: Item[] = [
-    { text: 'Bring Android phone sign-in beyond preview' },
-    { text: 'Make the mobile sign-in experience reliable across app restarts' },
-    { text: 'Help developers get from setup to their first phone sign-in' },
+    { text: 'Confirm sensitive workspace changes from your phone', note: 'starting with API-key creation' },
+    { text: 'Let each workspace choose when approval is required' },
 ]
 
 const planned: Item[] = [
-    { text: 'iOS support and push approvals', note: 'under consideration' },
-    { text: 'Workspace administration improvements guided by user feedback' },
-    { text: 'More integration options as developers need them' },
+    { text: 'Easier OIDC and SDK integration' },
+    { text: 'Phone approval on iOS' },
+    { text: 'Safer account recovery and device replacement' },
 ]
 
 const columns = [
@@ -35,7 +34,7 @@ const columns = [
     },
     {
         label: 'Up next',
-        version: '0.2 · in progress',
+        version: '0.3 · planned',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
@@ -66,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Our next focus is bringing phone approval to more sign-in journeys, while keeping developers and workspaces in control.
+                        Next: use your phone to confirm sensitive workspace changes, starting with API-key creation.
                     </p>
                 </div>
 

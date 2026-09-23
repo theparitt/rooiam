@@ -2,6 +2,12 @@
 
 This is an internal overview of the competitive strategy and product pipeline.
 
+## Current public-copy rule
+
+The landing page serves developers evaluating Rooiam for their users. Lead with the user outcome, explain how it fits their app/workspace and offer a relevant next step. Use a brief preview or planned label when needed. Keep hardware names, alpha-build history, test counts, release-gate lists, protocol implementation reports and internal task IDs out of landing copy. Link to docs for detail instead of reproducing a progress report.
+
+Public roadmap copy should state the next product benefit in one or two lines. The [release roadmap](./release_roadmap.md) and milestone documents are the source for engineering scope and evidence. Earlier strategy phases below are historical, not a release schedule.
+
 ### Target Audience
 
 Developers, indie-hackers, and mid-sized startups struggling to integrate basic multi-tenant login setups without getting squeezed by enterprise providers. The primary geographic launch focus should consider the high-growth Asian developer market.

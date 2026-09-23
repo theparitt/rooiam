@@ -2,6 +2,8 @@
 
 This roadmap outlines the complete architecture and step-by-step feature development for the core server, the control plane admin console, and the hosted user gateway.
 
+Historical architecture checklist: its completion markers are not current release status. Use the [release roadmap](./release_roadmap.md), [0.2 evidence](./45_v0.2_current_status_2026-09-23.md) and [0.3 implementation plan](./47_v0.3_sensitive_action_approval.md) before scheduling work.
+
 ---
 
 ## 🛠️ PART 1: `rooiam-server` (Rust Modular Monolith)

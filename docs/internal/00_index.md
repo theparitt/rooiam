@@ -4,6 +4,15 @@ Dated status reports, roadmaps, and legacy guides in this directory describe the
 
 This section is for engineering notes that are useful inside the repo but are not part of the normal product setup flow.
 
+## Current planning entry points
+
+- [Release roadmap: 0.2–1.0](./release_roadmap.md) — canonical version scope and proposal adaptations.
+- [0.2 remaining acceptance](./48_v0.2_exit_checklist.md) — exact completion status, ordered tasks and evidence requirements.
+- [0.2 evidence snapshot](./45_v0.2_current_status_2026-09-23.md) — recorded results and limitations.
+- [0.3 sensitive identity action approval](./47_v0.3_sensitive_action_approval.md) — planned first journey, protocol boundaries, dependencies, task IDs and acceptance matrix.
+
+For a new implementation session, start with these documents and product policy. Older numbered phases and dated strategy notes below do not override the current release sequence.
+
 Use these pages as internal reference, not as the main operator or tenant docs:
 
 - [Developer Manual](./DEVELOPERS.md)
@@ -44,7 +53,7 @@ Generated from a full read of the Rust source — accurate as of the current cod
 - [Rooiam Server v0.1 Quality Checklist — 2026-04-03](./38_rooiam_server_v0_1_quality_checklist_2026-04-03.md) — working backend cleanup list for bootstrap, handlers, narrow APIs, and test coverage
 - [Device Login Plan](./40_device_login_plan.md) — cross-device login design: phone-as-authenticator (QR scan / number match / 6-digit code), server endpoints, security model, build order
 - [SDK Plan](./41_sdk_plan.md) — two TS packages (browser + server), monorepo by language, OpenAPI generated from code (`utoipa`), build order
-- [OpenAPI + SDK Phases](./42_openapi_sdk_phases.md) — **execution plan + live status** — Phase A (OpenAPI foundation) done; B–F for integration annotation, TS SDKs, consumer refactor, multi-language
+- [OpenAPI + SDK Phases](./42_openapi_sdk_phases.md) — historical design and workstreams; current snapshot, helpers and drift-CI evidence are in the 0.2 status report
 - [Mobile Device Login Contract](./44_mobile_device_login_contract.md) — exact Android/iOS/fake-phone contract for trusted-device registration, QR preview, payload signing, and approval
 - [Current Status — 2026-09-23](./45_v0.2_current_status_2026-09-23.md) — **current 0.2 milestone truth**: audited completion evidence, known gaps, test results, and ordered next work
 - [Audit Log Scope Doctrine](./28_audit_log_scope_doctrine.md) — canonical rules for what Platform, Tenant, Workspace, App, and My audit logs include and exclude across `rooiam-admin` and `rooiam-app`

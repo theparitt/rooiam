@@ -1,50 +1,64 @@
 # Rooiam Release Roadmap
 
-Updated: 2026-09-23. This is the current release sequence, superseding the older SDK-only 0.2 and separate 0.3–0.8 device rollout.
+Updated: 2026-09-23. **Canonical version sequence and scope.** This supersedes earlier version assignments in the device-login design, SDK phases and product-phase history. Versions below describe intended outcomes, not shipped capabilities or delivery dates.
 
-**Rooiam is the self-hosted passwordless IAM for multi-tenant SaaS.**
+Rooiam remains the **self-hosted passwordless IAM for multi-tenant SaaS**. Phone approval extends identity and access controls; payment, deployment and business workflows belong to consuming applications.
 
-## Version positioning
+## Current decision
 
-| Version | Goal | Status |
+- **0.2 implementation:** Android SDK, Android reference app, browser QR, workspace method controls and application-owned callback/session are implemented. The assisted real-phone happy path passes.
+- **0.2 release:** still preview. Lifecycle, trust-policy, independent integration and remaining release evidence are not all accepted. Use the [0.2 closeout checklist](./48_v0.2_exit_checklist.md), backed by the [evidence snapshot](./45_v0.2_current_status_2026-09-23.md).
+- **0.3:** next planned milestone: phone confirmation for sensitive identity actions. First vertical slice: create a workspace API key. The [implementation plan](./47_v0.3_sensitive_action_approval.md) is the execution handoff; its implementation tasks remain open.
+- Planning 0.3 can proceed while 0.2 evidence is collected. It does not close 0.2 gates or justify rewriting the working login protocol.
+
+## Adaptation of the supplied proposal
+
+| Suggestion | Current Rooiam | Decision |
 |---|---|---|
-| 0.1 | Passwordless identity, workspaces, hosted login and OIDC foundation | Current package version; checkout also includes OpenAPI, TypeScript SDKs and device-login server code |
-| 0.2 | Trusted Device & QR Authentication — Scan. Match. Approve. | Active: server foundation exists; contract review is the current gate; Android/browser product flow is not implemented |
-| 0.3 | Tenant/operator polish and production confidence | Follow-up direction; scope informed by 0.2 adoption |
-| 1.0 | Stable, credible self-hosted identity for small and mid-size SaaS teams | Requires repeatable installs, upgrades, integrations and operational evidence |
+| Android sign-in is complete | Happy path and SDK/example builds pass; restart, vendor and independent acceptance remain | Separate implementation completion from release acceptance |
+| 0.3 authorizes any action, including payments and deployments | Product doctrine keeps business operations in consuming apps | Start with one Rooiam-owned identity operation; defer generic downstream grants |
+| Replace login with a generic authorization request | Device-login v1, browser nonce binding and downstream OIDC PKCE already work | Add a separate action-purpose protocol; preserve v1 signing bytes and routes |
+| 0.4 introduces OIDC, passkeys and token lifecycle | Discovery/JWKS, PKCE, revocation/introspection, refresh rotation and passkeys exist | Verify compatibility and improve adoption; do not reschedule existing features as new |
+| 0.6 introduces organizations, roles and policies | Workspaces, membership, roles, API keys and tenant policies exist | Improve existing delegation and approval policy UX |
+| Recovery waits until 0.7 | MFA recovery and session/device revocation exist; safe fallback is needed before action approval | Resolve baseline lost-phone/lockout behavior in 0.2/0.3; deeper recovery UX can follow |
+| Rust SDK, enterprise federation, Kubernetes and broad scale are required for 1.0 | No established consumer need for every proposed surface | Make these demand-driven, not mandatory release blockers |
+| Assign AAL levels from a list of factors | No assessed assurance certification is recorded | Specify policy requirements without claiming external assurance levels |
+| 100 successful logins establishes release readiness | Existing plan requires 1,000 flows plus adversarial/failure coverage | A 100-flow smoke check cannot replace the existing release gates |
 
-## 0.2 — Focused security and product milestone
+## Version sequence
 
-The [public roadmap](../roadmap.md) defines product scope and acceptance. The [implementation plan](./43_v0.2_plan_brief.md) defines code mapping, protocol decisions, phases and release evidence.
+0.2 is active; 0.3 is the scoped next milestone. **0.4–0.9 are provisional planning slots**, reviewed after 0.3 adoption. Optional tracks may move or be skipped; they are not all prerequisites for 1.0.
 
-Build sequence:
+| Version | Product thesis | Increment over today's system | Exit evidence / dependency |
+|---|---|---|---|
+| 0.2 | Phone sign-in | Finish acceptance of Android SDK/reference, hosted/embedded QR and app-owned session | Close the scoped [0.2 gates](./48_v0.2_exit_checklist.md); preserve current login/MFA/OIDC |
+| 0.3 | Confirm sensitive identity actions | Bound, single-use phone approval for workspace API-key creation when policy requires it | Real phone + portal journey, atomic execution, RBAC/policy rechecks, deny/replay/race/lockout tests; [detailed plan](./47_v0.3_sensitive_action_approval.md) |
+| 0.4 | Easier identity integration | Verify existing OIDC/passkeys/token lifecycle with independent consumers; tighten SDK compatibility | Supported-client matrix, code/refresh/key-rotation regressions and documented upgrade path; critical defects are fixed immediately |
+| 0.5 | Phone approval on more devices | iOS SDK + separate example using the same supported protocol; improve existing device management | Physical iOS enrollment/revoke/recovery and protocol parity; push review only with end-to-end delivery support |
+| 0.6 | Clearer workspace approval policies | Extend existing roles/delegation and explain which operations need confirmation | Tenant isolation, least privilege, policy-change and lockout tests; no general policy language or multi-party approvals without a real use case |
+| 0.7 | Safe recovery and device replacement | Improve lost-device/replacement UX on top of existing MFA/device/session controls | Documented threat model, enrollment/revocation races and no weaker-path bypass; baseline recovery remains required earlier |
+| 0.8 | Connect existing company identities | Evaluate generic upstream OIDC for an adopter; Google/Microsoft already exist | Real customer integration and identity-linking isolation; SAML/SCIM only with demand and explicit scope |
+| 0.9 | Predictable self-hosted operation | Consolidate supported upgrades, backup/restore, failure handling, observability and capacity evidence | Reproducible runbooks and measured capacity for a declared environment; no automatic HA/Kubernetes guarantee |
+| 1.0 | A compatibility promise | Commit to supported API/protocol/SDK versions, migrations, deprecation and security maintenance | All claimed surfaces pass their release matrix; supported upgrade/rollback boundaries and security response policy published |
 
-1. Reconcile and freeze the existing contract and security model.
-2. Verify device trust, tenant policy and single-use browser completion.
-3. Complete Android and hosted-login QR UX.
-4. Extend existing TypeScript SDKs, reference demo and self-host docs.
-5. Collect security, live-server, real-device and fresh-clone release evidence.
+Security, recovery safety, tenant isolation and operational reliability apply to every release. Later milestones deepen coverage; they do not defer critical fixes.
 
-OpenAPI and SDK foundations already exist. Extend and verify them rather than treating them as unstarted work. Preserve working passwordless, MFA and OIDC flows. Security and audit tests run throughout delivery.
+## Existing foundations to preserve
 
-### Current progress
+- `rooiam-server/src/modules/oidc`, `webauthn`, `mfa`, `session`, `oauth`: current authentication, federation and session lifecycle.
+- `modules/organization` and `modules/rbac`: workspace identity, roles, policy, apps and API keys.
+- `modules/device_login`: trusted devices, attestation, signed login approval and transactional completion.
+- `rooiam-sdk/packages/js-browser`, `packages/js-server`, `rooiam-sdk/android`: current SDK surfaces.
+- `rooiam-examples/example-4-reference-app` and `example-5-android-reference-app`: web relying party and Android host responsibilities.
 
-- **Complete foundation:** device registration/revocation routes, signed approval, number matching, browser-bound status/completion, conditional database transitions, tenant enablement, MFA-aware completion, audit events, endpoint rate limits, attestation verifier paths and OpenAPI annotations.
-- **Verified locally on 2026-09-23:** 53 device-login tests passed; TypeScript SDK unit suites passed (browser 44 with 7 live tests skipped, server 26 with 5 live tests skipped); documentation links passed.
-- **Incomplete:** live PostgreSQL/race/failure evidence, production-mode abuse checks, refreshed SDK OpenAPI snapshot, device-specific SDK helpers, fake-phone harness, hosted-login QR UI, Android client, reference demo and real-device/fresh-clone certification.
-- **Known contract risk:** `/complete` marks an approved intent consumed before session/MFA response construction. Failure recovery and exactly-once session behavior need explicit tests and, if necessary, a transactional redesign.
+## Planning and publication rules
 
-The canonical progress report is [Current Status — 2026-09-23](./45_v0.2_current_status_2026-09-23.md). Update it when a gate changes; do not infer release readiness from the presence of server routes.
+1. Use this file for version scope, the 0.2 snapshot for evidence and milestone checklists for outstanding tasks. Old numbered product phases are historical workstreams, not release numbers.
+2. Completed code requires appropriate tests. Hardware, independent adoption, vendor configuration and production-operation claims require evidence from those environments.
+3. Each milestone has one user outcome, a bounded first journey, exclusions, prerequisites and observable exit criteria. Record scope decisions before changing protocols or permissions.
+4. The landing page describes user value and the next product outcome in a few lines. Hardware names, test counts, internal phases, task IDs and certification reports stay in engineering docs. Use a short preview/planned label where needed.
+5. A roadmap edit does not publish packages, certify compatibility, promise dates or deploy authentication infrastructure.
 
-## Later work and scope limits
+## Start here next time
 
-Tenant controls, session/audit visibility, recovery clarity and operator workflows continue after 0.2. iOS, push approval, Rust SDK and broader identity-sensitive approvals are candidates, not version promises. Push-token storage is not push delivery.
-
-Defer SAML, SCIM, password-login expansion, multi-region, reseller topology, marketplace breadth and heavy enterprise packaging until real demand supports them. Keep application business data and payment workflows outside the identity platform.
-
-## Planning sources
-
-- [Product policy](./product_policy.md) — product doctrine.
-- [0.2 implementation plan](./43_v0.2_plan_brief.md) — current execution scope.
-- [Mobile contract](./44_mobile_device_login_contract.md) — current wire behavior, updated with each implementation change.
-- [Device-login design history](./40_device_login_plan.md) and [OpenAPI/SDK phases](./42_openapi_sdk_phases.md) — supporting context; historical version assignments do not override this roadmap.
+Read [product policy](./product_policy.md), [0.2 closeout](./48_v0.2_exit_checklist.md), then the [0.3 handoff](./47_v0.3_sensitive_action_approval.md). Verify the checkout and evidence before picking the first incomplete task. Do not assume capabilities in the supplied suggestion already exist.
