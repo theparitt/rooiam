@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import express from 'express'
+import { fileURLToPath } from 'node:url'
 import { escapeHtml, parseCookies } from '../shared/example-helpers.mjs'
 
 const TX_COOKIE = 'rooiam_reference_tx'
@@ -29,7 +30,7 @@ function cookie(name, value, { secure, maxAge, path = '/' }) {
 
 function page(title, body) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>
-  <style>body{font:16px/1.55 system-ui,sans-serif;background:#f6f2ff;color:#202033;margin:0}.shell{max-width:720px;margin:48px auto;padding:0 20px}.card{background:#fff;border:1px solid #e7def6;border-radius:20px;padding:28px;box-shadow:0 18px 45px #35206012}h1{margin-top:0}.button,button{display:inline-block;border:0;border-radius:12px;padding:12px 18px;background:#6d3bd1;color:#fff;font:700 15px system-ui;text-decoration:none;cursor:pointer}code{background:#f3effa;padding:2px 6px;border-radius:6px}iframe{width:100%;height:640px;border:0}.muted{color:#68647a}.error{color:#a21b36}</style></head><body><main class="shell"><section class="card">${body}</section></main></body></html>`
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg"><link rel="stylesheet" href="/assets/reference.css"></head><body><div class="shell"><header class="site-header"><a class="brand" href="/" aria-label="Rooiam home"><img src="/assets/logo.svg" alt="Rooiam" width="158" height="44"></a><span class="app-label">Reference app</span></header><main id="main" class="card">${body}</main><footer>Powered by Rooiam <span aria-hidden="true">·</span> Your identity, your workspace.</footer></div></body></html>`
 }
 
 export function createReferenceApp(rawConfig, hooks = {}) {
@@ -71,9 +72,10 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     res.set('Referrer-Policy', 'no-referrer')
     res.set('X-Content-Type-Options', 'nosniff')
     res.locals.scriptNonce = random(18)
-    res.set('Content-Security-Policy', `default-src 'self'; frame-src ${widget.origin}; script-src 'nonce-${res.locals.scriptNonce}'; style-src 'unsafe-inline'; form-action 'self' ${endSessionUrl.origin}; base-uri 'none'; frame-ancestors 'none'`)
+    res.set('Content-Security-Policy', `default-src 'self'; frame-src ${widget.origin}; script-src 'nonce-${res.locals.scriptNonce}'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self' ${endSessionUrl.origin}; base-uri 'none'; frame-ancestors 'none'`)
     next()
   })
+  app.use('/assets', express.static(fileURLToPath(new URL('./public/', import.meta.url))))
 
   function purge() {
     const timestamp = now()
@@ -92,9 +94,9 @@ export function createReferenceApp(rawConfig, hooks = {}) {
 
   app.get('/', (req, res) => {
     const session = currentSession(req)
-    if (!session) return res.type('html').send(page('Reference app', '<h1>Reference relying-party app</h1><p>This app creates its own session after a server-side OIDC code exchange.</p><a class="button" href="/login">Sign in with Rooiam</a>'))
+    if (!session) return res.type('html').send(page('Reference app', '<span class="eyebrow">WELCOME TO YOUR APP</span><h1>A little less friction.<br>A secure way in.</h1><p class="intro">Sign in with your Rooiam identity and pick up where you left off.</p><a class="button" href="/login">Sign in with Rooiam</a><div class="hint">Use your phone, a passkey, or a magic link. Your workspace controls the available methods.</div>'))
     const user = users.get(session.userId)
-    return res.type('html').send(page('Reference dashboard', `<h1>Application session</h1><p>Signed in as <strong>${escapeHtml(user.email || user.subject)}</strong>.</p><p class="muted">Local user: <code>${escapeHtml(user.id)}</code><br>Rooiam subject: <code>${escapeHtml(user.subject)}</code></p><form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button>Sign out</button></form>`))
+    return res.type('html').send(page('Reference dashboard', `<span class="status-badge"><span aria-hidden="true">✓</span> Signed in</span><h1>Application session</h1><p class="intro">You're in. Welcome back to your app.</p><div class="identity"><span class="avatar" aria-hidden="true">${escapeHtml((user.email || user.subject).slice(0, 1).toUpperCase())}</span><div><span class="field-label">SIGNED IN AS</span><strong>${escapeHtml(user.email || user.subject)}</strong></div></div><details class="session-details"><summary>Session details</summary><dl><div><dt>Local user</dt><dd><code>${escapeHtml(user.id)}</code></dd></div><div><dt>Rooiam subject</dt><dd><code>${escapeHtml(user.subject)}</code></dd></div></dl></details><div class="session-actions"><p class="muted">Your app session is ready.</p><form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="secondary">Sign out</button></form></div>`))
   })
 
   app.get('/login', (_req, res) => {
@@ -103,10 +105,9 @@ export function createReferenceApp(rawConfig, hooks = {}) {
     const verifier = random(48)
     pending.set(transactionId, { state: random(), verifier, challenge: sha256(verifier), authorizationStarted: false, expiresAt: now() + TX_TTL_MS })
     res.setHeader('Set-Cookie', cookie(TX_COOKIE, transactionId, { secure: config.secureCookie, maxAge: TX_TTL_MS / 1000, path: '/callback' }))
-    const body = `<h1>Sign in</h1><p class="muted">Rooiam owns authentication. This example backend owns OAuth state, PKCE, callback exchange, and the resulting app session.</p><iframe id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
-    const phoneLink = hostedLogin ? `<p><a class="button" href="${escapeHtml(hostedLogin.toString())}">Sign in with your phone</a></p>` : ''
-    const existingSession = '<p>Already signed in to Rooiam in this browser? <a href="/callback">Continue with your Rooiam session</a></p>'
-    res.type('html').send(page('Sign in', phoneLink + existingSession + body.replace('<iframe ', '<iframe referrerpolicy="origin" ')))
+    const phoneLink = hostedLogin ? `<div class="phone-option"><span class="eyebrow">YOUR PHONE, YOUR APPROVAL</span><p>Scan a QR code and approve the sign-in on your enrolled phone.</p><a class="button" href="${escapeHtml(hostedLogin.toString())}">Sign in with your phone</a></div><div class="divider"><span>or choose another method</span></div>` : ''
+    const body = `<span class="eyebrow">WELCOME BACK</span><h1>Sign in</h1><p class="intro">Choose how you'd like to continue to your app.</p>${phoneLink}<iframe referrerpolicy="origin" id="rooiam-widget" title="Rooiam sign in" src="${escapeHtml(widget.toString())}"></iframe><p class="existing-session">Already signed in?<br><a href="/callback">Continue with your Rooiam session</a></p><script nonce="${res.locals.scriptNonce}">const frame=document.getElementById('rooiam-widget');window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==${JSON.stringify(widget.origin)})return;if(event.data?.type==='rooiam-login-widget:navigate'){const target=new URL(event.data.url,event.origin);if(target.origin===event.origin&&/^https?:$/.test(target.protocol))window.location.assign(target.toString())}if(event.data?.type==='rooiam-login-widget:size'&&Number.isFinite(event.data.height))frame.style.height=Math.min(900,Math.max(320,event.data.height))+'px'})</script>`
+    res.type('html').send(page('Sign in', body))
   })
 
   app.get('/callback', async (req, res) => {

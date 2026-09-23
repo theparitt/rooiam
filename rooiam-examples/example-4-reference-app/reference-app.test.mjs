@@ -54,7 +54,7 @@ async function begin(base) {
   const login = await fetch(base + '/login', { redirect: 'manual' })
   assert.equal(login.status, 200)
   const html = await login.text()
-  assert.ok(html.includes('Rooiam owns authentication'))
+  assert.ok(html.includes('Choose how you'))
   assert.equal(html.includes('server-only-secret'), false)
   // The widget server validates the embedding origin; no-referrer would reject the iframe.
   assert.match(html, /<iframe referrerpolicy="origin" /)
