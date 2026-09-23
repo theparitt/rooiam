@@ -22,8 +22,12 @@ final class Api {
             String cookie = cookies.getCookie(origin);
             if (cookie != null) connection.setRequestProperty("Cookie", cookie);
             if (body != null) {
+                byte[] encoded = body.toString().getBytes(StandardCharsets.UTF_8);
+                // Streaming mode forbids HttpURLConnection from replaying a buffered POST
+                // when the connection drops after the server may have committed it.
+                connection.setFixedLengthStreamingMode(encoded.length);
                 connection.setDoOutput(true); connection.setRequestProperty("Content-Type", "application/json");
-                try (java.io.OutputStream out = connection.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
+                try (java.io.OutputStream out = connection.getOutputStream()) { out.write(encoded); }
             }
             int status = connection.getResponseCode();
             if (status >= 300 && status < 400) throw new IllegalStateException("Server redirect refused. Check your server origin.");

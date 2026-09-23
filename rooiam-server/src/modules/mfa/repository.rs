@@ -22,6 +22,29 @@ impl MfaRepository {
         self
     }
 
+    /// A phone login may target a registered application outside the portal's
+    /// origin allowlist. Accept only the exact callback bound to this approved
+    /// intent; ordinary MFA callers retain the existing redirect policy.
+    pub async fn normalize_login_redirect(&self, redirect: Option<String>) -> Result<Option<String>, AppError> {
+        match crate::shared::redirect::normalize_redirect_uri(redirect.clone()) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                if let (Some(completion), Some(uri)) = (&self.device_completion, redirect.as_ref()) {
+                    let allowed: bool = sqlx::query_scalar(
+                        "SELECT EXISTS(SELECT 1 FROM device_login_intents i \
+                         JOIN oauth_clients c ON c.id=i.oauth_client_id AND c.org_id=i.workspace_id \
+                         JOIN oauth_client_redirect_uris r ON r.oauth_client_id=c.id AND r.redirect_uri=i.redirect_uri \
+                         WHERE i.public_id=$1 AND i.approved_user_id=$2 AND i.nonce_hash=$3 \
+                         AND i.status='approved' AND i.expires_at>NOW() AND i.redirect_uri=$4 AND c.status='active')"
+                    ).bind(completion.public_id).bind(completion.user_id).bind(&completion.nonce_hash)
+                     .bind(uri).fetch_one(&self.pool).await?;
+                    if allowed { return Ok(redirect); }
+                }
+                Err(error)
+            }
+        }
+    }
+
     pub async fn get_totp_method(&self, user_id: Uuid) -> Result<Option<UserMfaMethod>, AppError> {
         let method = sqlx::query_as::<_, UserMfaMethod>(
             r#"

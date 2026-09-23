@@ -30,16 +30,19 @@ public final class MainActivity extends Activity {
     private DecoratedBarcodeView scanner;
     private boolean scanning;
     private String pendingQr;
+    private AlertDialog reviewDialog;
+    private boolean resumed, refreshReview;
+    private int reviewGeneration;
+    private static final String UNCERTAIN_DECISION = "The last decision may have reached the server. Check your browser. If sign-in did not finish, start a new request there and scan again. This app will not resend the decision.";
     interface Work { String run() throws Exception; }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         home();
         pendingQr = getPreferences(0).getString("pending_qr", null);
-        if (pendingQr != null) {
-            String recovered = pendingQr;
-            status.post(() -> preview(recovered));
-        } else if (state != null && state.getBoolean("scanning")) {
+        refreshReview = pendingQr != null;
+        if (getPreferences(0).getBoolean("decision_in_flight", false)) status.setText(UNCERTAIN_DECISION);
+        if (pendingQr == null && state != null && state.getBoolean("scanning")) {
             status.post(this::startScanner);
         }
     }
@@ -113,21 +116,48 @@ public final class MainActivity extends Activity {
         }
     }
     @Override protected void onSaveInstanceState(Bundle state) { state.putBoolean("scanning", scanning); super.onSaveInstanceState(state); }
-    @Override protected void onResume() { super.onResume(); if (scanner != null) scanner.resume(); }
-    @Override protected void onPause() { if (scanner != null) scanner.pause(); CookieManager.getInstance().flush(); super.onPause(); }
+    private void refreshPendingReview() {
+        if (resumed && !busy && refreshReview && pendingQr != null) {
+            refreshReview = false;
+            preview(pendingQr);
+        }
+    }
+    @Override protected void onResume() {
+        super.onResume(); resumed = true;
+        if (scanner != null) scanner.resume();
+        refreshPendingReview();
+    }
+    @Override protected void onPause() {
+        resumed = false; reviewGeneration++;
+        if (pendingQr != null) refreshReview = true;
+        if (reviewDialog != null) { reviewDialog.dismiss(); reviewDialog = null; }
+        if (scanner != null) scanner.pause();
+        CookieManager.getInstance().flush(); super.onPause();
+    }
     @Override public void onBackPressed() { if (scanning) { stopScanner(); home(); } else super.onBackPressed(); }
     private String configuredOrigin;
     private String configuredProject;
     private void work(Work action) {
+        work(action, null);
+    }
+    private void work(Work action, Runnable success) {
         if (busy) return;
         // Read views on the UI thread, then perform all crypto/network work off it.
         configuredOrigin = server.getText().toString(); configuredProject = project.getText().toString();
         busy = true; status.setText("Working…");
         worker.execute(() -> {
             String result;
-            try { result = action.run(); } catch (Exception e) { result = e.getMessage() == null ? "Operation failed. Try again." : e.getMessage(); }
+            boolean succeeded = false;
+            try { result = action.run(); succeeded = true; } catch (Exception e) { result = e.getMessage() == null ? "Operation failed. Try again." : e.getMessage(); }
             String message = result;
-            runOnUiThread(() -> { busy = false; if (!isFinishing() && !isDestroyed()) status.setText(message); });
+            boolean done = succeeded;
+            runOnUiThread(() -> {
+                busy = false;
+                if (!isFinishing() && !isDestroyed()) {
+                    if (done && success != null) success.run();
+                    status.setText(message); refreshPendingReview();
+                }
+            });
         });
     }
     private String serverOrigin() {
@@ -181,6 +211,7 @@ public final class MainActivity extends Activity {
     }
     private void preview(String qr) {
         if (busy) return;
+        int generation = reviewGeneration;
         try {
             Protocol.parseQr(qr, server.getText().toString(), BuildConfig.DEBUG);
             pendingQr = qr;
@@ -191,22 +222,39 @@ public final class MainActivity extends Activity {
             RooiamClient sdk = client();
             RooiamClient.Review request = sdk.preview(qr);
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) return;
-                new AlertDialog.Builder(this).setTitle("Approve this browser?")
+                if (isFinishing() || isDestroyed() || !resumed || generation != reviewGeneration) return;
+                reviewDialog = new AlertDialog.Builder(this).setTitle("Approve this browser?")
                 .setMessage("Server: " + request.getOrigin() + "\nApplication: " + request.getApplication() + "\nWorkspace: " + request.getWorkspace() + "\n\nRequest code: " + request.getDisplayCode() + "\nMatching number: " + request.getMatchNumber() + "\n\nCompare the request code and number with the browser you started.")
-                .setPositiveButton("Codes match — approve", (d,w) -> { clearPendingQr(); decide(sdk, request, true); })
-                .setNegativeButton("Deny", (d,w) -> { clearPendingQr(); decide(sdk, request, false); })
+                .setPositiveButton("Codes match — approve", (d,w) -> decide(sdk, request, true))
+                .setNegativeButton("Deny", (d,w) -> decide(sdk, request, false))
                 .setNeutralButton("Close", (d,w) -> clearPendingQr()).setOnCancelListener(d -> clearPendingQr()).show();
             });
             return "Review the server, request code and number before approving.";
-            } catch (Exception e) { clearPendingQr(); throw e; }
+            } catch (Exception e) {
+                // Keep only the public QR after a transport failure so reopening can
+                // fetch a fresh review. Never retain a signed decision for retry.
+                runOnUiThread(() -> {
+                    if (!isDestroyed() && generation == reviewGeneration && !(e instanceof java.io.IOException)) clearPendingQr();
+                });
+                if (e instanceof java.io.IOException) throw new IllegalStateException("Cannot reach your server. Check the connection and reopen the app to refresh this request.");
+                throw e;
+            }
         });
     }
     private void decide(RooiamClient sdk, RooiamClient.Review request, boolean approve) {
+        if (busy) return;
+        // Persist ambiguity BEFORE sending. Process death must never look like a
+        // successful decision or cause an automatic replay on the next launch.
+        if (!getPreferences(0).edit().remove("pending_qr").putBoolean("decision_in_flight", true).commit()) {
+            status.setText("Could not save decision state. Reopen the app and scan again."); return;
+        }
+        pendingQr = null; refreshReview = false;
         work(() -> {
-            if (approve) sdk.approve(request, request.getMatchNumber()); else sdk.deny(request);
+            try {
+                if (approve) sdk.approve(request, request.getMatchNumber()); else sdk.deny(request);
+            } catch (Exception e) { throw new IllegalStateException(UNCERTAIN_DECISION); }
             return approve ? "Approved. Return to your browser to finish sign-in and any required MFA." : "Request denied.";
-        });
+        }, () -> getPreferences(0).edit().remove("decision_in_flight").commit());
     }
     @Override protected void onDestroy() { stopScanner(); worker.shutdown(); super.onDestroy(); }
 }

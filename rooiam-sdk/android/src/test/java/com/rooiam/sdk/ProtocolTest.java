@@ -2,6 +2,21 @@ package com.rooiam.sdk;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public class ProtocolTest {
+    @Test public void seededMalformedQrCorpusNeverEscapesValidation() {
+        java.util.Random random = new java.util.Random(20260923L);
+        String valid = "rooiam://device-login?server=https%3A%2F%2Fauth.example&public_id=12345678-1234-4234-8234-123456789abc";
+        for (int n = 0; n < 10000; n++) {
+            StringBuilder input = new StringBuilder(n % 2 == 0 ? valid : "");
+            for (int m = 0; m < 1 + n % 25; m++) {
+                int at = random.nextInt(input.length() + 1);
+                input.insert(at, (char) random.nextInt(65536));
+            }
+            try {
+                String parsed = Protocol.parseQr(input.toString(), "https://auth.example", false);
+                assertEquals(java.util.UUID.fromString(parsed).toString(), parsed.toLowerCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException expected) { }
+        }
+    }
     private final String id = "12345678-1234-4234-8234-123456789abc";
     @Test public void emailLinksAcceptOnlyTrustedVerificationEndpoints() {
         String frontend = "https://app.example", api = "https://api.example";

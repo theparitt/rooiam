@@ -22,7 +22,7 @@ android {
     defaultConfig { applicationId 'example.consumer'; minSdk 26; targetSdk 34 }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
-dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.3' }
+dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.4' }
 GRADLE
 cat > "$consumer_dir/src/main/AndroidManifest.xml" <<'XML'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:allowBackup="false" /></manifest>

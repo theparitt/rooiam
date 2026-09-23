@@ -6,6 +6,16 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ApiTest {
+    @Test public void doesNotReplayDecisionAfterResponseIsLost() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(new MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST));
+            server.enqueue(new MockResponse().setBody("{}"));
+            Api api = new Api(server.url("/").toString(), true, origin -> null);
+            assertThrows(java.io.IOException.class, () -> api.request("/v1/identity/device-login/approve", new org.json.JSONObject().put("test", true)));
+            assertEquals(1, server.getRequestCount());
+        }
+    }
     @Test public void refusesRedirectWithoutForwardingCredentials() throws Exception {
         try (MockWebServer target = new MockWebServer(); MockWebServer server = new MockWebServer()) {
             target.start(); server.start();

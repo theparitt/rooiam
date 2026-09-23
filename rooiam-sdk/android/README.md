@@ -1,6 +1,6 @@
 # Rooiam Android SDK (preview)
 
-Standalone Android library for device-login v1. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.3`. This package has **not** been published to Maven Central.
+Standalone Android library for device-login v1. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.4`. This package has **not** been published to Maven Central.
 
 ## Add to an application
 
@@ -19,7 +19,7 @@ For another Android project, generate the Maven repository (AAR, sources, POM an
 Add the generated `rooiam-sdk/android/build/repository` directory to that project's `dependencyResolutionManagement.repositories` using `maven { url = uri('/absolute/path/to/repository') }`, alongside `google()` and `mavenCentral()`. Then use:
 
 ```groovy
-dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.3' }
+dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.4' }
 ```
 
 Prefer the Maven repository over a bare AAR: it carries the Bouncy Castle runtime dependency. The SDK has no Camera, scanner, WebView UI or Play Integrity dependency. It declares only INTERNET permission.
@@ -49,7 +49,7 @@ Reviews are bound to the client/enrollment and expire. A decision attempt consum
 
 ## Attestation and development
 
-Implement `AttestationProvider.requestToken(requestHash)` using your application's Play Integrity configuration. Return the provider token bound to the exact supplied hash. The SDK computes the enrollment binding using the public key, host package name, key ID and production environment; it submits the statement to Rooiam. The reference app includes an adapter using standard Play Integrity requests. The operator must configure the server's package/certificate allowlist and verifier credentials for the consuming app.
+Implement `AttestationProvider.requestToken(requestHash)` using your application's Play Integrity configuration. Return the provider token bound to the exact supplied hash. The SDK computes the enrollment binding using the public key, host package name, key ID and production environment; it submits the statement to Rooiam. The reference app includes an adapter using standard Play Integrity requests. The operator must configure the server's package allowlist and verifier credentials for the consuming app. Certificate recognition currently relies on Google's `PLAY_RECOGNIZED` verdict; Rooiam does not expose a separate certificate-digest pinning setting. See the [Play Integrity setup guide](../../docs/production/23_android_play_integrity.md).
 
 The default constructor requires HTTPS and an attestation provider for enrollment. The four-argument constructor with `true` explicitly enables local preview only when the host application is debuggable. It permits loopback HTTP and enrollment without attestation. It does not override server approval policy. Do not ship a debuggable production application.
 

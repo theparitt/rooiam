@@ -1375,6 +1375,33 @@ async fn workspace_opt_in_and_ambiguous_callbacks_fail_closed(pool: sqlx::PgPool
     assert!(super::handlers::ensure_device_login_policy(&pool, Some(a)).await.is_err());
 }
 
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires isolated DATABASE_URL"]
+async fn mfa_callback_requires_the_exact_approved_device_intent(pool: sqlx::PgPool) {
+    use crate::modules::mfa::repository::MfaRepository;
+    use super::repository::DeviceLoginCompletion;
+    let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id").fetch_one(&pool).await.unwrap();
+    let org: Uuid = sqlx::query_scalar("INSERT INTO organizations(name,slug) VALUES ('MFA','mfa-callback') RETURNING id").fetch_one(&pool).await.unwrap();
+    let client: Uuid = sqlx::query_scalar("INSERT INTO oauth_clients(client_id,app_name,app_type,org_id) VALUES ('mfa-callback','MFA','web',$1) RETURNING id").bind(org).fetch_one(&pool).await.unwrap();
+    let callback = "https://external-mfa.example/callback";
+    sqlx::query("INSERT INTO oauth_client_redirect_uris(oauth_client_id,redirect_uri) VALUES ($1,$2)").bind(client).bind(callback).execute(&pool).await.unwrap();
+    let id = Uuid::new_v4();
+    sqlx::query("INSERT INTO device_login_intents(public_id,browser_binding_hash,nonce_hash,workspace_id,oauth_client_id,redirect_uri,display_code,match_number,approved_user_id,status,expires_at) VALUES ($1,'binding','nonce',$2,$3,$4,'123456',42,$5,'approved',NOW()+INTERVAL '5 minutes')")
+        .bind(id).bind(org).bind(client).bind(callback).bind(user).execute(&pool).await.unwrap();
+    let completion = DeviceLoginCompletion { public_id: id, nonce_hash: "nonce".into(), user_id: user };
+    let plain = MfaRepository::new(pool.clone());
+    assert!(plain.normalize_login_redirect(Some(callback.into())).await.is_err());
+    let bound = plain.clone().with_device_completion(completion.clone());
+    assert_eq!(bound.normalize_login_redirect(Some(callback.into())).await.unwrap().as_deref(), Some(callback));
+    assert!(bound.normalize_login_redirect(Some(format!("{}?changed=1", callback))).await.is_err());
+    let wrong = plain.clone().with_device_completion(DeviceLoginCompletion { nonce_hash: "wrong".into(), ..completion.clone() });
+    assert!(wrong.normalize_login_redirect(Some(callback.into())).await.is_err());
+    let wrong_user = plain.with_device_completion(DeviceLoginCompletion { user_id: Uuid::new_v4(), ..completion });
+    assert!(wrong_user.normalize_login_redirect(Some(callback.into())).await.is_err());
+    sqlx::query("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id=$1").bind(client).execute(&pool).await.unwrap();
+    assert!(bound.normalize_login_redirect(Some(callback.into())).await.is_err());
+}
+
 fn build_test_trusted_device(
     platform: &str,
     attestation_format: Option<&str>,

@@ -13,7 +13,6 @@ use uuid::Uuid;
 use crate::bootstrap::config::AppConfig;
 use crate::modules::identity::repository::IdentityRepository;
 use crate::shared::error::AppError;
-use crate::shared::redirect::normalize_redirect_uri;
 
 use super::models::MfaChallenge;
 use super::repository::MfaRepository;
@@ -165,7 +164,7 @@ impl MfaService {
                 "login_enroll",
                 serde_json::to_value(LoginEnrollmentPayload {
                     secret_encrypted,
-                    redirect_uri: normalize_redirect_uri(redirect_uri)?,
+                    redirect_uri: self.repo.normalize_login_redirect(redirect_uri).await?,
                     primary_method: primary_method.to_string(),
                     provider: provider.map(str::to_string),
                 })
@@ -266,7 +265,7 @@ impl MfaService {
                 "totp",
                 "login",
                 serde_json::to_value(LoginPayload {
-                    redirect_uri: normalize_redirect_uri(redirect_uri)?,
+                    redirect_uri: self.repo.normalize_login_redirect(redirect_uri).await?,
                     primary_method: primary_method.to_string(),
                     provider: provider.map(str::to_string),
                 })
