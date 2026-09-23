@@ -571,4 +571,31 @@ mod credential_tests {
             GooglePlayCredentialSource::ServiceAccountKey { .. }
         ));
     }
+
+    #[tokio::test]
+    #[ignore = "requires Google Application Default Credentials and live IAM access"]
+    async fn adc_can_reach_play_integrity_decode_with_an_invalid_token() {
+        if std::env::var("ROOIAM_TEST_LIVE_GOOGLE_PLAY").as_deref() != Ok("1") {
+            return;
+        }
+        let mut settings = config();
+        settings.google_play_use_adc = true;
+        let verifier = load_google_play_integrity_verifier_config(&settings).unwrap();
+        let token = fetch_google_access_token(&Client::new(), &verifier)
+            .await
+            .expect("ADC must impersonate the Play Integrity service account");
+        assert!(token.len() > 100);
+
+        let result = decode_google_play_integrity_token(
+            &Client::new(),
+            &verifier,
+            "com.rooiam.reference",
+            "invalid-certification-smoke-token",
+        )
+        .await;
+        assert!(
+            matches!(result, Err(GooglePlayVerificationError::Rejected(_))),
+            "the decode endpoint must authenticate and reject the invalid token: {result:?}"
+        );
+    }
 }
