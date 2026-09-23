@@ -54,6 +54,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         home();
         pendingQr = getPreferences(0).getString("pending_qr", null);
         refreshReview = pendingQr != null;
@@ -66,6 +67,7 @@ public final class MainActivity extends Activity {
         layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32,48,32,32);
         ScrollView scroll = new ScrollView(this); scroll.addView(layout); content(scroll);
         TextView title = new TextView(this); title.setText("Rooiam Reference\nScan. Match. Approve."); title.setTextSize(26); layout.addView(title);
+        status = new TextView(this); status.setText("Enroll your phone with the server you trust. Only approve sign-ins you started."); status.setPadding(0,16,0,16); layout.addView(status);
         server = new EditText(this); server.setHint("https://your-rooiam-api.example"); server.setSingleLine(true);
         server.setText(getPreferences(0).getString("server", "")); layout.addView(server);
         project = new EditText(this); project.setHint("Google Cloud project number (operator provides)"); project.setInputType(2);
@@ -89,7 +91,7 @@ public final class MainActivity extends Activity {
             .setPositiveButton("Revoke", (d,w) -> work(() -> {
                 client().revoke(); return "Phone revoked. You can enroll it again.";
             })).setNegativeButton("Cancel", null).show());
-        status = new TextView(this); status.setText("Enroll your phone with the server you trust. Only approve sign-ins you started."); status.setPadding(0,24,0,0); layout.addView(status);
+        scroll.post(() -> scroll.scrollTo(0, 0));
     }
     private void button(String label, Runnable action) { Button b = new Button(this); b.setText(label); b.setOnClickListener(v -> action.run()); layout.addView(b); }
     private void startScanner() {
