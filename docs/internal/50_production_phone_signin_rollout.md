@@ -1,10 +1,10 @@
 # Production phone sign-in rollout
 
-Updated: 2026-09-24. Status: **not deployed to the production API**. This is the operator handoff for the existing Docker Compose host behind `api.rooiam.com`; the test host at `phone-test.rooiam.com` remains separate. The operator builds and deploys the production server image. Do not enable the public login method until the verifier and an end-to-end production-origin sign-in pass.
+Updated: 2026-09-24. Status: **production rollout in progress; first image failed at migration validation**. Recheck live state before acting. This is the operator handoff for the existing Docker Compose host behind `api.rooiam.com`; the test host at `phone-test.rooiam.com` remains separate. The operator builds and deploys the production server image. Do not enable the public login method until the verifier and an end-to-end production-origin sign-in pass.
 
 ## What exists today
 
-- The production server runs an older `ghcr.io/theparitt/rooiam-server:latest` image. Its `/v1/identity/device-login/workspace-policy` route returns 404. The database has successful migrations through version 57; current source has additive device-login migrations 58–62.
+- Before this rollout, the production server ran an older `ghcr.io/theparitt/rooiam-server:latest` image and `/v1/identity/device-login/workspace-policy` returned 404. The first new image entered a restart loop on the historical migration checksum mismatch, and the API returned 502 at the last check. The database still had successful migrations only through version 57. Source commit `23959c4` fixes the known CRLF lineage; current source has additive device-login migrations 58–62.
 - The production Compose file selects `ROOIAM_SERVER_IMAGE` from `.env`. It does **not** currently pass `ROOIAM_GOOGLE_PLAY_USE_ADC` or `GOOGLE_APPLICATION_CREDENTIALS` into the server container. The repository's `docker-compose.prod.yml` is a reference, not the production host's active Compose file.
 - The current frontend code has the workspace Phone sign-in enable/order controls, but `app.rooiam.com` has not been redeployed with that build. Deploying it before the API would show broken controls.
 - The server's platform phone login default is off, and each workspace's phone login default is off. A code-only server rollout does not expose QR sign-in by itself.
@@ -55,7 +55,7 @@ cd ~/rooiam
 docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT max(version), count(*) FROM _sqlx_migrations WHERE success"'
 ```
 
-Expect `62` as the maximum migration version, health `ok`, and the phone-policy endpoint to reject the missing session rather than return 404. Also complete the [API smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) for normal sign-in and CORS. If startup or a regression fails, restore the previous **image** selection and restart `server`; migrations 58–62 remain in the database. Do not assume changing the image reverses schema changes. Preserve the backup for a deliberate database-restore decision if one is needed.
+Expect `62` as the maximum migration version, health `ok`, and the phone-policy endpoint to reject the missing session rather than return 404. Also complete the [API smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) for normal sign-in and CORS. If startup fails **before migration 58**, restoring the previous image can restore service. Once any of migrations 58–62 are recorded, the old image may reject those newer versions as missing from its bundled migration set; image-only rollback is not a proven recovery path. Preserve the backup and use a tested schema-compatible fix or a deliberate database-restore plan if needed. Do not rewrite migration history to force the old image to start.
 
 ## Stage 2 — unattended Play Integrity verification
 
