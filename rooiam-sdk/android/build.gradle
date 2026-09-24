@@ -21,7 +21,7 @@ afterEvaluate {
                 from components.release
                 groupId = 'com.rooiam'
                 artifactId = 'android-sdk'
-                version = '0.2.0-alpha.4'
+                version = '0.4.0-alpha.1'
             }
         }
         repositories { maven { name = 'localPreview'; url = layout.buildDirectory.dir('repository') } }

@@ -15,7 +15,7 @@ The library owns origin and QR validation, device-key storage, registration, req
 
 ## 1. Add the library
 
-Use Android API 26 or later and JDK 17. The current preview coordinate is `com.rooiam:android-sdk:0.2.0-alpha.4`; it is **not on Maven Central**. The reference project includes `rooiam-sdk/android` as a Gradle project:
+Use Android API 26 or later and JDK 17. The current preview coordinate is `com.rooiam:android-sdk:0.4.0-alpha.1`; it is **not on Maven Central**. The reference project includes `rooiam-sdk/android` as a Gradle project:
 
 ```groovy
 // settings.gradle — same checkout as the reference app
@@ -32,7 +32,7 @@ dependencies {
 }
 ```
 
-For a separate app checkout, publish the SDK's local Maven repository with `./gradlew publishReleasePublicationToLocalPreviewRepository` from `rooiam-sdk/android`. Add the generated `build/repository` to `dependencyResolutionManagement.repositories`, then depend on `com.rooiam:android-sdk:0.2.0-alpha.4`. The Maven publication carries the Bouncy Castle dependency; a copied bare AAR does not. See the [SDK README](../../rooiam-sdk/android/README.md) for the exact publication command and consumer packaging check.
+For a separate app checkout, publish the SDK's local Maven repository with `./gradlew publishReleasePublicationToLocalPreviewRepository` from `rooiam-sdk/android`. Add the generated `build/repository` to `dependencyResolutionManagement.repositories`, then depend on `com.rooiam:android-sdk:0.4.0-alpha.1`. The Maven publication carries the Bouncy Castle dependency; a copied bare AAR does not. See the [SDK README](../../rooiam-sdk/android/README.md) for the exact publication command and consumer packaging check.
 
 The SDK declares only `INTERNET`; the host declares `CAMERA` if it scans. Disable backup/transfer of its device vault. The reference app disables application backup entirely:
 

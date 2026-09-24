@@ -159,7 +159,29 @@ reject(await request('/identity/action-approvals/approve', { method: 'POST', coo
 
 const revoked = await start('revoked-device key')
 expect(await request('/identity/action-approvals/approve', { method: 'POST', cookie: owner, body: signedDecision(revoked, await phonePreview(revoked)) }), 200)
-sql(`UPDATE user_trusted_devices SET revoked_at = NOW() WHERE id = '${device.id}'`)
+sql(`UPDATE sessions SET created_at = NOW() - interval '11 minutes' WHERE user_id = '${me.id}'`)
+expect(await request('/identity/me/devices/' + device.id, { method: 'DELETE', cookie: owner }), 403)
+sql(`UPDATE sessions SET created_at = NOW() WHERE user_id = '${me.id}'`)
+const pendingAtRevoke = await start('pending-at-revoke key')
+const racingAtRevoke = await start('racing-at-revoke key')
+const racingPreview = await phonePreview(racingAtRevoke)
+const approvedLoginAtRevoke = sql(`INSERT INTO device_login_intents (public_id,browser_binding_hash,nonce_hash,display_code,match_number,status,approved_user_id,approved_device_id,expires_at)
+  VALUES (gen_random_uuid(),'recovery-test','recovery-test','123456',1,'approved','${me.id}','${device.id}',NOW() + interval '5 minutes') RETURNING public_id`).split('\n')[0]
+expect(await request('/identity/me/devices/' + device.id, { method: 'DELETE', cookie: otherUser.cookie }), 404)
+const [racingDecision, revokeResult] = await Promise.all([
+  request('/identity/action-approvals/approve', { method: 'POST', cookie: owner, body: signedDecision(racingAtRevoke, racingPreview) }),
+  request('/identity/me/devices/' + device.id, { method: 'DELETE', cookie: owner }),
+])
+expect(revokeResult, 200)
+assert.ok(racingDecision.status === 200 || (racingDecision.status >= 400 && racingDecision.status < 500))
+assert.notEqual(sql(`SELECT status FROM workspace_action_approvals WHERE id = '${racingAtRevoke.id}'`), 'approved')
+assert.equal(sql(`SELECT status FROM workspace_action_approvals WHERE id = '${revoked.id}'`), 'cancelled')
+assert.equal(sql(`SELECT status FROM workspace_action_approvals WHERE id = '${pendingAtRevoke.id}'`), 'cancelled')
+assert.equal(sql(`SELECT status FROM device_login_intents WHERE public_id = '${approvedLoginAtRevoke}'`), 'rejected')
+assert.equal(sql(`SELECT revoked_at IS NOT NULL FROM user_trusted_devices WHERE id = '${device.id}'`), 't')
+assert.equal(sql(`SELECT push_token IS NULL FROM user_trusted_devices WHERE id = '${device.id}'`), 't')
+expect(await request('/identity/me/devices/' + device.id, { method: 'DELETE', cookie: owner }), 404)
+reject(await request('/identity/action-approvals/approve', { method: 'POST', cookie: owner, body: signedDecision(pendingAtRevoke, await phonePreview(pendingAtRevoke)) }))
 reject(await request('/orgs/current/api-keys', { method: 'POST', cookie: owner, body: { ...keyBody, label: 'revoked-device key', approval_id: revoked.id, browser_proof: revoked.browser_proof } }))
 
 const keys = expect(await request('/orgs/current/api-keys', { cookie: owner }), 200)
@@ -167,4 +189,4 @@ assert.equal(keys.filter(k => k.id === created.key.id).length, 1)
 assert.ok(keys.every(k => !Object.hasOwn(k, 'raw_key')))
 expect(await request('/orgs/current/api-keys/' + created.key.id, { method: 'DELETE', cookie: owner }), 200)
 expect(await request('/orgs/current/api-key-phone-policy', { method: 'PUT', cookie: owner, body: { required: false } }), 200)
-console.log('PASS: policy-off behavior, direct-route enforcement, bindings, signature purpose, exact payload, replay, deny, cancel, race, key limit, policy/role change, expiry, device revocation, and one-time key')
+console.log('PASS: policy-off behavior, direct-route enforcement, bindings, signature purpose, exact payload, replay, deny, cancel, race, key limit, policy/role change, expiry, recent-sign-in device revocation, and one-time key')

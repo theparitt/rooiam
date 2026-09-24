@@ -1,6 +1,6 @@
 # Rooiam Android SDK (preview)
 
-Standalone Android library for device-login v1. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.4`. This package has **not** been published to Maven Central.
+Standalone Android library for device-login v1 and bounded action approval. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.4.0-alpha.1`. This package has **not** been published to Maven Central.
 
 For a step-by-step implementation with annotated code, see [Build an Android QR sign-in app](../../docs/reference/14_android_sdk_integration.md). For each screen the user sees, see the [phone sign-in walkthrough](../../docs/getting-started/10_android_phone_sign_in_walkthrough.md).
 
@@ -21,7 +21,7 @@ For another Android project, generate the Maven repository (AAR, sources, POM an
 Add the generated `rooiam-sdk/android/build/repository` directory to that project's `dependencyResolutionManagement.repositories` using `maven { url = uri('/absolute/path/to/repository') }`, alongside `google()` and `mavenCentral()`. Then use:
 
 ```groovy
-dependencies { implementation 'com.rooiam:android-sdk:0.2.0-alpha.4' }
+dependencies { implementation 'com.rooiam:android-sdk:0.4.0-alpha.1' }
 ```
 
 Prefer the Maven repository over a bare AAR: it carries the Bouncy Castle runtime dependency. The SDK has no Camera, scanner, WebView UI or Play Integrity dependency. It declares only INTERNET permission.

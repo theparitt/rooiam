@@ -456,6 +456,11 @@ async fn decision(
     }
     let next = if approve { "approved" } else { "denied" };
     let mut tx = state.db.begin().await?;
+    let still_active: Option<Uuid> = sqlx::query_scalar("SELECT id FROM user_trusted_devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE")
+        .bind(device.id).bind(session.user_id).fetch_optional(&mut *tx).await?;
+    if still_active.is_none() {
+        return Err(AppError::Forbidden("This phone was revoked. Start again with an enrolled phone.".into()));
+    }
     let affected = sqlx::query("UPDATE workspace_action_approvals SET status = $1, approved_device_id = $2, decided_at = NOW() WHERE id = $3 AND requester_user_id = $4 AND status = 'pending' AND expires_at > clock_timestamp()")
         .bind(next).bind(device.id).bind(row.id).bind(session.user_id).execute(&mut *tx).await?.rows_affected();
     if affected != 1 {

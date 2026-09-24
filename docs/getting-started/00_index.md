@@ -38,6 +38,7 @@ Use this when you want:
 - [Build your first Android phone sign-in app](./11_build_your_first_android_app.md) — from a fresh clone to your own Play-backed test
 - [Android SDK integration](../reference/14_android_sdk_integration.md) — annotated SDK calls and lifecycle details
 - [Phone confirmation for API keys](../reference/15_phone_action_approval.md) — an optional workspace policy for sensitive key creation
+- [Lost phone and replacement](../reference/16_lost_phone_and_replacement.md) — revoke a lost phone and enroll a verified replacement
 
 Use this when you want:
 - a real dev environment (not Docker)

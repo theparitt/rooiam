@@ -37,12 +37,22 @@ public final class RooiamClient {
     public synchronized Enrollment enroll(String label, AttestationProvider attestation) throws Exception {
         String user = api.request("/v1/identity/me", null).getString("id");
         JSONObject existing = vault.load();
-        if (existing != null && existing.has("id")) throw new IllegalStateException("This phone is already enrolled. Revoke it before switching accounts or servers.");
+        if (existing != null && (!existing.getString("origin").equals(origin) || !existing.getString("user_id").equals(user)))
+            throw new IllegalStateException("Enrollment belongs to another account or server.");
+        org.json.JSONArray devices = null;
+        if (existing != null && existing.has("id")) {
+            devices = api.request("/v1/identity/me/devices", null).getJSONArray("items");
+            JSONObject registered = findStoredRegistration(devices, existing);
+            if (registered == null) throw new IllegalStateException("Stored phone enrollment could not be verified on this server. Do not reset it automatically.");
+            if (registered.isNull("revoked_at")) throw new IllegalStateException("This phone is already enrolled. Revoke it before switching accounts or servers.");
+            // Only a confirmed server-side revocation for this same account/key
+            // permits local key removal and creation of a fresh device identity.
+            vault.clear(); existing = null;
+        }
         JSONObject device = existing;
         if (device == null) { device = vault.generate(origin, user); vault.save(device); }
-        if (!device.getString("origin").equals(origin) || !device.getString("user_id").equals(user)) throw new IllegalStateException("Enrollment belongs to another account or server.");
         // Recover enrollment when the server committed but the previous response was lost.
-        org.json.JSONArray devices = api.request("/v1/identity/me/devices", null).getJSONArray("items");
+        if (devices == null) devices = api.request("/v1/identity/me/devices", null).getJSONArray("items");
         for (int i = 0; i < devices.length(); i++) {
             JSONObject registered = devices.getJSONObject(i);
             if (device.getString("device_public_key").equals(registered.optString("device_public_key")) && registered.isNull("revoked_at")) {
@@ -61,6 +71,17 @@ public final class RooiamClient {
         JSONObject result = api.request("/v1/identity/me/devices", body);
         device.put("id", result.getString("id")); vault.save(device);
         return new Enrollment(result.getString("id"), result.getJSONObject("attestation").getString("status"), false);
+    }
+
+    static JSONObject findStoredRegistration(org.json.JSONArray devices, JSONObject local) throws Exception {
+        for (int i = 0; i < devices.length(); i++) {
+            JSONObject registered = devices.getJSONObject(i);
+            if (!local.getString("id").equals(registered.optString("id"))) continue;
+            if (!local.getString("device_public_key").equals(registered.optString("device_public_key")))
+                throw new IllegalStateException("Stored phone key does not match the server registration.");
+            return registered;
+        }
+        return null;
     }
 
     public static final class Enrollment {
@@ -155,7 +176,14 @@ public final class RooiamClient {
     }
     public synchronized void revoke() throws Exception {
         JSONObject device = enrolled();
-        api.request("/v1/identity/me/devices/" + device.getString("id"), "DELETE", null);
+        try {
+            api.request("/v1/identity/me/devices/" + device.getString("id"), "DELETE", null);
+        } catch (RooiamApiException error) {
+            if (error.getStatusCode() != 404) throw error;
+            JSONObject registered = findStoredRegistration(
+                api.request("/v1/identity/me/devices", null).getJSONArray("items"), device);
+            if (registered == null || registered.isNull("revoked_at")) throw error;
+        }
         vault.clear();
     }
     /** Immutable public review context; credentials and signing payload remain internal. */

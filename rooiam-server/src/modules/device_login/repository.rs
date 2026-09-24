@@ -163,23 +163,39 @@ impl DeviceLoginRepository {
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<bool, AppError> {
-        let rows = sqlx::query(
-            r#"
-            UPDATE user_trusted_devices
-            SET revoked_at = NOW()
-            WHERE id = $1
-              AND user_id = $2
-              AND revoked_at IS NULL
-            "#,
+        let mut tx = self.pool.begin().await?;
+        // Approval and completion also lock this row. Whichever operation wins
+        // the lock is committed first; a revoked phone cannot win a later race.
+        let active: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM user_trusted_devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE",
         )
         .bind(device_id)
         .bind(user_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to revoke trusted device: {}", e)))?
-        .rows_affected();
-
-        Ok(rows > 0)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if active.is_none() {
+            return Ok(false);
+        }
+        sqlx::query("UPDATE user_trusted_devices SET revoked_at = NOW(), push_token = NULL WHERE id = $1")
+            .bind(device_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE device_login_intents SET status = 'rejected', status_reason = 'approving_phone_revoked' WHERE approved_device_id = $1 AND status = 'approved' AND consumed_at IS NULL")
+            .bind(device_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE workspace_action_approvals SET status = 'cancelled', decided_at = NOW() WHERE approved_device_id = $1 AND status = 'approved' AND consumed_at IS NULL")
+            .bind(device_id)
+            .execute(&mut *tx)
+            .await?;
+        // Pending requests are not yet attached to a phone. Restart them after
+        // recovery instead of letting a QR issued before revocation survive.
+        sqlx::query("UPDATE workspace_action_approvals SET status = 'cancelled', decided_at = NOW() WHERE requester_user_id = $1 AND status = 'pending' AND expires_at > clock_timestamp()")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
     }
 
     pub async fn get_active_trusted_device_by_token_hash(

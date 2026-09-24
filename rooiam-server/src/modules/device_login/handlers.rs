@@ -1123,6 +1123,11 @@ pub async fn revoke_trusted_device(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, AppError> {
     let session = extract_session(&req)?;
+    if Utc::now() - session.created_at > chrono::Duration::minutes(10) {
+        return Err(AppError::Forbidden(
+            "Sign in again before revoking a phone. Use another sign-in method if this phone is lost.".into(),
+        ));
+    }
     let device_id = path.into_inner();
     let revoked = device_login_service(&state)
         .revoke_trusted_device(session.user_id, device_id)

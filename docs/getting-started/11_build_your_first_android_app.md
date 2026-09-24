@@ -61,7 +61,7 @@ dependencies {
 }
 ```
 
-In a separate checkout, publish the SDK to a **local Maven repository** and consume `com.rooiam:android-sdk:0.2.0-alpha.4`. It is not on Maven Central. The [SDK README](../../rooiam-sdk/android/README.md) shows the command and repository configuration. Do not copy only the AAR: the Maven publication includes its runtime dependency metadata.
+In a separate checkout, publish the SDK to a **local Maven repository** and consume `com.rooiam:android-sdk:0.4.0-alpha.1`. It is not on Maven Central. The [SDK README](../../rooiam-sdk/android/README.md) shows the command and repository configuration. Do not copy only the AAR: the Maven publication includes its runtime dependency metadata.
 
 Your manifest needs `INTERNET` and, if your app scans with a camera, `CAMERA`. Disable backup of the SDK's `vault.xml` on old and new Android backup paths; the [integration guide](../reference/14_android_sdk_integration.md) has the manifest example. The SDK protects the device credential, but your app must prevent it from being restored onto another installation.
 
