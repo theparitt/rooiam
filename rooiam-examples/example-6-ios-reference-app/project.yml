@@ -1,0 +1,28 @@
+name: RooiamReference
+options:
+  minimumXcodeGenVersion: 2.40.0
+packages:
+  RooiamPhoneSDK:
+    path: ../../rooiam-sdk/ios
+targets:
+  RooiamReference:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - RooiamReferenceApp.swift
+      - ContentView.swift
+      - QRScanner.swift
+    dependencies:
+      - package: RooiamPhoneSDK
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Rooiam Reference
+        NSCameraUsageDescription: Scan a Rooiam sign-in QR that you started in your browser.
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rooiam.reference.ios.example
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: 1
