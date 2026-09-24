@@ -13,11 +13,11 @@ The Android SDK and example app source are available in the repository. Rooiam d
 - [Android example app](https://github.com/theparitt/rooiam/tree/main/rooiam-examples/example-5-android-reference-app)
 - [SDK and device-login reference](./reference/13_sdk_and_device_login.md)
 
-## Next — Confirm sensitive changes
+## Now — Confirm sensitive changes
 
-**0.3 in testing.** Let workspace administrators confirm one sensitive change from their phone: creating a workspace API key when policy requires it. The phone shows the exact request before approval. Existing workspace permissions still apply.
+**0.3 Android beta.** A workspace can require phone confirmation before an administrator creates an API key. The phone shows the exact request before approval; existing workspace permissions still apply.
 
-The API and example app are implemented, but the real-phone acceptance and production rollout are still pending. It extends Rooiam's identity controls; your application continues to own its business operations.
+The portal and API are deployed, and the SDK/example flow has passed a real-phone production test. App owners integrate the Android SDK into their own app and arrange verification for their package. [Set up phone confirmation](./reference/15_phone_action_approval.md). Your application continues to own its business operations.
 
 ## Looking ahead
 

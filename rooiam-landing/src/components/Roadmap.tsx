@@ -12,8 +12,8 @@ const done: Item[] = [
 ]
 
 const nextRelease: Item[] = [
-    { text: 'Confirm sensitive workspace changes from your phone', note: 'starting with API-key creation' },
-    { text: 'Let each workspace choose when approval is required' },
+    { text: 'Confirm workspace API-key creation from your phone' },
+    { text: 'Turn on phone confirmation per workspace' },
 ]
 
 const planned: Item[] = [
@@ -33,8 +33,8 @@ const columns = [
         icon: <Check className="w-3.5 h-3.5" />,
     },
     {
-        label: 'In testing',
-        version: '0.3 · preview',
+        label: 'Available in beta',
+        version: '0.3 · Android',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
@@ -65,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in is in preview; phone confirmation for workspace API keys is being tested for 0.3.
+                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in and API-key confirmation are available in beta.
                     </p>
                 </div>
 
