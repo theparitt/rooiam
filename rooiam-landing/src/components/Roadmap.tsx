@@ -25,7 +25,7 @@ const planned: Item[] = [
 const columns = [
     {
         label: 'Available today',
-        version: '0.2 · preview',
+        version: 'Core + 0.2 preview',
         color: '#B5EFD5',
         border: '#90DDB5',
         iconColor: '#2a8a5a',
@@ -65,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Android phone sign-in is in preview. Next, 0.3 will let workspace admins confirm sensitive changes from their phone.
+                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in is in preview; 0.3 will add approval for sensitive changes.
                     </p>
                 </div>
 

@@ -1,5 +1,3 @@
-import { ArrowRight, ScanLine, ShieldCheck, Smartphone } from 'lucide-react'
-
 const features = [
     {
         emoji: '✉️',
@@ -26,6 +24,13 @@ const features = [
         emoji: '🔑',
         title: 'TOTP MFA & Passkeys',
         desc: 'Offer passkeys and authenticator codes, with stronger sign-in where a workspace needs it.',
+        color: '#D5B7FF',
+        border: '#B07FFF',
+    },
+    {
+        emoji: '📱',
+        title: 'Android Phone Sign-In',
+        desc: 'In preview: scan a browser QR, match the code on your phone and approve sign-in.',
         color: '#D5B7FF',
         border: '#B07FFF',
     },
@@ -80,58 +85,6 @@ export default function Features()
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
                         Give your users a clear way in, while each workspace keeps control over access.
                     </p>
-                </div>
-
-                <div id="phone-sign-in" className="scroll-mt-28 mb-7 overflow-hidden rounded-[2rem] border border-violet-200 bg-gradient-to-br from-[#f4ecff] via-white to-[#fff0f7] p-6 shadow-[0_22px_70px_-45px_rgba(95,58,160,0.7)] md:p-10">
-                    <div className="grid items-center gap-8 lg:grid-cols-[1.05fr_.95fr]">
-                        <div className="order-2">
-                            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-wider text-violet-700">
-                                <Smartphone className="h-3.5 w-3.5" aria-hidden="true" /> Android preview
-                            </span>
-                            <h3 className="mt-5 max-w-lg text-3xl font-black leading-tight text-gray-900 md:text-4xl">
-                                Sign in with a scan and a tap.
-                            </h3>
-                            <p className="mt-4 max-w-lg text-base font-semibold leading-relaxed text-gray-600">
-                                Scan the browser QR, match the code on your Android phone, and approve. Finish any required MFA in the browser.
-                            </p>
-                            <div className="mt-5 flex items-start gap-2 text-sm font-semibold leading-relaxed text-gray-600">
-                                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden="true" />
-                                Each workspace can enable this method and choose its place on the sign-in screen.
-                            </div>
-                            <div className="mt-7 flex flex-wrap gap-3">
-                                <a href="https://docs.rooiam.com/getting-started/android-phone-sign-in-walkthrough" className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-violet-800">
-                                    See how it works <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                                </a>
-                                <a href="https://docs.rooiam.com/reference/android-sdk-integration" className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-5 py-3 text-sm font-black text-violet-700 transition-colors hover:bg-violet-50">
-                                    Build with the Android SDK
-                                </a>
-                            </div>
-                        </div>
-                        <div className="order-1 rounded-3xl border border-violet-100 bg-white/80 p-5 shadow-sm" aria-label="Illustration of browser and phone matching a sign-in code">
-                            <div className="flex items-center gap-2 border-b border-violet-100 pb-4">
-                                <span className="h-2.5 w-2.5 rounded-full bg-rose-200" />
-                                <span className="h-2.5 w-2.5 rounded-full bg-amber-200" />
-                                <span className="h-2.5 w-2.5 rounded-full bg-emerald-200" />
-                                <span className="ml-2 rounded-lg bg-violet-50 px-3 py-1 text-xs font-bold text-violet-500">Your browser</span>
-                            </div>
-                            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-7 sm:gap-4">
-                                <div className="rounded-2xl border border-violet-100 bg-[#faf7ff] p-3 text-center sm:p-5">
-                                    <ScanLine className="mx-auto mb-3 h-10 w-10 text-violet-500" aria-hidden="true" />
-                                    <p className="text-xs font-bold text-gray-500">Request code</p>
-                                    <p className="mt-1 whitespace-nowrap text-sm font-black tracking-wide text-gray-900 sm:text-2xl">123 456</p>
-                                    <p className="mt-2 text-xs font-bold text-violet-700">42</p>
-                                </div>
-                                <ArrowRight className="h-5 w-5 text-violet-400" aria-hidden="true" />
-                                <div className="rounded-[1.5rem] border-[5px] border-[#2e2645] bg-white p-3 text-center shadow-lg sm:p-5">
-                                    <img src="/logo.png" alt="" className="mx-auto mb-3 h-9 w-9 rounded-full" />
-                                    <p className="text-xs font-bold text-gray-500">Check on phone</p>
-                                    <p className="mt-1 whitespace-nowrap text-sm font-black tracking-wide text-gray-900 sm:text-2xl">123 456</p>
-                                    <p className="mt-2 text-xs font-bold text-violet-700">42 · Approve</p>
-                                </div>
-                            </div>
-                            <p className="text-center text-xs font-semibold text-gray-400">Illustration · compare both before approving</p>
-                        </div>
-                    </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">

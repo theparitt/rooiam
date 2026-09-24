@@ -80,6 +80,19 @@ export default function NewsPage() {
                             </div>
                         </div>
                     </article>
+                    <article className="mt-8 rounded-[2rem] border border-[#ead9ef] bg-white p-7 sm:p-10">
+                        <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest">
+                            <span className="rounded-full bg-[#e2f7ec] px-3 py-1.5 text-[#277454]">Release</span>
+                            <time dateTime="2026-03" className="text-gray-500">March 2026</time>
+                        </div>
+                        <h2 className="mt-5 text-2xl font-black text-[#29243b] sm:text-3xl">Rooiam 0.1.0 is here</h2>
+                        <p className="mt-3 max-w-3xl text-base font-semibold leading-relaxed text-gray-600">
+                            The first public release brings passwordless sign-in, multi-tenant workspaces, OIDC integration and a self-hosted deployment path together in one identity platform.
+                        </p>
+                        <a href={`${DOCS_BASE_URL}/changelog`} className="mt-5 inline-flex items-center gap-1.5 text-sm font-black text-violet-700 hover:text-violet-900">
+                            Read the release notes <ArrowRight className="h-4 w-4" />
+                        </a>
+                    </article>
                 </section>
             </main>
             <Footer />
