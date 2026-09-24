@@ -36,6 +36,7 @@ Use this when you want:
 - [Android phone sign-in walkthrough](./10_android_phone_sign_in_walkthrough.md) — follow each app and browser screen
 - [Phone sign-in for tenant workspaces](../tenant_phone_sign_in.md) — what must be ready before enabling the button
 - [Build your first Android phone sign-in app](./11_build_your_first_android_app.md) — from a fresh clone to your own Play-backed test
+- [Build a branded Android phone app](./12_white_label_android_starter.md) — tenant-owned source and Play listing
 - [Android SDK integration](../reference/14_android_sdk_integration.md) — annotated SDK calls and lifecycle details
 
 Use this when you want:

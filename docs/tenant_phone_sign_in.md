@@ -19,7 +19,7 @@ Share the supported app's **official installation link supplied by your operator
 
 > Install the approved Rooiam phone app, sign in to your Rooiam account inside it, and enroll this phone. When you next sign in to our website, choose “Sign in with your phone,” scan the QR in the app, compare the number shown on both screens, and approve only if it matches.
 
-Do not send users an arbitrary APK. If your operator has not provided a supported app, keep Phone sign-in disabled. Developers who intentionally build a separate Android app can use the [Android SDK tutorial](./getting-started/11_build_your_first_android_app.md); those Play Console steps are **not tenant setup steps**.
+Do not send users an arbitrary APK. If your operator has not provided a supported app, keep Phone sign-in disabled. A tenant that wants to own its app and Play listing can start with the [branded Android starter](./getting-started/12_white_label_android_starter.md); its package still needs operator-side verification. Developers building a different integration can use the [Android SDK tutorial](./getting-started/11_build_your_first_android_app.md). Neither path is required for an ordinary tenant using an operator-supplied app.
 
 ## If the button does not work
 

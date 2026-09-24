@@ -85,6 +85,8 @@ Early-stage but usable for evaluation, internal use, and early adopters. The cor
 
 To build your own app, follow the [beginner Android tutorial](docs/getting-started/11_build_your_first_android_app.md) and [SDK guide](docs/reference/14_android_sdk_integration.md). See the [roadmap](docs/roadmap.md) for current scope and next steps.
 
+Tenants who want their own Play listing can start from the [Android tenant starter](rooiam-android-tenant-starter/README.md). Each tenant package still needs operator-side Play Integrity verification before strict phone approval works.
+
 ## Security
 
 Found a vulnerability? Please don't open a public issue — see [SECURITY.md](SECURITY.md).
