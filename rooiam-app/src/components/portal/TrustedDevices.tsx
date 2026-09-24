@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { RooiamBrowser } from '@rooiam/sdk-browser'
 import { getApiBase } from '../../lib/api-base'
 import { portalRoutes } from '../../lib/routes'
+import PortalConfirmModal from './PortalConfirmModal'
 
 export default function TrustedDevices({ disabled = false }: { disabled?: boolean }) {
     const sdk = useMemo(() => new RooiamBrowser({ apiBase: getApiBase() }), [])
@@ -9,13 +10,26 @@ export default function TrustedDevices({ disabled = false }: { disabled?: boolea
     const [message, setMessage] = useState('')
     const [busy, setBusy] = useState(false)
     const [loading, setLoading] = useState(true)
+    const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
+    const [revokeError, setRevokeError] = useState('')
     useEffect(() => { let active = true; sdk.trustedDevices.list().then(list => { if (active) setDevices(list) }).catch(() => { if (active) setMessage('Could not load trusted phones.') }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [sdk])
-    async function revoke(id: string) {
-        const selected = devices.find(device => device.id === id)
-        if (!selected || !window.confirm(`Revoke ${selected.device_label} (ID …${id.slice(-8)})? It will stop approving sign-ins and pending API-key requests. Review your other browser sessions if the phone is lost.`)) return
+    const selectedDevice = devices.find(device => device.id === selectedDeviceId)
+    function closeConfirmation() {
+        if (busy) return
+        setSelectedDeviceId(null)
+        setRevokeError('')
+    }
+    async function revoke() {
+        if (!selectedDevice || disabled || busy) return
         setBusy(true)
-        try { await sdk.trustedDevices.revoke(id); setDevices(await sdk.trustedDevices.list()); setMessage('Phone revoked. Pending approvals from it have been stopped. Review My Sessions if it may be stolen.') }
-        catch (e) { setMessage(e instanceof Error ? e.message : 'Could not revoke the phone.') }
+        setRevokeError('')
+        try {
+            await sdk.trustedDevices.revoke(selectedDevice.id)
+            setDevices(current => current.map(device => device.id === selectedDevice.id ? { ...device, revoked_at: new Date().toISOString() } : device))
+            setSelectedDeviceId(null)
+            setMessage('Phone revoked. Pending approvals from it have been stopped. Review My Sessions if it may be stolen.')
+            void sdk.trustedDevices.list().then(setDevices).catch(() => {})
+        } catch (e) { setRevokeError(e instanceof Error ? e.message : 'Could not revoke the phone.') }
         finally { setBusy(false) }
     }
     return <section className="rounded-2xl border bg-white p-5 space-y-3">
@@ -34,7 +48,22 @@ export default function TrustedDevices({ disabled = false }: { disabled?: boolea
         {!loading && !devices.length && <p className="text-sm">No trusted phones registered. Sign in to your Android app and enroll this account to add one.</p>}
         {devices.map(device => <div key={device.id} className="flex items-center justify-between gap-3 border-t pt-3">
             <div><p className="font-semibold">{device.device_label}</p><p className="text-xs text-gray-600">{device.revoked_at ? 'Revoked' : device.attestation.status === 'verified' ? 'Attestation verified' : `Attestation: ${device.attestation.status}`}</p><p className="text-xs text-gray-500">Enrolled {new Date(device.created_at).toLocaleString()} · ID …{device.id.slice(-8)}{device.last_used_at ? ` · Last used ${new Date(device.last_used_at).toLocaleString()}` : ''}</p></div>
-            {!device.revoked_at && <button disabled={disabled || busy} className="text-sm text-red-700 underline disabled:opacity-50" onClick={() => revoke(device.id)}>Revoke phone</button>}
+            {!device.revoked_at && <button type="button" disabled={disabled || busy} className="text-sm text-red-700 underline disabled:opacity-50" onClick={() => { setRevokeError(''); setSelectedDeviceId(device.id) }}>Revoke phone</button>}
         </div>)}
+        {selectedDevice && !selectedDevice.revoked_at ? (
+            <PortalConfirmModal
+                title="Revoke this phone?"
+                description={<>
+                    <p className="font-bold text-slate-800">{selectedDevice.device_label} <span className="font-medium text-slate-500">· ID …{selectedDevice.id.slice(-8)}</span></p>
+                    <p>This phone will stop approving sign-ins and pending API-key requests. If it is lost, review your other browser sessions separately in My Sessions.</p>
+                </>}
+                confirmLabel="Revoke phone"
+                busyLabel="Revoking…"
+                onConfirm={() => void revoke()}
+                onClose={closeConfirmation}
+                busy={busy}
+                error={revokeError}
+            />
+        ) : null}
     </section>
 }
