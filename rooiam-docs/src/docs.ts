@@ -56,7 +56,9 @@ const SECTION_ORDER: DocSectionId[] = [
   'misc',
 ]
 
-const rawDocs = import.meta.glob('../../docs/**/*.md', {
+// Exclude private notes before Vite imports raw Markdown. Filtering the map
+// later hides routes but still embeds the file contents in the public bundle.
+const rawDocs = import.meta.glob(['../../docs/**/*.md', '!../../docs/internal/**'], {
   eager: true,
   query: '?raw',
   import: 'default',

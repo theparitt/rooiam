@@ -38,7 +38,17 @@ jobs:
       - run: node --test rooiam-examples/device-login/fake-phone.test.mjs
       - run: npm ci --prefix rooiam-examples/example-4-reference-app && npm test --prefix rooiam-examples/example-4-reference-app
       - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app
-      - run: npm ci --prefix rooiam-docs && npm run check:docs --prefix rooiam-docs && npm run build --prefix rooiam-docs
+      - run: |
+          mkdir -p docs/internal
+          trap 'unlink docs/internal/.ci-private-build-sentinel.md' EXIT
+          printf 'ROOIAM_PRIVATE_DOC_SENTINEL_FOR_BUILD_CHECK\n' > docs/internal/.ci-private-build-sentinel.md
+          npm ci --prefix rooiam-docs
+          npm run check:docs --prefix rooiam-docs
+          npm run build --prefix rooiam-docs
+          if grep -R -F -q 'ROOIAM_PRIVATE_DOC_SENTINEL_FOR_BUILD_CHECK' rooiam-docs/dist; then
+            echo 'Private Markdown was included in the public docs bundle' >&2
+            exit 1
+          fi
       - run: npm ci --prefix rooiam-landing && npm run build --prefix rooiam-landing
       - run: node rooiam-server/widget/build.mjs && git diff --exit-code -- rooiam-server/assets/device-login.js
   android:
