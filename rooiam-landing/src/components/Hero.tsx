@@ -1,128 +1,52 @@
-import { BookOpen, Copy, Check } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { DOCS_GETTING_STARTED_URL, DEMO_APP_URL, GITHUB_REPO_URL } from '../lib/site'
+import { ArrowRight, BookOpen } from 'lucide-react'
+import { DOCS_GETTING_STARTED_URL, DEMO_APP_URL } from '../lib/site'
 
-const dockerSnippet = `git clone ${GITHUB_REPO_URL}\ncd rooiam\n# Create .env.docker.local.demo from the Quick Start guide\ndocker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d`
-
-export default function Hero()
-{
-    const [copied, setCopied] = useState(false)
-
-    useEffect(() =>
-    {
-        if (!copied) return
-        const timeout = window.setTimeout(() => setCopied(false), 1600)
-        return () => window.clearTimeout(timeout)
-    }, [copied])
-
-    async function copySnippet()
-    {
-        await navigator.clipboard.writeText(dockerSnippet)
-        setCopied(true)
-    }
-
+export default function Hero() {
     return (
-        <section className="relative overflow-hidden px-6 md:px-12 lg:px-20 pt-16 pb-12 min-h-[92vh] flex flex-col justify-center">
-            {/* Background blobs */}
-            <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full blur-3xl opacity-30 pointer-events-none"
-                style={{ background: 'radial-gradient(circle, #FFB5C8, #D5B7FF)' }} />
-            <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] rounded-full blur-3xl opacity-20 pointer-events-none"
-                style={{ background: 'radial-gradient(circle, #B5D5FF, #B5EFD5)' }} />
-
-            <div className="relative z-10 max-w-5xl mx-auto w-full">
-                {/* Badge */}
-                <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full mb-5 border"
-                    style={{ background: '#F0FFF8', borderColor: '#90DDB5' }}>
-                    <span className="text-sm font-black text-gray-700">Open Source · Apache 2.0 · Free Forever</span>
-                </div>
-
-                <h1 className="text-3xl md:text-5xl font-black text-gray-900 leading-[1.08] mb-6">
-                    The self-hosted passwordless IAM<br />
-                    <span style={{
-                        background: 'linear-gradient(135deg, #FF7BAC, #A07BFF)',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                    }}>for multi-tenant SaaS.</span><br />
-                    <span className="text-2xl md:text-3xl font-bold text-gray-500">Hosted login, workspace access, and OIDC you run yourself.</span>
-                </h1>
-
-                <p className="text-lg font-semibold text-gray-400 max-w-2xl mb-10 leading-relaxed">
-                    Rooiam is built for SaaS teams that need one identity system for many customer workspaces.
-                    It already gives you hosted login, workspace access control, admin surfaces, and OIDC.
-                    Self-host it, inspect it, and keep control of your auth stack.
-                </p>
-
-                <div className="flex flex-wrap gap-4 mb-12">
-                    <a href={DOCS_GETTING_STARTED_URL}
-                        className="flex items-center gap-2.5 px-7 py-4 rounded-2xl font-black text-base shadow-xl hover:scale-[1.03] transition-all"
-                        style={{ background: 'linear-gradient(135deg, #FFB5C8 0%, #D5B7FF 100%)', color: '#5a2d3f' }}>
-                        <BookOpen className="w-5 h-5" /> Get Started
-                    </a>
-                    <a href={DEMO_APP_URL} target="_blank" rel="noreferrer"
-                        className="flex items-center gap-2.5 px-7 py-4 rounded-2xl font-black text-base border-2 border-gray-200 hover:bg-gray-50 hover:scale-[1.03] transition-all text-gray-700">
-                        Try the Live Demo →
-                    </a>
-                </div>
-
-                <a href="#phone-sign-in"
-                    className="block max-w-2xl rounded-2xl border border-purple-200 bg-purple-50 p-5 mb-8 hover:bg-purple-100 transition-colors">
-                    <span className="text-xs font-black uppercase tracking-widest text-purple-700">Android preview</span>
-                    <span className="block mt-2 text-xl font-black text-gray-800">A new way to sign in. From your phone.</span>
-                    <span className="block mt-2 text-sm font-semibold text-gray-600">
-                        Let users scan a QR code and approve sign-in from their Android phone.
-                        Bring the experience into your app with Rooiam’s SDK.
+        <section className="overflow-hidden bg-gradient-to-br from-[#fff8fc] via-white to-[#f4f0ff] px-6 py-12 md:px-12 md:py-20 lg:px-20">
+            <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:gap-14">
+                <div className="order-2 lg:order-1">
+                    <span className="inline-flex rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-rose-700">
+                        Self-hosted · Open source
                     </span>
-                    <span className="block mt-3 text-sm font-bold text-purple-700">Explore phone sign-in →</span>
-                </a>
-
-                {/* Docker snippet */}
-                <div className="rounded-2xl overflow-hidden shadow-lg max-w-2xl"
-                    style={{ background: '#1a1a2e' }}>
-                    <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ background: '#111122' }}>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-400" />
-                            <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                            <div className="w-3 h-3 rounded-full bg-green-400" />
-                            <span className="ml-2 text-xs font-bold text-gray-400">Quick Start — Docker</span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={copySnippet}
-                            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-gray-200 transition-all hover:bg-white/10"
-                        >
-                            {copied ? <Check className="h-3.5 w-3.5 text-green-300" /> : <Copy className="h-3.5 w-3.5" />}
-                            {copied ? 'Copied' : 'Copy'}
-                        </button>
+                    <h1 className="mt-6 text-4xl font-black leading-[1.08] text-gray-900 sm:text-5xl">
+                        Sign-in for<br />
+                        <span className="bg-gradient-to-r from-[#ef719b] to-[#a77ce8] bg-clip-text text-transparent">every workspace.</span>
+                    </h1>
+                    <p className="mt-5 max-w-md text-base font-semibold leading-relaxed text-gray-600 md:text-lg">
+                        Passwordless login, workspace controls, and OIDC for your SaaS. Run it on your own infrastructure.
+                    </p>
+                    <div className="mt-8 flex flex-wrap gap-3">
+                        <a href={DEMO_APP_URL} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-2xl bg-[#2a243e] px-6 py-3.5 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5">
+                            See the demo <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </a>
+                        <a href={DOCS_GETTING_STARTED_URL}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-white px-6 py-3.5 text-sm font-black text-violet-800 hover:bg-violet-50">
+                            <BookOpen className="h-4 w-4" aria-hidden="true" /> Get started
+                        </a>
                     </div>
-                    <div className="p-5 font-mono text-sm space-y-2">
-                        <div className="flex items-center gap-3">
-                            <span className="text-pink-400 select-none">$</span>
-                            <span className="text-green-300">git clone {GITHUB_REPO_URL}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <span className="text-pink-400 select-none">$</span>
-                            <span className="text-green-300">cd rooiam</span>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <span className="text-pink-400 select-none">$</span>
-                            <span className="text-gray-400"># Create .env.docker.local.demo from the Quick Start guide</span>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <span className="text-pink-400 select-none">$</span>
-                            <span className="text-green-300 break-all">docker compose -f docker-compose.demo.yml --env-file .env.docker.local.demo up -d</span>
-                        </div>
-                        <div className="mt-3 space-y-1 pl-1">
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Demo API    → http://localhost:5180</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  Mailhog     → http://localhost:8026</div>
-                            <div className="text-xs" style={{ color: '#90DDB5' }}>✓  MinIO       → http://localhost:19001</div>
-                        </div>
-                    </div>
+                    <a href="#phone-sign-in" className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-violet-700 hover:text-violet-900">
+                        Android phone sign-in · preview <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </a>
                 </div>
 
-                <p className="mt-4 text-xs font-semibold text-gray-400">
-                    Requires Docker and the local demo env file from the setup guide. Frontends run separately. No host Rust toolchain is needed.
-                    Rooiam is early-stage and best for evaluation, internal use, and early adopters today.
-                </p>
+                <div className="order-1 lg:order-2">
+                    <a href={DEMO_APP_URL} target="_blank" rel="noreferrer" aria-label="Open the Rooiam workspace login demo"
+                        className="group relative block rounded-[2rem] border border-[#e7d6ee] bg-gradient-to-br from-[#ffe4ee] via-[#ecfff8] to-[#e9e4ff] p-3 shadow-[0_30px_80px_-45px_rgba(65,38,100,0.55)] transition-transform hover:-translate-y-1 sm:p-5">
+                        <div className="relative aspect-[5/4] overflow-hidden rounded-2xl border border-white/80 bg-[#ecf9f6] shadow-md">
+                            <img src="/screenshots/enduser.png"
+                                alt="MintMallow workspace login in the Rooiam demo"
+                                className="absolute left-1/2 top-1/2 w-[170%] max-w-none -translate-x-1/2 -translate-y-1/2"
+                                fetchPriority="high" />
+                        </div>
+                        <img src="/logo.png" alt="" aria-hidden="true"
+                            className="absolute -bottom-5 -left-4 h-16 w-16 rounded-full border-4 border-white bg-[#fee3d0] shadow-lg sm:h-20 sm:w-20" />
+                    </a>
+                    <p className="mt-7 text-center text-xs font-semibold text-gray-500">
+                        A workspace login from the current Rooiam demo
+                    </p>
+                </div>
             </div>
         </section>
     )

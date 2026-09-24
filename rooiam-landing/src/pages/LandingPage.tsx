@@ -1,7 +1,6 @@
 import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
 import DemoShowcase from '../components/DemoShowcase'
-import Stats from '../components/Stats'
 import Features from '../components/Features'
 import HowItWorks from '../components/HowItWorks'
 import OpenSource from '../components/OpenSource'
@@ -16,7 +15,6 @@ export default function LandingPage()
             <Navbar />
             <Hero />
             <DemoShowcase />
-            <Stats />
             <Features />
             <HowItWorks />
             <OpenSource />

@@ -84,7 +84,7 @@ export default function Features()
 
                 <div id="phone-sign-in" className="scroll-mt-28 mb-7 overflow-hidden rounded-[2rem] border border-violet-200 bg-gradient-to-br from-[#f4ecff] via-white to-[#fff0f7] p-6 shadow-[0_22px_70px_-45px_rgba(95,58,160,0.7)] md:p-10">
                     <div className="grid items-center gap-8 lg:grid-cols-[1.05fr_.95fr]">
-                        <div>
+                        <div className="order-2">
                             <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-black uppercase tracking-wider text-violet-700">
                                 <Smartphone className="h-3.5 w-3.5" aria-hidden="true" /> Android preview
                             </span>
@@ -92,14 +92,9 @@ export default function Features()
                                 Sign in with a scan and a tap.
                             </h3>
                             <p className="mt-4 max-w-lg text-base font-semibold leading-relaxed text-gray-600">
-                                Users scan a browser QR, check the matching code on their Android phone, and approve. Then they finish sign-in and any required MFA in the browser.
+                                Scan the browser QR, match the code on your Android phone, and approve. Finish any required MFA in the browser.
                             </p>
-                            <div className="mt-6 flex flex-wrap gap-2 text-xs font-bold text-violet-900">
-                                <span className="rounded-full bg-white px-3 py-2">Scan the QR</span>
-                                <span className="rounded-full bg-white px-3 py-2">Match the code</span>
-                                <span className="rounded-full bg-white px-3 py-2">Approve on phone</span>
-                            </div>
-                            <div className="mt-6 flex items-start gap-2 text-sm font-semibold leading-relaxed text-gray-600">
+                            <div className="mt-5 flex items-start gap-2 text-sm font-semibold leading-relaxed text-gray-600">
                                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden="true" />
                                 Each workspace can enable this method and choose its place on the sign-in screen.
                             </div>
@@ -112,7 +107,7 @@ export default function Features()
                                 </a>
                             </div>
                         </div>
-                        <div className="rounded-3xl border border-violet-100 bg-white/80 p-5 shadow-sm" aria-label="Illustration of browser and phone matching a sign-in code">
+                        <div className="order-1 rounded-3xl border border-violet-100 bg-white/80 p-5 shadow-sm" aria-label="Illustration of browser and phone matching a sign-in code">
                             <div className="flex items-center gap-2 border-b border-violet-100 pb-4">
                                 <span className="h-2.5 w-2.5 rounded-full bg-rose-200" />
                                 <span className="h-2.5 w-2.5 rounded-full bg-amber-200" />
@@ -128,7 +123,7 @@ export default function Features()
                                 </div>
                                 <ArrowRight className="h-5 w-5 text-violet-400" aria-hidden="true" />
                                 <div className="rounded-[1.5rem] border-[5px] border-[#2e2645] bg-white p-3 text-center shadow-lg sm:p-5">
-                                    <Smartphone className="mx-auto mb-3 h-9 w-9 text-violet-500" aria-hidden="true" />
+                                    <img src="/logo.png" alt="" className="mx-auto mb-3 h-9 w-9 rounded-full" />
                                     <p className="text-xs font-bold text-gray-500">Check on phone</p>
                                     <p className="mt-1 whitespace-nowrap text-sm font-black tracking-wide text-gray-900 sm:text-2xl">123 456</p>
                                     <p className="mt-2 text-xs font-bold text-violet-700">42 · Approve</p>
