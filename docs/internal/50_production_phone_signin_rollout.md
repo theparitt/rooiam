@@ -8,6 +8,7 @@ Updated: 2026-09-24. Status: **not deployed to the production API**. This is the
 - The production Compose file selects `ROOIAM_SERVER_IMAGE` from `.env`. It does **not** currently pass `ROOIAM_GOOGLE_PLAY_USE_ADC` or `GOOGLE_APPLICATION_CREDENTIALS` into the server container. The repository's `docker-compose.prod.yml` is a reference, not the production host's active Compose file.
 - The current frontend code has the workspace Phone sign-in enable/order controls, but `app.rooiam.com` has not been redeployed with that build. Deploying it before the API would show broken controls.
 - The server's platform phone login default is off, and each workspace's phone login default is off. A code-only server rollout does not expose QR sign-in by itself.
+- The first production rollout exposed a historical migration-lineage difference: versions 1–4, 11–12 and 17–23 were applied from CRLF files in the July production image; the repository later normalized those same SQL statements to LF. The server now selects the CRLF checksum lineage only when migration 1 matches that known history. SQLx still validates every applied migration; no database checksum is rewritten. Do not deploy the earlier `2cab52d` image, which lacks this compatibility fix.
 
 ## Stage 1 — build and deploy the API with phone sign-in still disabled
 

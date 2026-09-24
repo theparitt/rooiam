@@ -51,7 +51,7 @@ impl AppState {
         };
 
         // ── Migrations ──────────────────────────────────────────────────────
-        match sqlx::migrate!("./migrations").run(&db).await {
+        match super::migrations::run(&db).await {
             Ok(_) => ok("Migrations"),
             Err(e) => {
                 fail("Migrations", &e.to_string());
