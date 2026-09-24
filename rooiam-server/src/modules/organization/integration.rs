@@ -116,12 +116,29 @@ pub fn workspace_api_key_has_permission(
     ctx: &WorkspaceIntegrationInfoRow,
     permission: &str,
 ) -> bool {
-    ctx.allowed_permissions
-        .iter()
-        .any(|value| value == permission)
-        || workspace_api_key_permissions_for_preset(&ctx.permission_preset)
-            .iter()
-            .any(|value| value == permission)
+    // The stored grant is authoritative. The preset describes how the key was
+    // created; it must not silently re-grant a permission removed from the key.
+    ctx.allowed_permissions.iter().any(|value| value == permission)
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn persisted_key_grants_cannot_be_widened_by_preset() {
+        let ctx = WorkspaceIntegrationInfoRow {
+            org_id: Uuid::new_v4(), org_slug: "a".into(), org_name: "A".into(),
+            login_display_name: None, icon_url: None, login_logo_url: None,
+            icon_container: None, login_logo_container: None, login_logo_size: None,
+            brand_color: None, created_by: Uuid::new_v4(), label: "restricted".into(),
+            key_prefix: "restricted".into(), permission_preset: "workspace_owner".into(),
+            allowed_permissions: vec!["workspace.read".into()],
+        };
+        assert!(workspace_api_key_has_permission(&ctx, "workspace.read"));
+        assert!(!workspace_api_key_has_permission(&ctx, "members.remove"));
+        assert!(!workspace_api_key_has_permission(&ctx, "clients.delete"));
+    }
 }
 
 pub fn require_workspace_api_key_permission(
@@ -233,6 +250,8 @@ pub async fn resolve_workspace_api_key_context(
         WHERE k.key_hash = $1
           AND k.revoked = FALSE
           AND (k.expires_at IS NULL OR k.expires_at > NOW())
+          AND o.status = 'active'
+          AND o.platform_locked = FALSE
         LIMIT 1
         "#,
     )

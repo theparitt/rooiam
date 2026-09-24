@@ -6840,51 +6840,6 @@ async fn initiate_owner_transfer(
         .current_org_id
         .ok_or_else(|| AppError::Validation("Select a workspace first.".into()))?;
 
-    // Only the current owner can transfer ownership
-    let is_owner: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM organization_members om JOIN roles r ON r.id = ANY(om.role_ids) WHERE om.user_id = $1 AND om.organization_id = $2 AND r.code = 'owner')"
-    )
-    .bind(session.user_id)
-    .bind(org_id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(false);
-
-    // Simpler check via rbac membership
-    let rbac = RbacService::new(RbacRepository::new(state.db.clone()));
-    let is_owner2 = rbac
-        .has_permission(session.user_id, org_id, "org:transfer_ownership")
-        .await
-        .unwrap_or(false);
-
-    if !is_owner && !is_owner2 {
-        return Err(AppError::Forbidden(
-            "Only the workspace owner can transfer ownership.".into(),
-        ));
-    }
-
-    if body.to_user_id == session.user_id {
-        return Err(AppError::Validation(
-            "Cannot transfer ownership to yourself.".into(),
-        ));
-    }
-
-    // Verify the target user is an active member
-    let target_is_member: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM organization_members WHERE user_id = $1 AND organization_id = $2 AND status = 'active')"
-    )
-    .bind(body.to_user_id)
-    .bind(org_id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(false);
-
-    if !target_is_member {
-        return Err(AppError::Validation(
-            "The target user must be an active member of this workspace.".into(),
-        ));
-    }
-
     // Generate transfer token
     let mut bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut bytes);
@@ -6895,26 +6850,14 @@ async fn initiate_owner_transfer(
     )));
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
 
-    // Cancel any pending transfers for this org
-    sqlx::query(
-        "UPDATE owner_transfer_requests SET cancelled_at = NOW() WHERE organization_id = $1 AND accepted_at IS NULL AND cancelled_at IS NULL"
-    )
-    .bind(org_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to cancel previous workspace owner transfer requests: {}", e)))?;
-
-    sqlx::query(
-        "INSERT INTO owner_transfer_requests (organization_id, from_user_id, to_user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5)"
-    )
-    .bind(org_id)
-    .bind(session.user_id)
-    .bind(body.to_user_id)
-    .bind(&token_hash)
-    .bind(expires_at)
-    .execute(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to create workspace owner transfer request: {}", e)))?;
+    super::owner_transfer::initiate(
+        &state.db,
+        org_id,
+        session.user_id,
+        body.to_user_id,
+        &token_hash,
+        expires_at,
+    ).await?;
 
     AuditService::new(state.db.clone())
         .log(AuditEvent {
@@ -6962,129 +6905,12 @@ async fn accept_owner_transfer(
         body.token.as_bytes(),
     )));
 
-    #[derive(sqlx::FromRow)]
-    struct TransferRecord {
-        id: Uuid,
-        organization_id: Uuid,
-        from_user_id: Uuid,
-        to_user_id: Uuid,
-        expires_at: chrono::DateTime<chrono::Utc>,
-        accepted_at: Option<chrono::DateTime<chrono::Utc>>,
-        cancelled_at: Option<chrono::DateTime<chrono::Utc>>,
-    }
-
-    let record = sqlx::query_as::<_, TransferRecord>(
-        r#"
-        SELECT id, organization_id, from_user_id, to_user_id, expires_at, accepted_at, cancelled_at
-        FROM owner_transfer_requests
-        WHERE token_hash = $1
-        "#,
-    )
-    .bind(&token_hash)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        AppError::Internal(format!(
-            "Failed to load workspace owner transfer request: {}",
-            e
-        ))
-    })?
-    .ok_or_else(|| AppError::NotFound("Invalid or expired transfer token.".into()))?;
-
-    if record.organization_id != org_id {
-        return Err(AppError::Forbidden(
-            "This token is for a different workspace.".into(),
-        ));
-    }
-    if record.to_user_id != session.user_id {
-        return Err(AppError::Forbidden(
-            "This transfer is addressed to a different user.".into(),
-        ));
-    }
-    if record.accepted_at.is_some() {
-        return Err(AppError::Validation(
-            "This transfer has already been accepted.".into(),
-        ));
-    }
-    if record.cancelled_at.is_some() {
-        return Err(AppError::Validation(
-            "This transfer has been cancelled.".into(),
-        ));
-    }
-    if chrono::Utc::now() > record.expires_at {
-        return Err(AppError::Validation(
-            "This transfer token has expired.".into(),
-        ));
-    }
-
-    // Look up the owner role ID
-    let owner_role_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM roles WHERE code = 'owner' AND (organization_id = $1 OR organization_id IS NULL) ORDER BY organization_id NULLS LAST LIMIT 1"
-    )
-    .bind(org_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace owner role: {}", e)))?;
-
-    let Some(owner_role_id) = owner_role_id else {
-        return Err(AppError::Internal("Owner role not found.".into()));
-    };
-
-    let mut tx = state.db.begin().await.map_err(|e| {
-        AppError::Internal(format!(
-            "Failed to start workspace owner transfer transaction: {}",
-            e
-        ))
-    })?;
-
-    // Demote previous owner to admin
-    let admin_role_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM roles WHERE code = 'admin' AND (organization_id = $1 OR organization_id IS NULL) ORDER BY organization_id NULLS LAST LIMIT 1"
-    )
-    .bind(org_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to load workspace admin role during owner transfer: {}", e)))?;
-
-    if let Some(admin_role_id) = admin_role_id {
-        sqlx::query(
-            "UPDATE organization_members SET role_ids = array_replace(role_ids, $1, $2) WHERE user_id = $3 AND organization_id = $4"
-        )
-        .bind(owner_role_id)
-        .bind(admin_role_id)
-        .bind(record.from_user_id)
-        .bind(org_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to demote previous workspace owner: {}", e)))?;
-    }
-
-    // Promote new owner
-    sqlx::query(
-        "UPDATE organization_members SET role_ids = array_append(array_remove(role_ids, $1), $1) WHERE user_id = $2 AND organization_id = $3"
-    )
-    .bind(owner_role_id)
-    .bind(session.user_id)
-    .bind(org_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to promote new workspace owner: {}", e)))?;
-
-    // Mark transfer accepted
-    sqlx::query("UPDATE owner_transfer_requests SET accepted_at = NOW() WHERE id = $1")
-        .bind(record.id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            AppError::Internal(format!(
-                "Failed to mark workspace owner transfer as accepted: {}",
-                e
-            ))
-        })?;
-
-    tx.commit().await.map_err(|e| {
-        AppError::Internal(format!("Failed to commit workspace owner transfer: {}", e))
-    })?;
+    let from_user_id = super::owner_transfer::accept(
+        &state.db,
+        org_id,
+        session.user_id,
+        &token_hash,
+    ).await?;
 
     AuditService::new(state.db.clone())
         .log(AuditEvent {
@@ -7099,7 +6925,7 @@ async fn accept_owner_transfer(
                 .get("user-agent")
                 .and_then(|h| h.to_str().ok())
                 .map(String::from),
-            metadata: serde_json::json!({ "from_user_id": record.from_user_id }),
+            metadata: serde_json::json!({ "from_user_id": from_user_id }),
         })
         .await;
 

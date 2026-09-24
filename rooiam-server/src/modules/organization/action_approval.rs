@@ -331,6 +331,15 @@ async fn load(db: &PgPool, id: Uuid) -> Result<ActionApproval, AppError> {
         .bind(id).fetch_optional(db).await?.ok_or_else(|| AppError::NotFound("Approval request not found.".into()))
 }
 
+async fn ensure_requester_still_in_workspace(db: &PgPool, row: &ActionApproval) -> Result<(), AppError> {
+    let active: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM organization_members om JOIN organizations o ON o.id = om.organization_id WHERE om.organization_id = $1 AND om.user_id = $2 AND om.status = 'active' AND o.status = 'active' AND o.platform_locked = FALSE)")
+        .bind(row.org_id).bind(row.requester_user_id).fetch_one(db).await?;
+    if !active {
+        return Err(AppError::NotFound("Approval request not found.".into()));
+    }
+    Ok(())
+}
+
 async fn browser_row(
     req: &HttpRequest,
     state: &web::Data<AppState>,
@@ -394,6 +403,7 @@ pub async fn preview(
     if row.requester_user_id != session.user_id {
         return Err(AppError::NotFound("Approval request not found.".into()));
     }
+    ensure_requester_still_in_workspace(&state.db, &row).await?;
     let workspace_name: String = sqlx::query_scalar("SELECT name FROM organizations WHERE id = $1")
         .bind(row.org_id)
         .fetch_one(&state.db)
@@ -418,6 +428,7 @@ async fn decision(
     if row.requester_user_id != session.user_id {
         return Err(AppError::NotFound("Approval request not found.".into()));
     }
+    ensure_requester_still_in_workspace(&state.db, &row).await?;
     if effective_status(&row) != "pending" {
         return Err(AppError::Conflict(
             "This approval request is no longer pending.".into(),
@@ -605,5 +616,24 @@ mod tests {
         let changed = sqlx::query("UPDATE workspace_action_approvals SET status = 'approved' WHERE id = $1 AND status = 'pending' AND expires_at > clock_timestamp()")
             .bind(id).execute(&pool).await.unwrap().rows_affected();
         assert_eq!(changed, 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn approval_preview_loses_access_after_workspace_membership_ends(pool: PgPool) {
+        let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Approval boundary', 'approval-boundary') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO organization_members (organization_id, user_id) VALUES ($1, $2)")
+            .bind(org).bind(user).execute(&pool).await.unwrap();
+        let session: Uuid = sqlx::query_scalar("INSERT INTO sessions (user_id, session_secret_hash, expires_at) VALUES ($1, 'test', NOW() + interval '1 hour') RETURNING id")
+            .bind(user).fetch_one(&pool).await.unwrap();
+        let id: Uuid = sqlx::query_scalar("INSERT INTO workspace_action_approvals (org_id, requester_user_id, requester_session_id, browser_proof_hash, server_origin, action, label, permission_preset, allowed_permissions, payload_digest, policy_version, display_code, expires_at) VALUES ($1,$2,$3,'proof','https://auth.example','workspace.api_key.create','test','workspace_admin',ARRAY['workspace.read'],'digest',1,'123456',NOW() + interval '5 minutes') RETURNING id")
+            .bind(org).bind(user).bind(session).fetch_one(&pool).await.unwrap();
+        let row = load(&pool, id).await.unwrap();
+        ensure_requester_still_in_workspace(&pool, &row).await.unwrap();
+        sqlx::query("UPDATE organization_members SET status = 'suspended' WHERE organization_id = $1 AND user_id = $2")
+            .bind(org).bind(user).execute(&pool).await.unwrap();
+        assert!(ensure_requester_still_in_workspace(&pool, &row).await.is_err());
     }
 }

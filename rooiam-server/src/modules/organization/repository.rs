@@ -16,6 +16,53 @@ pub struct OrganizationRepository {
     pool: PgPool,
 }
 
+#[cfg(test)]
+mod tenant_boundary_tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn role_update_cannot_change_owner_or_foreign_member(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let first_owner: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let second_owner: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let first = repo.create_organization(first_owner, "First", "role-test-first").await.unwrap();
+        let second = repo.create_organization(second_owner, "Second", "role-test-second").await.unwrap();
+        let first_member: Uuid = sqlx::query_scalar("SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2")
+            .bind(first.id).bind(first_owner).fetch_one(&pool).await.unwrap();
+        let second_member: Uuid = sqlx::query_scalar("SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2")
+            .bind(second.id).bind(second_owner).fetch_one(&pool).await.unwrap();
+
+        assert!(repo.update_member_role(first.id, first_member, "admin").await.is_err());
+        assert!(repo.update_member_role(first.id, second_member, "admin").await.is_err());
+        assert!(repo.is_org_owner(first.id, first_owner).await.unwrap());
+        assert!(repo.is_org_owner(second.id, second_owner).await.unwrap());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn audit_search_keeps_workspace_scope(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let first: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('First', 'audit-search-first') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let second: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Second', 'audit-search-second') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        for (org, target) in [(first, "shared-term-first"), (second, "shared-term-secret")] {
+            sqlx::query("INSERT INTO audit_logs (organization_id, action, target_type, target_id) VALUES ($1, 'workspace.test', 'member', $2)")
+                .bind(org).bind(target).execute(&pool).await.unwrap();
+        }
+        let (items, total) = repo.get_organization_activity(first, 1, 20, "shared-term", "all", None, None)
+            .await.unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].target_id.as_deref(), Some("shared-term-first"));
+        let (items, total) = repo.get_organization_activity(first, 1, 20, "secret", "all", None, None)
+            .await.unwrap();
+        assert_eq!(total, 0);
+        assert!(items.is_empty());
+    }
+}
+
 impl OrganizationRepository {
     fn timing_logs_enabled() -> bool {
         static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -593,6 +640,13 @@ impl OrganizationRepository {
         role_code: &str,
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
+        // Share the same workspace lock as owner transfer so role changes and
+        // ownership handoff cannot make decisions from different snapshots.
+        sqlx::query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE")
+            .bind(organization_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Workspace not found.".into()))?;
 
         let member_record = sqlx::query(
             r#"
@@ -625,33 +679,13 @@ impl OrganizationRepository {
             .iter()
             .any(|row| row.get::<String, _>("code") == "owner");
 
-        // Last-owner guard: if this member currently holds the owner role and they are the only
-        // owner, reject any role change — this workspace would become permanently orphaned.
-        // We count inside the transaction so the check is race-condition safe.
+        // Ownership is changed only through the confirmed owner-transfer flow.
+        // A normal role update must not leave the owner role in place while
+        // reporting a successful demotion, or create an ownerless workspace.
         if has_owner_role {
-            let owner_count: i64 = sqlx::query_scalar(
-                r#"
-                SELECT COUNT(*)
-                FROM organization_members om
-                JOIN member_roles mr ON mr.member_id = om.id
-                JOIN roles r ON r.id = mr.role_id
-                WHERE om.organization_id = $1
-                  AND om.status = 'active'
-                  AND r.code = 'owner'
-                "#,
-            )
-            .bind(organization_id)
-            .fetch_one(&mut *tx)
-            .await?;
-
-            if owner_count <= 1 {
-                return Err(AppError::Validation(
-                    "Cannot change the role of the last owner. Assign another owner first.".into(),
-                ));
-            }
-
-            // More than one owner exists — allow the change to proceed.
-            // (Falls through to the DELETE + INSERT below.)
+            return Err(AppError::Validation(
+                "Transfer workspace ownership before changing an owner's role.".into(),
+            ));
         }
 
         sqlx::query(
@@ -695,6 +729,11 @@ impl OrganizationRepository {
         member_id: Uuid,
     ) -> Result<Uuid, AppError> {
         let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE")
+            .bind(organization_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Workspace not found.".into()))?;
 
         // Check member exists and is active
         let user_id: Uuid = sqlx::query_scalar(

@@ -217,7 +217,7 @@ impl OrganizationService {
             ));
         }
 
-        let allowed_roles = ["admin", "member", "manager", "viewer"];
+        let allowed_roles = ["admin", "member"];
         if !allowed_roles.contains(&role_code) {
             return Err(AppError::Validation(
                 "Only assignable workspace roles can be set from the tenant portal.".into(),
