@@ -6,7 +6,7 @@ The decoder is specific to one Android package. For Rooiam Reference, use `com.r
 
 ## Deploy the decoder
 
-Cloud Run requires a Google Cloud project linked to Billing and a signed-in Google Cloud CLI administrator. From the repository root, run the deployment script. It resolves the project ID from the number, verifies the existing `rooiam-play-integrity` service account, enables the required APIs, stores a generated shared secret in Secret Manager, and deploys the decoder. It prints the service URL and **the path** to the private secret file, never the secret value.
+Cloud Run requires a Google Cloud project linked to Billing and a signed-in Google Cloud CLI administrator. From the repository root, run the deployment script. It resolves the project ID from the number, verifies the existing `rooiam-play-integrity` service account, enables the required APIs, grants the default Cloud Build identity `roles/run.builder` so it can read the uploaded source, stores a generated shared secret in Secret Manager, and deploys the decoder. It prints the service URL and **the path** to the private secret file, never the secret value.
 
 ```bash
 bash rooiam-server/deploy/play-integrity-decode-proxy/deploy.sh 1028955371558

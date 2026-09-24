@@ -26,6 +26,14 @@ gcloud services enable \
   secretmanager.googleapis.com playintegrity.googleapis.com \
   --project "$project_id"
 
+# Cloud Run source deployments use the Compute Engine default account for
+# Cloud Build unless a different build identity is configured. New projects
+# do not necessarily grant it access to the uploaded source archive.
+build_service_account="$project_number-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding "$project_id" \
+  --member "serviceAccount:$build_service_account" \
+  --role roles/run.builder >/dev/null
+
 umask 077
 mkdir -p "$(dirname "$secret_file")"
 if gcloud secrets describe "$secret_name" --project "$project_id" >/dev/null 2>&1; then
