@@ -31,7 +31,11 @@ The production flow passed an assisted revoke and re-enrollment test on the same
 
 ## Next — Protect workspace boundaries
 
-**0.6 backend candidate.** Workspace ownership handoff and existing role, API-key and approval boundaries have been hardened. The production rollout and live verification will be done together with the pending 0.5 server update; these changes are not live yet.
+**0.6 backend candidate.** Workspace ownership handoff and existing role, API-key and approval boundaries have been hardened. Production rollout and live verification are planned with the pending 0.5 and 0.7 server updates; these changes are not live yet.
+
+## Next — Make key confirmation more precise
+
+**0.7 engineering candidate.** Workspace owners can choose whether phone confirmation applies to no API keys, full-access owner keys, or every API key. This is scoped to key creation; it will become available when the matching backend and portal are deployed together.
 
 ## Looking ahead
 
@@ -39,7 +43,6 @@ These are provisional directions, with scope guided by real integrations. Dates 
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.7 | Workspace approval policies | Clearer control over which identity changes need confirmation |
 | 0.8 | Self-hosted reliability | More predictable upgrades, backup, restore and failure handling; additional company identity connections only where needed |
 | 0.9 | iOS exploration | Bring the supported device protocol to iOS only when real iPhone testing is available |
 | 1.0 | Stable compatibility | A documented support and compatibility commitment for the supported APIs, protocols and SDKs |

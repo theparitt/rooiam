@@ -17,6 +17,16 @@ import { OrganizationActivityItem, TenantApiKey } from '../../lib/portal-types'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_API_KEYS = 10
+type PhonePolicyMode = 'off' | 'owner_keys' | 'all_keys'
+
+function policyModeFromResponse(data: { mode?: string; required?: boolean }): PhonePolicyMode {
+    if (data.mode === 'owner_keys' || data.mode === 'all_keys') return data.mode
+    return data.required ? 'all_keys' : 'off'
+}
+
+function requiresPhoneForKey(mode: PhonePolicyMode, preset: 'workspace_owner' | 'workspace_admin') {
+    return mode === 'all_keys' || (mode === 'owner_keys' && preset === 'workspace_owner')
+}
 
 type PendingKeyApproval = {
     id: string
@@ -202,7 +212,9 @@ export default function PortalWorkspaceApiKeys({
     const [pageSize, setPageSize] = React.useState(DEFAULT_PAGE_SIZE)
     const handlePageSizeChange = (n: number) => { setPageSize(n); setPage(1) }
     const atLimit = apiKeys.length >= MAX_API_KEYS
-    const [phoneRequired, setPhoneRequired] = React.useState(false)
+    const [phonePolicyMode, setPhonePolicyMode] = React.useState<PhonePolicyMode>('off')
+    const [selectedPolicyMode, setSelectedPolicyMode] = React.useState<PhonePolicyMode>('off')
+    const [policyLoaded, setPolicyLoaded] = React.useState(false)
     const [policyBusy, setPolicyBusy] = React.useState(false)
     const [policyError, setPolicyError] = React.useState('')
     const [pendingApproval, setPendingApproval] = React.useState<PendingKeyApproval | null>(null)
@@ -213,7 +225,7 @@ export default function PortalWorkspaceApiKeys({
         apiFetch(`${API}/orgs/current/api-key-phone-policy`).then(async response => {
             if (!response.ok) throw new Error('Could not load phone-confirmation policy.')
             return response.json()
-        }).then(data => { if (active) { setPhoneRequired(!!data.required); setPolicyError('') } })
+        }).then(data => { if (active) { const mode = policyModeFromResponse(data); setPhonePolicyMode(mode); setSelectedPolicyMode(mode); setPolicyLoaded(true); setPolicyError('') } })
             .catch(error => { if (active) setPolicyError(error instanceof Error ? error.message : 'Could not load policy.') })
         return () => { active = false }
     }, [API])
@@ -275,14 +287,17 @@ export default function PortalWorkspaceApiKeys({
     }, [API, pendingApproval])
 
     const changePhonePolicy = async () => {
+        if (!policyLoaded || selectedPolicyMode === phonePolicyMode) return
         setPolicyBusy(true); setPolicyError('')
         try {
             const response = await apiFetch(`${API}/orgs/current/api-key-phone-policy`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ required: !phoneRequired }),
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: selectedPolicyMode }),
             })
             const data = await response.json().catch(() => ({}))
             if (!response.ok) throw new Error(data?.error?.message || 'Could not update policy.')
-            setPhoneRequired(!!data.required)
+            const mode = policyModeFromResponse(data)
+            setPhonePolicyMode(mode)
+            setSelectedPolicyMode(mode)
         } catch (error) { setPolicyError(error instanceof Error ? error.message : 'Could not update policy.') }
         finally { setPolicyBusy(false) }
     }
@@ -305,6 +320,12 @@ export default function PortalWorkspaceApiKeys({
         setKeyMessage('')
         setNewKeyRaw(null)
         try {
+            const policyResponse = await apiFetch(`${API}/orgs/current/api-key-phone-policy`)
+            const policyData = await policyResponse.json().catch(() => ({}))
+            if (!policyResponse.ok) throw new Error(policyData?.error?.message || 'Could not check phone-confirmation policy.')
+            const currentMode = policyModeFromResponse(policyData)
+            setPhonePolicyMode(currentMode)
+            setSelectedPolicyMode(currentMode)
             const payload = {
                 label: newKeyLabel.trim(), permission_preset: newKeyPermissionPreset,
                 expires_at: (() => {
@@ -318,7 +339,7 @@ export default function PortalWorkspaceApiKeys({
                     return d.toISOString()
                 })(),
             }
-            if (phoneRequired) {
+            if (requiresPhoneForKey(currentMode, newKeyPermissionPreset)) {
                 const response = await apiFetch(`${API}/orgs/current/action-approvals`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
                 })
@@ -418,11 +439,26 @@ export default function PortalWorkspaceApiKeys({
             />
 
             <PortalSectionCard icon={Key} title="Phone confirmation for API keys" className="rounded-4xl">
-                <p className="text-sm text-muted-foreground">Require the administrator creating a workspace API key to review its exact label, permissions and expiry on an enrolled phone. The Android app must support action-approval QR codes. This is separate from the Phone sign-in method.</p>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${phoneRequired ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{phoneRequired ? 'Required' : 'Off'}</span>
-                    {isWorkspaceOwner && !demoMode ? <button type="button" onClick={changePhonePolicy} disabled={policyBusy || !!pendingApproval} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-bold text-primary disabled:opacity-50">{policyBusy ? 'Saving…' : phoneRequired ? 'Turn off requirement' : 'Require phone confirmation'}</button> : null}
+                <p className="text-sm text-muted-foreground">Choose which new workspace API keys need a phone review of their exact label, permissions and expiry. This does not change Phone sign-in or the administrator's workspace permissions.</p>
+                <div className="mt-4 grid gap-2">
+                    {([
+                        { mode: 'off', label: 'No phone confirmation', detail: 'Authorized administrators create keys without a phone review.' },
+                        { mode: 'owner_keys', label: 'Owner keys only', detail: 'Full-access owner keys need a phone review; reduced admin keys do not.' },
+                        { mode: 'all_keys', label: 'Every API key', detail: 'Both owner and admin keys need a phone review.' },
+                    ] as const).map(option => (
+                        <label key={option.mode} className={`flex cursor-pointer gap-3 rounded-2xl border p-3 transition-colors ${selectedPolicyMode === option.mode ? 'border-violet-300 bg-violet-50/70' : 'border-border bg-white'}`}>
+                            <input type="radio" name="api-key-phone-policy" value={option.mode} checked={selectedPolicyMode === option.mode}
+                                onChange={() => setSelectedPolicyMode(option.mode)} disabled={!isWorkspaceOwner || demoMode || policyBusy || !policyLoaded || !!pendingApproval}
+                                className="mt-1 accent-violet-600" />
+                            <span><span className="block text-sm font-black text-slate-800">{option.label}</span><span className="block text-xs leading-5 text-muted-foreground">{option.detail}</span></span>
+                        </label>
+                    ))}
                 </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-semibold text-muted-foreground">Current policy: {phonePolicyMode === 'all_keys' ? 'Every API key' : phonePolicyMode === 'owner_keys' ? 'Owner keys only' : 'No phone confirmation'}</span>
+                    {isWorkspaceOwner && !demoMode ? <button type="button" onClick={changePhonePolicy} disabled={policyBusy || !policyLoaded || selectedPolicyMode === phonePolicyMode || !!pendingApproval} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-bold text-primary disabled:opacity-50">{policyBusy ? 'Saving…' : 'Save policy'}</button> : null}
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">Only the workspace owner can change this setting, after signing in again if the session is over 10 minutes old. Requiring a phone needs a verified enrolled device; without one, protected key creation stays blocked.</p>
                 {policyError ? <p role="alert" className="mt-3 text-sm text-red-700">{policyError}</p> : null}
             </PortalSectionCard>
 

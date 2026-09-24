@@ -6043,15 +6043,19 @@ async fn create_current_org_api_key(
         }
     }
     let phone_policy = sqlx::query(
-        "SELECT required, version FROM workspace_api_key_phone_policies WHERE org_id = $1",
+        "SELECT mode, version FROM workspace_api_key_phone_policies WHERE org_id = $1",
     )
     .bind(org_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let phone_required: bool = phone_policy
+    let phone_policy_mode: String = phone_policy
         .as_ref()
-        .map(|r| r.get("required"))
-        .unwrap_or(false);
+        .map(|r| r.get("mode"))
+        .unwrap_or_else(|| "off".to_owned());
+    let phone_required = super::action_approval::phone_confirmation_required(
+        &phone_policy_mode,
+        permission_preset,
+    );
     let policy_version: i64 = phone_policy.as_ref().map(|r| r.get("version")).unwrap_or(0);
     let approval = if phone_required {
         let id = body.approval_id.ok_or_else(|| {

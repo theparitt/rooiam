@@ -173,16 +173,25 @@ async fn require_key_permission(
     Ok(())
 }
 
-pub async fn policy(db: &PgPool, org: Uuid) -> Result<(bool, i64), AppError> {
+pub fn phone_confirmation_required(mode: &str, preset: &str) -> bool {
+    match mode {
+        "off" => false,
+        "owner_keys" => preset == WORKSPACE_KEY_PRESET_WORKSPACE_OWNER,
+        // A corrupt or future mode must not silently permit direct key creation.
+        _ => true,
+    }
+}
+
+pub async fn policy(db: &PgPool, org: Uuid) -> Result<(String, i64), AppError> {
     let row = sqlx::query(
-        "SELECT required, version FROM workspace_api_key_phone_policies WHERE org_id = $1",
+        "SELECT mode, version FROM workspace_api_key_phone_policies WHERE org_id = $1",
     )
     .bind(org)
     .fetch_optional(db)
     .await?;
     Ok(row
-        .map(|r| (r.get("required"), r.get("version")))
-        .unwrap_or((false, 0)))
+        .map(|r| (r.get("mode"), r.get("version")))
+        .unwrap_or(("off".to_owned(), 0)))
 }
 
 #[utoipa::path(get, path = "/v1/orgs/current/api-key-phone-policy", tag = "browser", security(("session_cookie" = [])), responses((status = 200, description = "Workspace API-key phone-confirmation policy")))]
@@ -192,14 +201,26 @@ pub async fn get_policy(
 ) -> Result<HttpResponse, AppError> {
     let (org, user, _) = current_workspace(&req, &state).await?;
     require_key_permission(&state, org, user).await?;
-    let (required, version) = policy(&state.db, org).await?;
-    Ok(HttpResponse::Ok().json(serde_json::json!({"required": required, "version": version})))
+    let (mode, version) = policy(&state.db, org).await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({"mode": mode, "required": mode == "all_keys", "version": version})))
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetPolicy {
-    required: bool,
+    required: Option<bool>,
+    mode: Option<String>,
+}
+
+fn requested_mode(body: &SetPolicy) -> Result<&str, AppError> {
+    match (body.mode.as_deref(), body.required) {
+        (Some(mode @ ("off" | "owner_keys" | "all_keys")), None) => Ok(mode),
+        (None, Some(true)) => Ok("all_keys"),
+        (None, Some(false)) => Ok("off"),
+        _ => Err(AppError::Validation(
+            "Choose one policy mode: off, owner_keys, or all_keys.".into(),
+        )),
+    }
 }
 
 #[utoipa::path(put, path = "/v1/orgs/current/api-key-phone-policy", tag = "browser", request_body = SetPolicy, security(("session_cookie" = [])), responses((status = 200, description = "Owner changed the phone-confirmation policy"), (status = 403, description = "Owner or recent sign-in required")))]
@@ -209,6 +230,7 @@ pub async fn set_policy(
     body: web::Json<SetPolicy>,
 ) -> Result<HttpResponse, AppError> {
     let (org, user, _) = current_workspace(&req, &state).await?;
+    let mode = requested_mode(&body)?;
     if !OrganizationRepository::new(state.db.clone())
         .is_org_owner(org, user)
         .await?
@@ -222,7 +244,7 @@ pub async fn set_policy(
             "Sign in again before changing this security policy.".into(),
         ));
     }
-    if body.required {
+    if mode != "off" {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_trusted_devices WHERE user_id = $1 AND revoked_at IS NULL AND attestation_status = 'verified' AND device_public_key IS NOT NULL")
             .bind(user).fetch_one(&state.db).await?;
         if count == 0 {
@@ -247,14 +269,14 @@ pub async fn set_policy(
             "Only the current workspace owner can change this policy.".into(),
         ));
     }
-    let row = sqlx::query("INSERT INTO workspace_api_key_phone_policies (org_id, required, updated_by) VALUES ($1,$2,$3) ON CONFLICT (org_id) DO UPDATE SET required = EXCLUDED.required, updated_by = EXCLUDED.updated_by, updated_at = NOW(), version = workspace_api_key_phone_policies.version + 1 RETURNING required, version")
-        .bind(org).bind(body.required).bind(user).fetch_one(&mut *tx).await?;
-    let required: bool = row.get("required");
+    let row = sqlx::query("INSERT INTO workspace_api_key_phone_policies (org_id, required, mode, updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT (org_id) DO UPDATE SET required = EXCLUDED.required, mode = EXCLUDED.mode, updated_by = EXCLUDED.updated_by, updated_at = NOW(), version = workspace_api_key_phone_policies.version + 1 RETURNING mode, version")
+        .bind(org).bind(mode == "all_keys").bind(mode).bind(user).fetch_one(&mut *tx).await?;
+    let mode: String = row.get("mode");
     let version: i64 = row.get("version");
     sqlx::query("INSERT INTO audit_logs (actor_user_id, organization_id, action, target_type, target_id, metadata) VALUES ($1,$2,'api_key.phone_policy.changed','workspace_api_key_phone_policy',$3,$4)")
-        .bind(user).bind(org).bind(org.to_string()).bind(serde_json::json!({"required": required, "version": version})).execute(&mut *tx).await?;
+        .bind(user).bind(org).bind(org.to_string()).bind(serde_json::json!({"mode": mode, "required": mode == "all_keys", "version": version})).execute(&mut *tx).await?;
     tx.commit().await?;
-    Ok(HttpResponse::Ok().json(serde_json::json!({"required": required, "version": version})))
+    Ok(HttpResponse::Ok().json(serde_json::json!({"mode": mode, "required": mode == "all_keys", "version": version})))
 }
 
 #[utoipa::path(post, path = "/v1/orgs/current/action-approvals", tag = "browser", request_body = StartApproval, security(("session_cookie" = [])), responses((status = 201, description = "Immutable API-key request and QR"), (status = 409, description = "Phone policy is off")))]
@@ -265,12 +287,7 @@ pub async fn start(
 ) -> Result<HttpResponse, AppError> {
     let (org, user, session) = current_workspace(&req, &state).await?;
     require_key_permission(&state, org, user).await?;
-    let (required, version) = policy(&state.db, org).await?;
-    if !required {
-        return Err(AppError::Conflict(
-            "Phone confirmation is not required for this workspace.".into(),
-        ));
-    }
+    let (mode, version) = policy(&state.db, org).await?;
     let label = body.label.trim();
     if label.is_empty() || label.len() > MAX_LABEL || label.chars().any(char::is_control) {
         return Err(AppError::Validation(
@@ -290,6 +307,11 @@ pub async fn start(
         }
     }
     let preset = normalize_workspace_api_key_permission_preset(body.permission_preset.as_deref());
+    if !phone_confirmation_required(&mode, preset) {
+        return Err(AppError::Conflict(
+            "Phone confirmation is not required for this API-key preset.".into(),
+        ));
+    }
     if preset == WORKSPACE_KEY_PRESET_WORKSPACE_OWNER
         && !OrganizationRepository::new(state.db.clone())
             .is_org_owner(org, user)
@@ -563,6 +585,43 @@ pub fn identity_routes(cfg: &mut web::ServiceConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn policy_modes_protect_only_the_selected_key_classes() {
+        assert!(!phone_confirmation_required("off", "workspace_owner"));
+        assert!(!phone_confirmation_required("off", "workspace_admin"));
+        assert!(phone_confirmation_required("owner_keys", "workspace_owner"));
+        assert!(!phone_confirmation_required("owner_keys", "workspace_admin"));
+        assert!(phone_confirmation_required("all_keys", "workspace_owner"));
+        assert!(phone_confirmation_required("all_keys", "workspace_admin"));
+        assert!(phone_confirmation_required("unexpected", "workspace_owner"));
+        assert!(phone_confirmation_required("unexpected", "workspace_admin"));
+    }
+
+    #[test]
+    fn legacy_boolean_policy_writes_map_to_modes_without_ambiguity() {
+        let on: SetPolicy = serde_json::from_str(r#"{"required":true}"#).unwrap();
+        let off: SetPolicy = serde_json::from_str(r#"{"required":false}"#).unwrap();
+        let owner_only: SetPolicy = serde_json::from_str(r#"{"mode":"owner_keys"}"#).unwrap();
+        assert_eq!(requested_mode(&on).unwrap(), "all_keys");
+        assert_eq!(requested_mode(&off).unwrap(), "off");
+        assert_eq!(requested_mode(&owner_only).unwrap(), "owner_keys");
+        assert!(requested_mode(&SetPolicy { required: None, mode: None }).is_err());
+        assert!(requested_mode(&SetPolicy { required: Some(true), mode: Some("off".into()) }).is_err());
+        assert!(requested_mode(&SetPolicy { required: None, mode: Some("unexpected".into()) }).is_err());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn legacy_policy_rows_keep_all_keys_requirement(pool: PgPool) {
+        let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Legacy', 'legacy-approval-policy') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO workspace_api_key_phone_policies (org_id, required, mode, updated_by) VALUES ($1, TRUE, 'all_keys', $2)")
+            .bind(org).bind(user).execute(&pool).await.unwrap();
+        assert_eq!(policy(&pool, org).await.unwrap().0, "all_keys");
+        assert_eq!(policy(&pool, Uuid::new_v4()).await.unwrap().0, "off");
+    }
 
     #[test]
     fn reviewed_key_parameters_are_bound_exactly() {
