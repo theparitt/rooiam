@@ -1,6 +1,6 @@
 # Rooiam iOS phone SDK (0.9 experimental source)
 
-This Swift package ports the existing Rooiam trusted-phone protocol. It is **not a supported iOS release**: this repository was developed on Linux without Xcode, an iOS simulator or an iPhone. The Swift sources and tests still require compilation on macOS, followed by physical-device certification before a support claim.
+This Swift package ports the existing Rooiam trusted-phone protocol. It is **not a supported iOS release**. GitHub macOS CI compiled the SDK and reference app for iOS Simulator and passed four protocol tests on Xcode 26.6. No iPhone, App Attest enrollment, camera journey or signed distribution has been tested; physical-device certification is required before a support claim.
 
 The host app owns login, its session cookie, QR camera screen, explicit review and distribution. The SDK owns origin/purpose validation, Ed25519 device signing, Keychain persistence, App Attest registration, and exact Rooiam API requests. It never creates a browser session for another app.
 
@@ -34,9 +34,9 @@ The Keychain item uses `WhenUnlockedThisDeviceOnly`; it does not migrate to anot
 
 ## Current limits
 
-- The SDK has not been compiled with Xcode or run on a simulator/iPhone in this environment. XCTest sources cover cross-language challenge hashing and QR origin/purpose boundaries, but results are pending macOS execution.
+- macOS CI passed the simulator SDK/app builds and four XCTest cases for challenge hashing, QR origin/purpose and sign-in-link boundaries. Those tests do not exercise iPhone hardware or Apple App Attest.
 - Apple's App Attest entitlement, actual certificate-chain validation, Keychain persistence, camera/permission behavior, background/restoration and App Store/TestFlight distribution are **not tested**.
-- The example is source files to add to an Xcode iOS App target, not a signed `.ipa` or an App Store listing.
+- The example includes an XcodeGen project spec and builds for Simulator in CI; it is not a signed `.ipa` or an App Store listing.
 - The server must already expose the current trusted-device and action-approval endpoints. The operator has deferred the combined 0.5–0.8 production rollout; do not infer production readiness from this package.
 
 See the [device-login reference](../../docs/reference/13_sdk_and_device_login.md) for the Rooiam flow and the [iOS integration guide](../../docs/reference/18_ios_experimental_integration.md) for setup and the certification checklist.

@@ -1,6 +1,6 @@
 # iOS phone integration (0.9 experimental)
 
-Rooiam has **source code for an experimental iOS SDK and reference app**. It has not been built in Xcode or tested on an iPhone, so it is not a supported login method or a production app download. Android remains the physically tested mobile integration. This guide lets an iOS developer take the next concrete steps and records what evidence is still missing.
+Rooiam has **source code for an experimental iOS SDK and reference app**. GitHub macOS CI builds both for iOS Simulator and passes four SDK protocol tests on Xcode 26.6. Neither has been tested on an iPhone, so iOS is not a supported login method or a production app download. Android remains the physically tested mobile integration. This guide lets an iOS developer take the next concrete steps and records what evidence is still missing.
 
 ## What the app does
 
@@ -42,7 +42,7 @@ try await phone.approveLogin(review, selectedNumber: review.matchNumber)
 
 ## Evidence required before iOS support
 
-- Xcode package build and XCTest on macOS; fix compiler/API changes found there.
+- A signed app build with your Apple provisioning profile and any compiler/API issues outside the current Xcode 26.6 CI environment. The simulator SDK/app builds and four protocol XCTest cases already pass in [macOS CI](https://github.com/theparitt/rooiam/actions/workflows/ios-experimental.yml).
 - iPhone registration with a real Apple App Attest verdict under strict server policy, QR login, API-key approve/deny and server audit evidence.
 - Camera permission, rotation, background/relaunch review, offline/timeout, lost response, expired QR, revocation and replacement-phone scenarios.
 - App distribution through TestFlight/App Store or a documented tenant signing route, with upgrade and Keychain persistence checks.

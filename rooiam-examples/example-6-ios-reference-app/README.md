@@ -1,6 +1,6 @@
 # iOS reference source (experimental)
 
-This is a small host-app example for [`RooiamPhoneSDK`](../../rooiam-sdk/ios). It demonstrates app-owned WebKit login cookies, physical QR scanning, explicit browser and API-key review, enrollment and revoke. It is source-only until built on macOS; no iOS build or device test has occurred in this environment.
+This is a small host-app example for [`RooiamPhoneSDK`](../../rooiam-sdk/ios). It demonstrates app-owned WebKit login cookies, QR scanning, explicit browser and API-key review, enrollment and revoke. The SDK and generated app **build for iOS Simulator** in macOS CI; four SDK protocol tests pass. No iPhone, actual App Attest, camera journey or signed distribution test has occurred.
 
 On a Mac, install [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), then run `xcodegen generate` in this folder and open `RooiamReference.xcodeproj`. The checked-in `project.yml` links the local SDK, sets iOS 16 and camera usage. **Change the example bundle ID** to your own ID, select your Apple Development Team and enable **App Attest** in Signing & Capabilities before installing on an iPhone. Set the server's Apple App ID prefix and app allowlist before testing enrollment. The sample requests App Attest `development` in DEBUG; use a **staging server** with development attestation explicitly allowed. Release builds request `production` and must pass the normal strict policy. Do not relax production policy for a debug build.
 
