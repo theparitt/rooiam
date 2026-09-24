@@ -14,11 +14,11 @@ const done: Item[] = [
 const nextRelease: Item[] = [
     { text: 'Confirm workspace API-key creation from your phone' },
     { text: 'Turn on phone confirmation per workspace' },
+    { text: 'Revoke a lost phone and enroll a replacement' },
 ]
 
 const planned: Item[] = [
     { text: 'Smoother app integration and upgrades' },
-    { text: 'Safer account recovery and device replacement' },
     { text: 'iOS support after real-device testing' },
 ]
 
@@ -34,7 +34,7 @@ const columns = [
     },
     {
         label: 'Available in beta',
-        version: '0.3 · Android',
+        version: '0.3–0.4 · Android',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
@@ -65,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in and API-key confirmation are available in beta.
+                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in, API-key confirmation and phone recovery are available in beta.
                     </p>
                 </div>
 

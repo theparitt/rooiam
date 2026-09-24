@@ -19,13 +19,18 @@ The Android SDK and example app source are available in the repository. Rooiam d
 
 The portal and API are deployed, and the SDK/example flow has passed a real-phone production test. App owners integrate the Android SDK into their own app and arrange verification for their package. [Set up phone confirmation](./reference/15_phone_action_approval.md). Your application continues to own its business operations.
 
+## Now — Recover or replace a phone
+
+**0.4 Android beta.** If an enrolled phone is lost, sign in with another method, revoke that phone from My Security, review your browser sessions, and enroll a replacement. Revocation stops unfinished phone approvals; a recent sign-in is required to revoke a device. [Follow the recovery guide](./reference/16_lost_phone_and_replacement.md).
+
+The production flow passed an assisted revoke and re-enrollment test on the same Play-installed Android phone. A different replacement handset and tenant-built apps still need their own validation.
+
 ## Looking ahead
 
 These are provisional directions, with scope guided by real integrations. Dates are not promised, and optional tracks may move or be skipped.
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.4 | Recovery and replacement | A safer, clearer path when someone loses or replaces a device |
 | 0.5 | Developer adoption | A tested upgrade path and clearer first integration for supported SDKs and applications |
 | 0.6 | Tenant access assurance | Stronger organization ownership, RBAC and cross-tenant isolation checks for existing features |
 | 0.7 | Workspace approval policies | Clearer control over which identity changes need confirmation |

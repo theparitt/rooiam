@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { ArrowRight, Check, QrCode, Smartphone } from 'lucide-react'
+import { ArrowRight, Check, QrCode, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { DOCS_BASE_URL, GITHUB_REPO_URL } from '../lib/site'
@@ -7,6 +7,7 @@ import { DOCS_BASE_URL, GITHUB_REPO_URL } from '../lib/site'
 const walkthroughUrl = `${DOCS_BASE_URL}/getting-started/android-phone-sign-in-walkthrough`
 const integrationUrl = `${DOCS_BASE_URL}/reference/android-sdk-integration`
 const exampleUrl = `${GITHUB_REPO_URL}/tree/main/rooiam-examples/example-5-android-reference-app`
+const recoveryUrl = `${DOCS_BASE_URL}/reference/lost-phone-and-replacement`
 
 export default function NewsPage() {
     useEffect(() => {
@@ -28,7 +29,31 @@ export default function NewsPage() {
                 </header>
 
                 <section className="mx-auto max-w-6xl px-6 pb-24 md:px-12">
-                    <article className="overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)]">
+                    <article className="grid overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)] lg:grid-cols-[0.9fr_1.1fr]">
+                        <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#e9fff7] via-[#f9f2ff] to-[#ffe8f0] p-8">
+                            <img src="/characters/telmi.png" alt="Telmi, Rooiam’s character" loading="lazy" className="absolute bottom-0 -left-8 h-[90%] w-[55%] object-contain object-bottom mix-blend-multiply" />
+                            <div className="relative ml-[35%] flex h-36 w-36 items-center justify-center rounded-[2rem] border-4 border-white bg-white/90 shadow-xl" aria-hidden="true">
+                                <ShieldCheck className="h-20 w-20 text-[#5b44be]" strokeWidth={1.5} />
+                            </div>
+                        </div>
+                        <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
+                            <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest">
+                                <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-700">Android beta · 0.4</span>
+                                <time dateTime="2026-09-24" className="text-gray-500">24 September 2026</time>
+                            </div>
+                            <h2 className="mt-5 text-3xl font-black leading-tight text-[#29243b] sm:text-4xl">A safer way back when a phone is lost</h2>
+                            <p className="mt-4 text-base font-semibold leading-relaxed text-gray-600">
+                                Sign in with another method, revoke the lost phone, and enroll a replacement. Rooiam stops unfinished approvals from the old phone and keeps your workspace’s phone-confirmation policy in place.
+                            </p>
+                            <p className="mt-3 text-sm font-semibold leading-relaxed text-gray-500">
+                                Available for the Android beta. The recovery flow has been tested with a Play-installed phone; apps built by other teams need their own verification.
+                            </p>
+                            <a href={recoveryUrl} className="mt-6 inline-flex items-center gap-1.5 text-sm font-black text-violet-700 hover:text-violet-900">
+                                See the recovery steps <ArrowRight className="h-4 w-4" />
+                            </a>
+                        </div>
+                    </article>
+                    <article className="mt-8 overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)]">
                         <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
                             <div className="relative flex min-h-[360px] items-center justify-end overflow-hidden bg-gradient-to-br from-[#ffe8f0] via-[#f9f2ff] to-[#e9fff7] p-5 sm:min-h-[430px] sm:p-8">
                                 <div className="absolute -left-12 -top-12 h-44 w-44 rounded-full bg-white/40" aria-hidden="true" />
