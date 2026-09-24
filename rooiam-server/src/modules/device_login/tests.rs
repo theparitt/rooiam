@@ -604,6 +604,14 @@ fn apple_app_attest_client_data_hash_is_stable() {
     );
     assert_eq!(one, two);
     assert_eq!(one.len(), 32);
+    // Shared with rooiam-sdk/ios/Tests/RooiamPhoneSDKTests/ProtocolTests.swift.
+    let cross_language = build_apple_app_attest_client_data_hash(
+        "challenge-vector", "ed25519:abc", "com.example.rooiam", "key-vector", "production",
+    );
+    assert_eq!(
+        hex::encode(cross_language),
+        "4873153d03043d4591ba48f2e07f2cf75276508566c46fd25d20fac4f00fda46"
+    );
 }
 
 #[test]

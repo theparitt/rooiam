@@ -20,6 +20,9 @@ Structure:
   - Android consumer of [`rooiam-sdk/android`](../rooiam-sdk/android)
   - phone enrollment, camera scanning and explicit approve/deny UI
   - open this directory in Android Studio; no separate web port
+- [`example-6-ios-reference-app`](./example-6-ios-reference-app)
+  - experimental SwiftUI host source for [`rooiam-sdk/ios`](../rooiam-sdk/ios)
+  - requires Xcode and real iPhone certification before support; no separate web port
 
 Recommended doctrine:
 

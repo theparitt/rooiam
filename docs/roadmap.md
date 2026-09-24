@@ -47,7 +47,7 @@ These are provisional directions, with scope guided by real integrations. Dates 
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.9 | iOS exploration | Bring the supported device protocol to iOS only when real iPhone testing is available |
+| 0.9 | iOS exploration | Experimental SDK/reference source is available; Mac/Xcode build and real iPhone certification are still required before support. [Integration guide](./reference/18_ios_experimental_integration.md) |
 | 1.0 | Stable compatibility | A documented support and compatibility commitment for the supported APIs, protocols and SDKs |
 
 Security and tenant isolation are requirements throughout this work. OIDC, passkeys, Google/Microsoft login, workspaces and roles already exist and are not listed as new milestones. iOS is not part of a stable-release claim until it has passed physical-device tests. Enterprise federation and additional SDK languages are driven by demand, not prerequisites for every adopter.
