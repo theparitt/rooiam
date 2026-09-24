@@ -30,27 +30,24 @@ export default function NewsPage() {
                 <section className="mx-auto max-w-6xl px-6 pb-24 md:px-12">
                     <article className="overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)]">
                         <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-                            <div className="relative flex min-h-[340px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#ffe8f0] via-[#f9f2ff] to-[#e9fff7] p-8 sm:min-h-[410px]">
+                            <div className="relative flex min-h-[360px] items-center justify-end overflow-hidden bg-gradient-to-br from-[#ffe8f0] via-[#f9f2ff] to-[#e9fff7] p-5 sm:min-h-[430px] sm:p-8">
                                 <div className="absolute -left-12 -top-12 h-44 w-44 rounded-full bg-white/40" aria-hidden="true" />
                                 <div className="absolute -bottom-16 -right-10 h-52 w-52 rounded-full bg-white/40" aria-hidden="true" />
-                                <div className="relative flex scale-[0.78] items-center gap-2 sm:scale-100 sm:gap-4" aria-hidden="true">
-                                    <div className="rounded-[1.6rem] border border-white bg-white/95 p-5 shadow-xl sm:p-7">
-                                        <div className="mb-5 flex items-center gap-2 text-xs font-black text-gray-600">
-                                            <img src="/logo.png" alt="" className="h-8 w-8 rounded-full bg-[#ffe1d2]" />
-                                            Sign in to your workspace
-                                        </div>
-                                        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-3 text-violet-700 sm:p-4">
-                                            <QrCode className="h-20 w-20 sm:h-24 sm:w-24" strokeWidth={1.3} />
-                                        </div>
-                                        <p className="mt-4 text-center text-xs font-bold text-gray-500">Scan with your phone</p>
+                                <img src="/characters/telmi.png" alt="Telmi, Rooiam’s character" loading="lazy"
+                                    className="absolute bottom-0 -left-[9%] h-[94%] w-[78%] object-contain object-bottom mix-blend-multiply" />
+                                <div className="relative flex w-[48%] flex-col items-center gap-4" aria-hidden="true">
+                                    <div className="w-full rounded-2xl border border-white bg-white/95 p-3 text-center shadow-xl sm:p-5">
+                                        <p className="mb-2 text-[10px] font-black text-gray-600 sm:text-xs">Browser QR</p>
+                                        <QrCode className="mx-auto h-16 w-16 text-violet-700 sm:h-20 sm:w-20" strokeWidth={1.3} />
+                                        <p className="mt-2 text-[10px] font-bold text-gray-500 sm:text-xs">Scan to sign in</p>
                                     </div>
-                                    <div className="rounded-[2rem] border-[5px] border-[#2a243e] bg-white p-3 shadow-2xl sm:p-4">
-                                        <div className="mx-auto mb-6 h-1.5 w-10 rounded-full bg-gray-200" />
-                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#ffe9f0] text-[#cf5a82]">
-                                            <Smartphone className="h-6 w-6" />
+                                    <div className="w-full rounded-[1.5rem] border-[4px] border-[#2a243e] bg-white p-3 shadow-2xl sm:p-4">
+                                        <div className="mx-auto mb-3 h-1 w-8 rounded-full bg-gray-200" />
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffe9f0] text-[#cf5a82]">
+                                            <Smartphone className="h-5 w-5" />
                                         </div>
-                                        <p className="mt-4 max-w-[110px] text-sm font-black leading-snug text-[#29243b]">Approve this sign-in?</p>
-                                        <div className="mt-6 flex items-center justify-center gap-1.5 rounded-xl bg-[#dff8ed] px-3 py-2 text-xs font-black text-[#226e54]">
+                                        <p className="mt-3 text-xs font-black leading-snug text-[#29243b] sm:text-sm">Approve this sign-in?</p>
+                                        <div className="mt-3 flex items-center justify-center gap-1 rounded-xl bg-[#dff8ed] px-2 py-2 text-[10px] font-black text-[#226e54] sm:text-xs">
                                             <Check className="h-4 w-4" /> Approve
                                         </div>
                                     </div>
