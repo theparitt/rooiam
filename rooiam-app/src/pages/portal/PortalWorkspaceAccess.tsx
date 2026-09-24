@@ -1,13 +1,14 @@
 import DeviceLoginPolicy from '../../components/portal/DeviceLoginPolicy'
 import React from 'react'
-import { Network, ShieldCheck } from 'lucide-react'
+import { ArrowDown, ArrowUp, Network, ShieldCheck } from 'lucide-react'
 import PortalPageHeader from '../../components/portal/PortalPageHeader'
 import PortalConfigChangeNote from '../../components/portal/PortalConfigChangeNote'
 import PortalSaveActionFooter from '../../components/portal/PortalSaveActionFooter'
 import PortalTabBar from '../../components/portal/PortalTabBar'
 import PortalToggleRow from '../../components/portal/PortalToggleRow'
 import { LOGIN_SECTION_LABEL, WORKSPACE_LABEL } from '../../lib/domain-labels'
-import type { AuthPolicyForm, OrgIpPolicyResponse, Organization, OrganizationActivityItem, TenantIpPolicy } from '../../lib/portal-types'
+import { LOGIN_METHOD_LABELS, normalizeLoginMethodOrder } from '../../lib/login-style'
+import type { AuthPolicyForm, LoginMethodKey, OrgIpPolicyResponse, Organization, OrganizationActivityItem, TenantIpPolicy } from '../../lib/portal-types'
 
 type SignInTab = 'access' | 'ip'
 const SIGNIN_TABS: { id: SignInTab; label: string; icon: React.ReactNode }[] = [
@@ -25,6 +26,8 @@ type Props = {
     savingPolicy: boolean
     policyMessage: boolean
     onSaveAuthPolicy: (e: React.FormEvent) => void
+    canManageBranding: boolean
+    onSaveLoginMethodOrder: (order: LoginMethodKey[]) => Promise<void>
     orgIpPolicy: OrgIpPolicyResponse | null
     ipPolicyForm: TenantIpPolicy
     setIpPolicyForm: React.Dispatch<React.SetStateAction<TenantIpPolicy>>
@@ -45,6 +48,8 @@ export default function PortalWorkspaceAccess({
     savingPolicy,
     policyMessage,
     onSaveAuthPolicy,
+    canManageBranding,
+    onSaveLoginMethodOrder,
     orgIpPolicy,
     ipPolicyForm,
     setIpPolicyForm,
@@ -58,6 +63,26 @@ export default function PortalWorkspaceAccess({
     const [tab, setTab] = React.useState<SignInTab>(
         savedTab === 'ip' ? 'ip' : 'access'
     )
+    const [savingOrder, setSavingOrder] = React.useState(false)
+    const [orderMessage, setOrderMessage] = React.useState('')
+    const methodOrder = normalizeLoginMethodOrder(currentOrg?.login_method_order)
+    const moveMethod = async (index: number, direction: -1 | 1) => {
+        const next = [...methodOrder]
+        const target = index + direction
+        if (target < 0 || target >= next.length || savingOrder) return
+        const [method] = next.splice(index, 1)
+        next.splice(target, 0, method)
+        setSavingOrder(true)
+        setOrderMessage('')
+        try {
+            await onSaveLoginMethodOrder(next)
+            setOrderMessage('Button order saved.')
+        } catch (error) {
+            setOrderMessage(error instanceof Error ? error.message : 'Could not save button order.')
+        } finally {
+            setSavingOrder(false)
+        }
+    }
     const inputClass = 'w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-sky-200 transition-all'
     const labelClass = 'block text-xs font-black uppercase tracking-[0.16em] text-gray-500 mb-2'
     const handleTabChange = (t: SignInTab) => {
@@ -117,7 +142,6 @@ export default function PortalWorkspaceAccess({
                                         Which methods end-users can use to sign into this workspace.
                                     </p>
                                     <div className="space-y-3">
-                                        <DeviceLoginPolicy workspaceId={currentOrg.id} disabled={demoMode || !canManageAuthPolicy} compact />
                                         <PortalToggleRow
                                             checked={authPolicyForm.allow_magic_link}
                                             onChange={value => setAuthPolicyForm((prev: AuthPolicyForm) => ({ ...prev, allow_magic_link: value }))}
@@ -146,7 +170,40 @@ export default function PortalWorkspaceAccess({
                                             label="Microsoft"
                                             hint="Users can sign in with their Microsoft account."
                                         />
+                                        <DeviceLoginPolicy workspaceId={currentOrg.id} disabled={demoMode || !canManageAuthPolicy} compact />
                                     </div>
+                                </div>
+
+                                <div className="rounded-3xl border border-border bg-white p-5 shadow-sm">
+                                    <h3 className="mb-1 flex items-center gap-2 font-black text-gray-800">
+                                        <ShieldCheck className="h-4 w-4 text-violet-500" /> Login Button Order
+                                    </h3>
+                                    <p className="mb-4 text-xs font-semibold text-gray-500">
+                                        Move a method up or down on this workspace’s login screen. Disabled methods keep their position for when you enable them.
+                                    </p>
+                                    <div className="space-y-2">
+                                        {methodOrder.map((method, index) => (
+                                            <div key={method} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-muted/20 px-4 py-3">
+                                                <span className="text-sm font-bold text-gray-800">{LOGIN_METHOD_LABELS[method]}</span>
+                                                <div className="flex gap-2">
+                                                    <button type="button" onClick={() => void moveMethod(index, -1)}
+                                                        disabled={demoMode || !canManageBranding || savingOrder || index === 0}
+                                                        className="rounded-xl border border-border bg-white p-2 text-gray-600 disabled:opacity-40"
+                                                        aria-label={`Move ${LOGIN_METHOD_LABELS[method]} up`}>
+                                                        <ArrowUp className="h-4 w-4" />
+                                                    </button>
+                                                    <button type="button" onClick={() => void moveMethod(index, 1)}
+                                                        disabled={demoMode || !canManageBranding || savingOrder || index === methodOrder.length - 1}
+                                                        className="rounded-xl border border-border bg-white p-2 text-gray-600 disabled:opacity-40"
+                                                        aria-label={`Move ${LOGIN_METHOD_LABELS[method]} down`}>
+                                                        <ArrowDown className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {!canManageBranding && <p className="mt-3 text-xs font-semibold text-gray-500">Changing button order requires workspace branding permission.</p>}
+                                    {orderMessage && <p className="mt-3 text-xs font-semibold text-gray-600" role="status">{orderMessage}</p>}
                                 </div>
 
                                 <div className="rounded-3xl border border-border bg-white p-5 shadow-sm">

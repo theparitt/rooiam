@@ -5,7 +5,7 @@ import { apiFetch, getApiBase } from '../lib/api-base'
 import { APP_LABEL_PLURAL, TENANT_LABEL, WORKSPACE_LABEL_PLURAL, WORKSPACE_LOGIN_POLICY_LABEL } from '../lib/domain-labels'
 import { buildTenantLoginPath, buildTenantPortalRedirect } from '../lib/tenant-context'
 import { portalRoutes, portalSectionToPath } from '../lib/routes'
-import { AuthPolicyForm, BrandingForm, DEFAULT_BRAND, DEFAULT_LOGIN_METHOD_ORDER, MeResponse, Organization, OrgClient, OrganizationActivityItem, OrganizationInvite, OrganizationMember, OrganizationRole, OrgIpPolicyResponse, PortalResponse, PortalSection, TenantApiKey, TenantIpPolicy } from '../lib/portal-types'
+import { AuthPolicyForm, BrandingForm, DEFAULT_BRAND, DEFAULT_LOGIN_METHOD_ORDER, LoginMethodKey, MeResponse, Organization, OrgClient, OrganizationActivityItem, OrganizationInvite, OrganizationMember, OrganizationRole, OrgIpPolicyResponse, PortalResponse, PortalSection, TenantApiKey, TenantIpPolicy } from '../lib/portal-types'
 import { MY_SECTION_FROM_PATH, TENANT_SECTION_FROM_PATH, WORKSPACE_SECTION_FROM_PATH } from '../lib/portal-sections'
 import { normalizeLoginMethodOrder, normalizeWorkspaceIconContainer } from '../lib/login-style'
 import PortalShell from '../components/portal/PortalShell'
@@ -1059,6 +1059,19 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
         }
     }
 
+    const saveLoginMethodOrder = async (order: LoginMethodKey[]) =>
+    {
+        const res = await apiFetch(`${API}/orgs/current/branding`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login_method_order: order }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.error?.message || 'Could not save login button order.')
+        updateCurrentWorkspaceInPortalState(data)
+        setBrandingForm(current => ({ ...current, login_method_order: normalizeLoginMethodOrder(data.login_method_order) }))
+    }
+
     const saveAuthPolicy = async (e: React.FormEvent) =>
     {
         e.preventDefault()
@@ -1588,6 +1601,8 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                         savingPolicy={savingPolicy}
                         policyMessage={authPolicyDirty}
                         onSaveAuthPolicy={saveAuthPolicy}
+                        canManageBranding={canManageBranding}
+                        onSaveLoginMethodOrder={saveLoginMethodOrder}
                         orgIpPolicy={workspaceIpPolicy}
                         ipPolicyForm={ipPolicyForm}
                         setIpPolicyForm={v => { setIpPolicyForm(v); setIpPolicyDirty(true) }}
@@ -1641,6 +1656,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
                 return (
                     <PortalTenantAccess
                         demoMode={portalState?.demo_mode ?? false}
+                        workspaceSlug={currentOrg?.slug || null}
                         canManageTenantAccess={canManageTenantAccess}
                         authPolicyForm={authPolicyForm}
                         setAuthPolicyForm={v => { setAuthPolicyForm(v); setAuthPolicyDirty(true) }}

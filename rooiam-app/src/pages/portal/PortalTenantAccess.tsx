@@ -8,6 +8,7 @@ import PortalSaveActionFooter from '../../components/portal/PortalSaveActionFoot
 import PortalTabBar from '../../components/portal/PortalTabBar'
 import PortalToggleRow from '../../components/portal/PortalToggleRow'
 import { TENANT_LOGIN_LABEL, WORKSPACE_ACCESS_LABEL } from '../../lib/domain-labels'
+import { portalRoutes } from '../../lib/routes'
 import type { AuthPolicyForm, OrganizationActivityItem } from '../../lib/portal-types'
 
 type AccessTab = 'policy' | 'how-it-works'
@@ -21,6 +22,7 @@ type Props = {
     policyMessage: boolean
     onSaveAuthPolicy: (e: React.FormEvent) => void
     lastChange: OrganizationActivityItem | null
+    workspaceSlug: string | null
 }
 
 export default function PortalTenantAccess({
@@ -32,6 +34,7 @@ export default function PortalTenantAccess({
     policyMessage,
     onSaveAuthPolicy,
     lastChange,
+    workspaceSlug,
 }: Props) {
     const savedTab = localStorage.getItem('rooiam_tab_portal_tenant_access') as AccessTab | null
     const [tab, setTab] = React.useState<AccessTab>(savedTab === 'how-it-works' ? 'how-it-works' : 'policy')
@@ -71,9 +74,10 @@ export default function PortalTenantAccess({
                     </div>
                 ) : null}
 
-                    <div className="rounded-2xl px-4 py-3 text-sm font-semibold" style={{ background: '#E0F2FE', border: '1px solid #7DD3FC' }}>
+                <div className="rounded-2xl px-4 py-3 text-sm font-semibold" style={{ background: '#E0F2FE', border: '1px solid #7DD3FC' }}>
                     <p className="font-bold text-sky-900 mb-1">Workspace owner and admin policy</p>
                     <p className="text-xs text-sky-800">This page controls how workspace owners and workspace admins sign in here. End-user sign-in for each workspace is configured separately under Workspace Access.</p>
+                    {workspaceSlug && <a href={portalRoutes.workspaceAccess(workspaceSlug)} className="mt-2 inline-block text-xs font-black text-sky-900 underline underline-offset-2">Set phone sign-in and button order for this workspace →</a>}
                 </div>
 
                 {tab === 'policy' && (
