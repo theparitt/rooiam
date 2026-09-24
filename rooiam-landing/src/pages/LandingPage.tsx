@@ -2,6 +2,7 @@ import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
 import DemoShowcase from '../components/DemoShowcase'
 import Stats from '../components/Stats'
+import ArchitectureGraph from '../components/ArchitectureGraph'
 import Features from '../components/Features'
 import HowItWorks from '../components/HowItWorks'
 import OpenSource from '../components/OpenSource'
@@ -17,6 +18,7 @@ export default function LandingPage()
             <Hero />
             <DemoShowcase />
             <Stats />
+            <ArchitectureGraph />
             <Features />
             <HowItWorks />
             <OpenSource />
