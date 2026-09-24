@@ -83,6 +83,18 @@ fn authorize_rejects_legacy_resume_parameter() {
 #[sqlx::test(migrations = "./migrations")]
 #[ignore = "requires disposable DATABASE_URL and ROOIAM_OIDC_TEST_REDIS_URL"]
 async fn token_endpoint_authenticates_basic_and_post_without_mixing_methods(pool: sqlx::PgPool) {
+    for (key, value) in [
+        ("issuer_url", "https://iam.example.test"),
+        ("app_url", "https://portal.example.test"),
+        ("admin_url", "https://admin.example.test"),
+    ] {
+        sqlx::query("INSERT INTO system_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value")
+            .bind(key)
+            .bind(value)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
     let (secret, secret_hash) =
         crate::shared::oauth_client::generate_confidential_client_secret().unwrap();
     sqlx::query("INSERT INTO oauth_clients(client_id,client_secret_hash,app_name,app_type) VALUES($1,$2,'OIDC token regression','web')")
