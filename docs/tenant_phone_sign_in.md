@@ -2,7 +2,7 @@
 
 Phone sign-in lets a user start login on your website, scan a QR with an enrolled Android phone, compare the displayed code and approve. It appears alongside your other workspace login methods. **Your tenant does not have to build an Android app** to use the Rooiam-managed route, but an approved phone app must actually be available to your users.
 
-**Current availability:** Rooiam's public Android app is **not released yet**. The Rooiam Reference app is a developer example distributed to internal testers; it is not a general tenant download. Do not turn on Phone sign-in for ordinary users until your Rooiam operator supplies a supported app and installation instructions for your workspace. Your other login methods can remain available in the meantime.
+**Current availability:** Rooiam's public Android app is **not released yet**. Do not turn on Phone sign-in for ordinary users until your Rooiam operator supplies a supported app and installation instructions for your workspace. Your other login methods can remain available in the meantime.
 
 ## The four things needed before users can sign in
 
@@ -19,7 +19,7 @@ Share the supported app's **official installation link supplied by your operator
 
 > Install the approved Rooiam phone app, sign in to your Rooiam account inside it, and enroll this phone. When you next sign in to our website, choose “Sign in with your phone,” scan the QR in the app, compare the number shown on both screens, and approve only if it matches.
 
-Do not send users to the Rooiam Reference source or an arbitrary APK. If your operator has not provided a supported app, keep Phone sign-in disabled. For the screen sequence, see the [illustrated sign-in walkthrough](./getting-started/10_android_phone_sign_in_walkthrough.md), which currently uses the internal reference app to show the flow. Developers who intentionally build a separate Android app can use the [Android SDK tutorial](./getting-started/11_build_your_first_android_app.md); those Play Console steps are **not tenant setup steps**.
+Do not send users an arbitrary APK. If your operator has not provided a supported app, keep Phone sign-in disabled. Developers who intentionally build a separate Android app can use the [Android SDK tutorial](./getting-started/11_build_your_first_android_app.md); those Play Console steps are **not tenant setup steps**.
 
 ## If the button does not work
 
