@@ -46,6 +46,28 @@ public final class Protocol {
         if (!UUID.fromString(id).toString().equals(id.toLowerCase(java.util.Locale.ROOT))) throw new IllegalArgumentException("Invalid request ID.");
         return id;
     }
+    /** Separate purpose from login-v1. A login QR can never be an action approval. */
+    public static String parseActionQr(String qr, String enrolledOrigin, boolean debug) {
+        if (qr.length() > 2048) throw new IllegalArgumentException("QR code is too large.");
+        URI uri = URI.create(qr);
+        if (!"rooiam".equals(uri.getScheme()) || !"action-approval".equals(uri.getRawAuthority()) || !uri.getPath().isEmpty() || uri.getFragment() != null || uri.getRawQuery() == null)
+            throw new IllegalArgumentException("Not a Rooiam action-approval QR.");
+        Map<String,String> values = new HashMap<>();
+        for (String pair : uri.getRawQuery().split("&")) {
+            String[] parts = pair.split("=", 2);
+            if (parts.length != 2) throw new IllegalArgumentException("Invalid QR parameters.");
+            String key = decode(parts[0]);
+            String value = decode(parts[1]);
+            if (!(key.equals("server") || key.equals("id") || key.equals("v")) || values.put(key, value) != null)
+                throw new IllegalArgumentException("Unsupported or duplicate QR parameters.");
+        }
+        if (values.size() != 3 || !"1".equals(values.get("v")) || !origin(values.get("server"), debug).equals(origin(enrolledOrigin, debug)))
+            throw new IllegalArgumentException("This QR belongs to a different server. No credentials were sent.");
+        String id = values.get("id");
+        if (!UUID.fromString(id).toString().equals(id.toLowerCase(java.util.Locale.ROOT)))
+            throw new IllegalArgumentException("Invalid request ID.");
+        return id;
+    }
     private static String decode(String value) {
         try { return URLDecoder.decode(value, "UTF-8"); }
         catch (java.io.UnsupportedEncodingException impossible) { throw new IllegalStateException(impossible); }

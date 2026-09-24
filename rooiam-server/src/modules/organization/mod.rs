@@ -1,3 +1,4 @@
+pub mod action_approval;
 pub mod handlers;
 pub mod integration;
 pub mod models;

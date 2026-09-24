@@ -235,6 +235,92 @@
         }
       }
     },
+    "/v1/identity/action-approvals/approve": {
+      "post": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "approve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Signed same-user device approval"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/v1/identity/action-approvals/deny": {
+      "post": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "deny",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Same-user device denial"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/v1/identity/action-approvals/{id}": {
+      "get": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "preview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Action request ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative phone review details"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/v1/identity/device-login/approve": {
       "post": {
         "tags": [
@@ -1457,6 +1543,147 @@
         "security": [
           {
             "oidc_access_token": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/current/action-approvals": {
+      "post": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartApproval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Immutable API-key request and QR"
+          },
+          "409": {
+            "description": "Phone policy is off"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/current/action-approvals/cancel": {
+      "post": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "cancel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserApproval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Request cancelled"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/current/action-approvals/status": {
+      "post": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "status",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserApproval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/current/api-key-phone-policy": {
+      "get": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "get_policy",
+        "responses": {
+          "200": {
+            "description": "Workspace API-key phone-confirmation policy"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "browser"
+        ],
+        "operationId": "set_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Owner changed the phone-confirmation policy"
+          },
+          "403": {
+            "description": "Owner or recent sign-in required"
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -3273,6 +3500,34 @@
   },
   "components": {
     "schemas": {
+      "ApprovalStatus": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resulting_key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "ApproveDeviceLoginRequest": {
         "type": "object",
         "required": [
@@ -3296,6 +3551,23 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "BrowserApproval": {
+        "type": "object",
+        "required": [
+          "id",
+          "browser_proof"
+        ],
+        "properties": {
+          "browser_proof": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "additionalProperties": false
@@ -3664,6 +3936,35 @@
         },
         "additionalProperties": false
       },
+      "PhoneDecision": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_token"
+        ],
+        "properties": {
+          "approval_signature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_token": {
+            "type": "string"
+          },
+          "display_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "RegisterTrustedDeviceAttestationRequest": {
         "type": "object",
         "required": [
@@ -3843,6 +4144,43 @@
         "properties": {
           "email": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SetPolicy": {
+        "type": "object",
+        "required": [
+          "required"
+        ],
+        "properties": {
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StartApproval": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string"
+          },
+          "permission_preset": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false

@@ -231,13 +231,30 @@ public final class MainActivity extends Activity {
         if (busy) return;
         int generation = reviewGeneration;
         try {
-            Protocol.parseQr(qr, server.getText().toString(), BuildConfig.DEBUG);
+            if (qr.startsWith("rooiam://action-approval?")) Protocol.parseActionQr(qr, server.getText().toString(), BuildConfig.DEBUG);
+            else Protocol.parseQr(qr, server.getText().toString(), BuildConfig.DEBUG);
             pendingQr = qr;
             if (!getPreferences(0).edit().putString("pending_qr", qr).commit()) throw new IllegalStateException("Could not save the scan. Please scan again.");
         } catch (Exception e) { clearPendingQr(); status.setText(e.getMessage()); return; }
         work(() -> {
             try {
             RooiamClient sdk = client();
+            if (qr.startsWith("rooiam://action-approval?")) {
+                RooiamClient.ActionReview request = sdk.previewAction(qr);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || !resumed || generation != reviewGeneration) return;
+                    reviewDialog = new AlertDialog.Builder(this).setTitle("Create an API key?")
+                        .setMessage("Server: " + request.getOrigin() + "\nWorkspace: " + request.getWorkspace() +
+                            "\nAction: " + request.getAction() + "\nKey label: " + request.getLabel() +
+                            "\nPreset: " + request.getPermissionPreset() + "\nPermissions: " + request.getPermissions() +
+                            "\nKey expires: " + request.getKeyExpiry() + "\n\nRequest code: " + request.getDisplayCode() +
+                            "\n\nCompare this code and every key detail with your browser before approving.")
+                        .setPositiveButton("Details match — approve", (d,w) -> decideAction(sdk, request, true))
+                        .setNegativeButton("Deny", (d,w) -> decideAction(sdk, request, false))
+                        .setNeutralButton("Close", (d,w) -> clearPendingQr()).setOnCancelListener(d -> clearPendingQr()).show();
+                });
+                return "Review the exact API-key request before approving.";
+            }
             RooiamClient.Review request = sdk.preview(qr);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed() || !resumed || generation != reviewGeneration) return;
@@ -272,6 +289,19 @@ public final class MainActivity extends Activity {
                 if (approve) sdk.approve(request, request.getMatchNumber()); else sdk.deny(request);
             } catch (Exception e) { throw new IllegalStateException(UNCERTAIN_DECISION); }
             return approve ? "Approved. Return to your browser to finish sign-in and any required MFA." : "Request denied.";
+        }, () -> getPreferences(0).edit().remove("decision_in_flight").commit());
+    }
+    private void decideAction(RooiamClient sdk, RooiamClient.ActionReview request, boolean approve) {
+        if (busy) return;
+        if (!getPreferences(0).edit().remove("pending_qr").putBoolean("decision_in_flight", true).commit()) {
+            status.setText("Could not save decision state. Reopen the app and scan again."); return;
+        }
+        pendingQr = null; refreshReview = false;
+        work(() -> {
+            try {
+                if (approve) sdk.approveAction(request, request.getDisplayCode()); else sdk.denyAction(request);
+            } catch (Exception e) { throw new IllegalStateException("The decision may have reached the server. Check the browser and start a fresh request if needed. This app will not resend it."); }
+            return approve ? "Approved. Return to the original browser to create and reveal the key." : "Request denied.";
         }, () -> getPreferences(0).edit().remove("decision_in_flight").commit());
     }
     @Override protected void onDestroy() { stopScanner(); worker.shutdown(); super.onDestroy(); }

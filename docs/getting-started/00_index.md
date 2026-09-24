@@ -37,6 +37,7 @@ Use this when you want:
 - [Phone sign-in for tenant workspaces](../tenant_phone_sign_in.md) — what must be ready before enabling the button
 - [Build your first Android phone sign-in app](./11_build_your_first_android_app.md) — from a fresh clone to your own Play-backed test
 - [Android SDK integration](../reference/14_android_sdk_integration.md) — annotated SDK calls and lifecycle details
+- [Phone confirmation for API keys](../reference/15_phone_action_approval.md) — an optional workspace policy for sensitive key creation
 
 Use this when you want:
 - a real dev environment (not Docker)

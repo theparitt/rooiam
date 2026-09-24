@@ -25,12 +25,12 @@ These are provisional directions, with scope guided by real integrations. Dates 
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.4 | Easier integration | More predictable use of existing OIDC, passkeys and SDKs across applications |
-| 0.5 | Tenant access assurance | Stronger organization ownership, RBAC and cross-tenant isolation checks for existing features |
-| 0.6 | Workspace approval policies | Clearer control over which identity changes need confirmation |
-| 0.7 | Recovery and replacement | A safer, clearer path when someone loses or replaces a device |
+| 0.4 | Recovery and replacement | A safer, clearer path when someone loses or replaces a device |
+| 0.5 | Developer adoption | A tested upgrade path and clearer first integration for supported SDKs and applications |
+| 0.6 | Tenant access assurance | Stronger organization ownership, RBAC and cross-tenant isolation checks for existing features |
+| 0.7 | Workspace approval policies | Clearer control over which identity changes need confirmation |
 | 0.8 | Self-hosted reliability | More predictable upgrades, backup, restore and failure handling; additional company identity connections only where needed |
 | 0.9 | iOS exploration | Bring the supported device protocol to iOS only when real iPhone testing is available |
 | 1.0 | Stable compatibility | A documented support and compatibility commitment for the supported APIs, protocols and SDKs |
 
-Security, safe recovery and tenant isolation are requirements throughout this work. OIDC, passkeys, Google/Microsoft login, workspaces and roles already exist; later milestones improve them. iOS is not part of a stable-release claim until it has passed physical-device tests. Enterprise federation and additional SDK languages are driven by demand, not prerequisites for every adopter.
+Security and tenant isolation are requirements throughout this work. OIDC, passkeys, Google/Microsoft login, workspaces and roles already exist and are not listed as new milestones. iOS is not part of a stable-release claim until it has passed physical-device tests. Enterprise federation and additional SDK languages are driven by demand, not prerequisites for every adopter.

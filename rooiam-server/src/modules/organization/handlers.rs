@@ -5926,6 +5926,8 @@ pub struct CreateApiKeyRequest {
     /// Optional ISO 8601 expiry datetime. Null means no expiry.
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub permission_preset: Option<String>,
+    pub approval_id: Option<uuid::Uuid>,
+    pub browser_proof: Option<String>,
 }
 
 const TENANT_API_KEY_LIMIT: i64 = 10;
@@ -6015,6 +6017,100 @@ async fn create_current_org_api_key(
     }
     let allowed_permissions = workspace_api_key_permissions_for_preset(permission_preset);
 
+    // Serialize key creation and policy changes on the workspace row. The old
+    // direct endpoint must never bypass a required phone confirmation.
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("SELECT id FROM organizations WHERE id = $1 AND status = 'active' AND platform_locked = FALSE FOR UPDATE")
+        .bind(org_id).fetch_optional(&mut *tx).await?
+        .ok_or_else(|| AppError::Forbidden("Workspace is inactive or locked.".into()))?;
+    let authorized: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM permissions p JOIN role_permissions rp ON p.id = rp.permission_id JOIN member_roles mr ON rp.role_id = mr.role_id JOIN organization_members om ON mr.member_id = om.id WHERE om.user_id = $1 AND om.organization_id = $2 AND om.status = 'active' AND p.code = 'org:update')")
+        .bind(session.user_id).bind(org_id).fetch_one(&mut *tx).await?;
+    if !authorized {
+        return Err(AppError::Forbidden(
+            "You no longer have permission to create API keys.".into(),
+        ));
+    }
+    if permission_preset == WORKSPACE_KEY_PRESET_WORKSPACE_OWNER {
+        let owner: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM organization_members om JOIN member_roles mr ON mr.member_id = om.id JOIN roles r ON r.id = mr.role_id WHERE om.organization_id = $1 AND om.user_id = $2 AND om.status = 'active' AND r.code = 'owner')")
+            .bind(org_id).bind(session.user_id).fetch_one(&mut *tx).await?;
+        if !owner {
+            return Err(AppError::Forbidden(
+                "Only the current workspace owner can create a full-access key.".into(),
+            ));
+        }
+    }
+    let phone_policy = sqlx::query(
+        "SELECT required, version FROM workspace_api_key_phone_policies WHERE org_id = $1",
+    )
+    .bind(org_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let phone_required: bool = phone_policy
+        .as_ref()
+        .map(|r| r.get("required"))
+        .unwrap_or(false);
+    let policy_version: i64 = phone_policy.as_ref().map(|r| r.get("version")).unwrap_or(0);
+    let approval = if phone_required {
+        let id = body.approval_id.ok_or_else(|| {
+            AppError::Forbidden(
+                "Approve this API-key request on your phone before creating the key.".into(),
+            )
+        })?;
+        let proof = body
+            .browser_proof
+            .as_deref()
+            .ok_or_else(|| AppError::Forbidden("Browser proof is required.".into()))?;
+        let row = sqlx::query_as::<_, super::action_approval::ActionApproval>("SELECT id, org_id, requester_user_id, requester_session_id, browser_proof_hash, server_origin, action, label, permission_preset, allowed_permissions, key_expires_at, payload_digest, policy_version, display_code, status, approved_device_id, expires_at, resulting_key_id FROM workspace_action_approvals WHERE id = $1 FOR UPDATE")
+            .bind(id).fetch_optional(&mut *tx).await?.ok_or_else(|| AppError::Forbidden("Approval request not found.".into()))?;
+        let digest = super::action_approval::payload_digest(
+            body.label.trim(),
+            permission_preset,
+            &allowed_permissions,
+            body.expires_at,
+        );
+        let supplied_hash = super::action_approval::proof_hash(proof)?;
+        if row.org_id != org_id
+            || row.requester_user_id != session.user_id
+            || row.requester_session_id != session.session_id
+            || row.action != "workspace.api_key.create"
+            || row.status != "approved"
+            || row.expires_at <= chrono::Utc::now()
+            || row.policy_version != policy_version
+            || row.label != body.label.trim()
+            || row.permission_preset != permission_preset
+            || row.allowed_permissions != allowed_permissions
+            || row.key_expires_at != body.expires_at
+            || row.payload_digest != digest
+            || !bool::from(subtle::ConstantTimeEq::ct_eq(
+                row.browser_proof_hash.as_bytes(),
+                supplied_hash.as_bytes(),
+            ))
+        {
+            return Err(AppError::Forbidden(
+                "Approval does not match this browser and exact API-key request. Start again."
+                    .into(),
+            ));
+        }
+        let active_device: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM user_trusted_devices d JOIN users u ON u.id = d.user_id WHERE d.id = $1 AND d.user_id = $2 AND d.revoked_at IS NULL AND d.attestation_status = 'verified' AND u.status = 'active')")
+            .bind(row.approved_device_id).bind(session.user_id).fetch_one(&mut *tx).await?;
+        if !active_device {
+            return Err(AppError::Forbidden(
+                "The approving device or account is no longer eligible.".into(),
+            ));
+        }
+        Some(row)
+    } else {
+        if body.approval_id.is_some() || body.browser_proof.is_some() {
+            return Err(AppError::Conflict(
+                "Approval policy changed. Start a new API-key request.".into(),
+            ));
+        }
+        None
+    };
+
     let existing_key_count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
@@ -6023,7 +6119,7 @@ async fn create_current_org_api_key(
         "#,
     )
     .bind(org_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to count active workspace API keys: {}", e)))?;
 
@@ -6062,22 +6158,27 @@ async fn create_current_org_api_key(
     .bind(permission_preset)
     .bind(&allowed_permissions)
     .bind(body.expires_at)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to create workspace API key: {}", e)))?;
 
-    crate::modules::audit::service::AuditService::new(state.db.clone()).log(
-        crate::modules::audit::service::AuditEvent {
-            actor_user_id: Some(session.user_id),
-            organization_id: Some(org_id),
-            action: "api_key.created".into(),
-            target_type: "tenant_api_key".into(),
-            target_id: Some(key.id.to_string()),
-            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
-            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-            metadata: serde_json::json!({ "label": key.label, "permission_preset": key.permission_preset }),
+    let approval_id = approval.as_ref().map(|row| row.id);
+    if let Some(approval) = approval {
+        let affected = sqlx::query("UPDATE workspace_action_approvals SET status = 'consumed', consumed_at = NOW(), resulting_key_id = $1 WHERE id = $2 AND status = 'approved' AND expires_at > clock_timestamp()")
+            .bind(key.id).bind(approval.id).execute(&mut *tx).await?.rows_affected();
+        if affected != 1 {
+            return Err(AppError::Conflict(
+                "Approval expired before the key was created.".into(),
+            ));
         }
-    ).await;
+    }
+    sqlx::query("INSERT INTO audit_logs (actor_user_id, organization_id, action, target_type, target_id, ip, user_agent, metadata) VALUES ($1,$2,'api_key.created','tenant_api_key',$3,$4::inet,$5,$6)")
+        .bind(session.user_id).bind(org_id).bind(key.id.to_string())
+        .bind(client_ip_string_from_http_request(&req, state.config.as_ref()))
+        .bind(req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from))
+        .bind(serde_json::json!({"label":key.label,"permission_preset":key.permission_preset,"phone_approved":phone_required,"approval_id":approval_id}))
+        .execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(HttpResponse::Created().json(serde_json::json!({
         "key": key,

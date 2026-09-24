@@ -17,7 +17,7 @@ const nextRelease: Item[] = [
 ]
 
 const planned: Item[] = [
-    { text: 'Easier OIDC and SDK integration' },
+    { text: 'Smoother app integration and upgrades' },
     { text: 'Safer account recovery and device replacement' },
     { text: 'iOS support after real-device testing' },
 ]

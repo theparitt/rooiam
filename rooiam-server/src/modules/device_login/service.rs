@@ -332,7 +332,12 @@ impl DeviceLoginService {
 
         let expected_binding = build_browser_binding_hash(browser_nonce, user_agent)?;
         use subtle::ConstantTimeEq;
-        if !bool::from(intent.browser_binding_hash.as_bytes().ct_eq(expected_binding.as_bytes())) {
+        if !bool::from(
+            intent
+                .browser_binding_hash
+                .as_bytes()
+                .ct_eq(expected_binding.as_bytes()),
+        ) {
             return Err(AppError::Forbidden(
                 "This device login request belongs to a different browser session.".into(),
             ));
@@ -522,7 +527,7 @@ impl DeviceLoginService {
             })
     }
 
-    async fn ensure_trusted_device_attestation_allows_qr_login(
+    pub(crate) async fn ensure_trusted_device_attestation_allows_qr_login(
         &self,
         trusted_device: UserTrustedDevice,
     ) -> Result<UserTrustedDevice, AppError> {
@@ -644,17 +649,16 @@ impl DeviceLoginService {
             ));
         };
 
-        let verifier_config = match load_google_play_integrity_verifier_config(
-            &self.config.device_attestation,
-        ) {
-            Ok(value) => value,
-            Err(GooglePlayVerificationError::Unavailable(message)) => {
-                return VendorAttestationDecision::Unavailable(message);
-            }
-            Err(GooglePlayVerificationError::Rejected(message)) => {
-                return VendorAttestationDecision::Rejected(rejected_attestation(&message));
-            }
-        };
+        let verifier_config =
+            match load_google_play_integrity_verifier_config(&self.config.device_attestation) {
+                Ok(value) => value,
+                Err(GooglePlayVerificationError::Unavailable(message)) => {
+                    return VendorAttestationDecision::Unavailable(message);
+                }
+                Err(GooglePlayVerificationError::Rejected(message)) => {
+                    return VendorAttestationDecision::Rejected(rejected_attestation(&message));
+                }
+            };
 
         let payload = match decode_google_play_integrity_token(
             &self.http_client,

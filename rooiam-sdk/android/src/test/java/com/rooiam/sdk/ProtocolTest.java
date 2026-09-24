@@ -27,6 +27,20 @@ public class ProtocolTest {
         }
     }
     @Test public void validQr() { assertEquals(id, Protocol.parseQr("rooiam://device-login?server=https%3A%2F%2Fauth.example&public_id=" + id, "https://auth.example", false)); }
+    @Test public void actionAndLoginQrCannotSubstituteForEachOther() {
+        String action = "rooiam://action-approval?server=https%3A%2F%2Fauth.example&id=" + id + "&v=1";
+        String login = "rooiam://device-login?server=https%3A%2F%2Fauth.example&public_id=" + id;
+        assertEquals(id, Protocol.parseActionQr(action, "https://auth.example", false));
+        try { Protocol.parseQr(action, "https://auth.example", false); fail(); } catch (IllegalArgumentException expected) {}
+        try { Protocol.parseActionQr(login, "https://auth.example", false); fail(); } catch (IllegalArgumentException expected) {}
+        for (String invalid : new String[] {
+            "rooiam://action-approval?server=https://evil.example&id=" + id,
+            action + "&id=" + id,
+            action + "&access_token=secret",
+            action.replace("v=1", "v=2"),
+            "rooiam://action-approval?server=http://auth.example&id=" + id,
+        }) { try { Protocol.parseActionQr(invalid, "https://auth.example", false); fail(invalid); } catch (IllegalArgumentException expected) {} }
+    }
     @Test public void rejectsSubstitutionAndAmbiguousInput() {
         for (String qr : new String[] {
             "rooiam://device-login?server=https://evil.example&public_id=" + id,

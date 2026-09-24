@@ -1,4 +1,5 @@
 import React from 'react'
+import QRCode from 'qrcode'
 import { ArrowUpDown, CheckCircle2, Key, Loader2, Plus, Trash2 } from 'lucide-react'
 import PortalCodeBlockField from '../../components/portal/PortalCodeBlockField'
 import PortalConfigChangeNote from '../../components/portal/PortalConfigChangeNote'
@@ -16,6 +17,15 @@ import { OrganizationActivityItem, TenantApiKey } from '../../lib/portal-types'
 
 const DEFAULT_PAGE_SIZE = 20
 const MAX_API_KEYS = 10
+
+type PendingKeyApproval = {
+    id: string
+    browser_proof: string
+    display_code: string
+    expires_at: string
+    qr: string
+    payload: { label: string; permission_preset: string; expires_at: string | null }
+}
 
 const API_KEY_PRESET_MATRIX = {
     workspace_owner: {
@@ -192,41 +202,142 @@ export default function PortalWorkspaceApiKeys({
     const [pageSize, setPageSize] = React.useState(DEFAULT_PAGE_SIZE)
     const handlePageSizeChange = (n: number) => { setPageSize(n); setPage(1) }
     const atLimit = apiKeys.length >= MAX_API_KEYS
+    const [phoneRequired, setPhoneRequired] = React.useState(false)
+    const [policyBusy, setPolicyBusy] = React.useState(false)
+    const [policyError, setPolicyError] = React.useState('')
+    const [pendingApproval, setPendingApproval] = React.useState<PendingKeyApproval | null>(null)
+    const completingApproval = React.useRef(false)
+
+    React.useEffect(() => {
+        let active = true
+        apiFetch(`${API}/orgs/current/api-key-phone-policy`).then(async response => {
+            if (!response.ok) throw new Error('Could not load phone-confirmation policy.')
+            return response.json()
+        }).then(data => { if (active) { setPhoneRequired(!!data.required); setPolicyError('') } })
+            .catch(error => { if (active) setPolicyError(error instanceof Error ? error.message : 'Could not load policy.') })
+        return () => { active = false }
+    }, [API])
+
+    const finishCreatedKey = (data: { key: TenantApiKey; raw_key: string }) => {
+        setApiKeys(prev => [data.key, ...prev])
+        setNewKeyRaw(data.raw_key)
+        setNewKeyLabel('')
+        setNewKeyExpiry('')
+        setNewKeyPermissionPreset(isWorkspaceOwner ? 'workspace_owner' : 'workspace_admin')
+        setCopiedKey(false)
+        setKeyMessage('')
+    }
+
+    React.useEffect(() => {
+        if (!pendingApproval) return
+        let stopped = false
+        let timer: ReturnType<typeof setTimeout>
+        const poll = async () => {
+            try {
+                const response = await apiFetch(`${API}/orgs/current/action-approvals/status`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: pendingApproval.id, browser_proof: pendingApproval.browser_proof }),
+                })
+                const status = await response.json()
+                if (!response.ok) throw new Error(status?.error?.message || 'Could not check approval.')
+                if (stopped) return
+                if (status.status === 'approved' && !completingApproval.current) {
+                    completingApproval.current = true
+                    setCreatingKey(true)
+                    // Submit exactly the frozen values the phone reviewed, once.
+                    const create = await apiFetch(`${API}/orgs/current/api-keys`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...pendingApproval.payload, approval_id: pendingApproval.id, browser_proof: pendingApproval.browser_proof }),
+                    })
+                    const result = await create.json().catch(() => ({}))
+                    if (!create.ok) throw new Error(result?.error?.message || 'Approved, but the key could not be created.')
+                    if (!stopped) { finishCreatedKey(result); setPendingApproval(null) }
+                    setCreatingKey(false)
+                    return
+                }
+                if (status.status === 'pending') { timer = setTimeout(poll, 2000); return }
+                setPendingApproval(null)
+                setKeyMessage(status.status === 'consumed'
+                    ? 'The key was created, but its one-time secret cannot be shown again. Revoke it and create a new key if you did not save it.'
+                    : `Phone confirmation ${status.status}. Start a new request.`)
+            } catch (error) {
+                if (!stopped) {
+                    setPendingApproval(null)
+                    setKeyMessage(completingApproval.current
+                        ? 'The final response may have been lost. Reload this page and check Active Keys before starting again. If the key exists but you did not receive its one-time secret, revoke it.'
+                        : error instanceof Error ? error.message : 'Connection lost. Start a fresh approval request.')
+                    setCreatingKey(false)
+                }
+            }
+        }
+        timer = setTimeout(poll, 1200)
+        return () => { stopped = true; clearTimeout(timer) }
+    }, [API, pendingApproval])
+
+    const changePhonePolicy = async () => {
+        setPolicyBusy(true); setPolicyError('')
+        try {
+            const response = await apiFetch(`${API}/orgs/current/api-key-phone-policy`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ required: !phoneRequired }),
+            })
+            const data = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(data?.error?.message || 'Could not update policy.')
+            setPhoneRequired(!!data.required)
+        } catch (error) { setPolicyError(error instanceof Error ? error.message : 'Could not update policy.') }
+        finally { setPolicyBusy(false) }
+    }
+
+    const cancelApproval = async () => {
+        if (!pendingApproval) return
+        const current = pendingApproval
+        setPendingApproval(null)
+        completingApproval.current = false
+        await apiFetch(`${API}/orgs/current/action-approvals/cancel`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: current.id, browser_proof: current.browser_proof }),
+        }).catch(() => {})
+    }
 
     const handleCreateKey = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!newKeyLabel.trim() || atLimit || demoMode) return
+        if (!newKeyLabel.trim() || atLimit || demoMode || pendingApproval) return
         setCreatingKey(true)
         setKeyMessage('')
         setNewKeyRaw(null)
         try {
+            const payload = {
+                label: newKeyLabel.trim(), permission_preset: newKeyPermissionPreset,
+                expires_at: (() => {
+                    if (!newKeyExpiry) return null
+                    const d = new Date()
+                    if (newKeyExpiry === '1m') d.setMonth(d.getMonth() + 1)
+                    else if (newKeyExpiry === '3m') d.setMonth(d.getMonth() + 3)
+                    else if (newKeyExpiry === '6m') d.setMonth(d.getMonth() + 6)
+                    else if (newKeyExpiry === '1y') d.setFullYear(d.getFullYear() + 1)
+                    else if (newKeyExpiry === '2y') d.setFullYear(d.getFullYear() + 2)
+                    return d.toISOString()
+                })(),
+            }
+            if (phoneRequired) {
+                const response = await apiFetch(`${API}/orgs/current/action-approvals`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+                })
+                const data = await response.json().catch(() => ({}))
+                if (!response.ok) throw new Error(data?.error?.message || 'Could not start phone confirmation.')
+                completingApproval.current = false
+                setPendingApproval({ id: data.id, browser_proof: data.browser_proof,
+                    display_code: data.display_code, expires_at: data.expires_at,
+                    qr: await QRCode.toDataURL(data.qr_value, { width: 240, margin: 2 }), payload })
+                return
+            }
             const res = await apiFetch(`${API}/orgs/current/api-keys`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    label: newKeyLabel.trim(),
-                    permission_preset: newKeyPermissionPreset,
-                    expires_at: (() => {
-                        if (!newKeyExpiry) return null
-                        const d = new Date()
-                        if (newKeyExpiry === '1m') d.setMonth(d.getMonth() + 1)
-                        else if (newKeyExpiry === '3m') d.setMonth(d.getMonth() + 3)
-                        else if (newKeyExpiry === '6m') d.setMonth(d.getMonth() + 6)
-                        else if (newKeyExpiry === '1y') d.setFullYear(d.getFullYear() + 1)
-                        else if (newKeyExpiry === '2y') d.setFullYear(d.getFullYear() + 2)
-                        return d.toISOString()
-                    })(),
-                }),
+                body: JSON.stringify(payload),
             })
             const data = await res.json().catch(() => ({}))
             if (!res.ok) throw new Error(data?.error?.message || 'Failed to create API key.')
-            setApiKeys(prev => [data.key, ...prev])
-            setNewKeyRaw(data.raw_key)
-            setNewKeyLabel('')
-            setNewKeyExpiry('')
-            setNewKeyPermissionPreset(isWorkspaceOwner ? 'workspace_owner' : 'workspace_admin')
-            setCopiedKey(false)
-            setKeyMessage('')
+            finishCreatedKey(data)
         } catch (err) {
             setKeyMessage(err instanceof Error ? err.message : 'Failed to create API key.')
         } finally {
@@ -306,6 +417,30 @@ export default function PortalWorkspaceApiKeys({
                 emptyText="No API key activity recorded yet."
             />
 
+            <PortalSectionCard icon={Key} title="Phone confirmation for API keys" className="rounded-4xl">
+                <p className="text-sm text-muted-foreground">Require the administrator creating a workspace API key to review its exact label, permissions and expiry on an enrolled phone. The Android app must support action-approval QR codes. This is separate from the Phone sign-in method.</p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${phoneRequired ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{phoneRequired ? 'Required' : 'Off'}</span>
+                    {isWorkspaceOwner && !demoMode ? <button type="button" onClick={changePhonePolicy} disabled={policyBusy || !!pendingApproval} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-bold text-primary disabled:opacity-50">{policyBusy ? 'Saving…' : phoneRequired ? 'Turn off requirement' : 'Require phone confirmation'}</button> : null}
+                </div>
+                {policyError ? <p role="alert" className="mt-3 text-sm text-red-700">{policyError}</p> : null}
+            </PortalSectionCard>
+
+            {pendingApproval ? <PortalSectionCard icon={Key} title="Confirm this key on your phone" className="rounded-4xl border-2 border-violet-200">
+                <div className="flex flex-wrap items-center gap-6">
+                    <img width={240} height={240} src={pendingApproval.qr} alt="Scan this API-key approval request with your enrolled Rooiam Android app" />
+                    <div className="space-y-2 text-sm">
+                        <p>Check that the phone shows this workspace and the exact key details.</p>
+                        <p><strong>Label:</strong> {pendingApproval.payload.label}</p>
+                        <p><strong>Preset:</strong> {pendingApproval.payload.permission_preset}</p>
+                        <p><strong>Expiry:</strong> {pendingApproval.payload.expires_at || 'Never'}</p>
+                        <p className="font-mono text-2xl font-bold tracking-widest">{pendingApproval.display_code}</p>
+                        <p role="status">Waiting for approval. Expires {new Date(pendingApproval.expires_at).toLocaleTimeString()}.</p>
+                        <button type="button" onClick={cancelApproval} className="font-bold text-primary underline">Cancel request</button>
+                    </div>
+                </div>
+            </PortalSectionCard> : null}
+
             {newKeyRaw ? (
                 <PortalSectionCard
                     icon={CheckCircle2}
@@ -327,6 +462,7 @@ export default function PortalWorkspaceApiKeys({
                 className="rounded-4xl"
             >
                 <form id="create-key-form" onSubmit={handleCreateKey} className="space-y-4">
+                    <fieldset disabled={!!pendingApproval || creatingKey} className="space-y-4 disabled:opacity-60">
                     <PortalCreateFormLayout
                         title="API Key Configuration"
                         subtitle="Create a labeled workspace key for machine-to-machine use."
@@ -387,6 +523,7 @@ export default function PortalWorkspaceApiKeys({
                         disabled={demoMode || creatingKey || !newKeyLabel.trim() || atLimit}
                     />
                     </PortalCreateFormLayout>
+                    </fieldset>
                 </form>
             </PortalSectionCard>
 

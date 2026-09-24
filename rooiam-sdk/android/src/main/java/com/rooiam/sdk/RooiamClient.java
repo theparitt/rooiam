@@ -87,6 +87,58 @@ public final class RooiamClient {
         review.requireUnexpired();
         return review;
     }
+    public synchronized ActionReview previewAction(String qr) throws Exception {
+        String id = Protocol.parseActionQr(qr, origin, debug);
+        JSONObject device = enrolled();
+        JSONObject request = api.request("/v1/identity/action-approvals/" + id, null);
+        if (request.optInt("protocol_version", 0) != 1 || !origin.equals(Protocol.origin(request.getString("server_origin"), debug)) || !id.equals(request.getString("id")) ||
+            !"workspace.api_key.create".equals(request.optString("action")) || !"pending".equals(request.optString("status")))
+            throw new IllegalStateException("This action request is unavailable or uses an unsupported protocol.");
+        ActionReview review = new ActionReview(this, device.getString("id"), request);
+        review.requireUnexpired();
+        return review;
+    }
+    /** Explicitly approve the reviewed action. Never retry an ambiguous network result. */
+    public synchronized void approveAction(ActionReview review, String displayedCode) throws Exception { decideAction(review, true, displayedCode); }
+    public synchronized void denyAction(ActionReview review) throws Exception { decideAction(review, false, null); }
+    private void decideAction(ActionReview review, boolean approve, String displayedCode) throws Exception {
+        if (review.owner != this || review.used) throw new IllegalStateException("Preview this request again.");
+        review.requireUnexpired();
+        JSONObject device = enrolled();
+        if (!device.getString("id").equals(review.deviceId)) throw new IllegalStateException("Enrollment changed. Scan again.");
+        if (approve && !review.getDisplayCode().equals(displayedCode)) throw new IllegalArgumentException("Request code differs.");
+        JSONObject body = new JSONObject().put("id", review.request.getString("id"))
+            .put("device_token", device.getString("device_token"));
+        if (approve) body.put("display_code", displayedCode)
+            .put("approval_signature", vault.sign(device, review.request.getString("approval_payload")));
+        review.used = true;
+        api.request("/v1/identity/action-approvals/" + (approve ? "approve" : "deny"), body);
+    }
+    public static final class ActionReview {
+        private final RooiamClient owner;
+        private final String deviceId;
+        private final JSONObject request;
+        private boolean used;
+        private ActionReview(RooiamClient owner, String deviceId, JSONObject request) { this.owner = owner; this.deviceId = deviceId; this.request = request; }
+        private void requireUnexpired() throws Exception {
+            if (!java.time.Instant.parse(request.getString("expires_at")).isAfter(java.time.Instant.now()))
+                throw new IllegalStateException("Request expired. Start again in the browser.");
+        }
+        public String getOrigin() { return owner.origin; }
+        public String getWorkspace() { return request.optString("workspace_name", ""); }
+        public String getAction() { return "Create workspace API key"; }
+        public String getLabel() { return request.optString("label", ""); }
+        public String getPermissionPreset() { return request.optString("permission_preset", ""); }
+        public String getPermissions() {
+            org.json.JSONArray values = request.optJSONArray("allowed_permissions");
+            if (values == null) return "";
+            StringBuilder result = new StringBuilder();
+            for (int i = 0; i < values.length(); i++) { if (i > 0) result.append(", "); result.append(values.optString(i)); }
+            return result.toString();
+        }
+        public String getKeyExpiry() { return request.isNull("key_expires_at") ? "Never" : request.optString("key_expires_at", "Never"); }
+        public String getDisplayCode() { return request.optString("display_code", ""); }
+    }
     /** Call only after explicit user confirmation of the displayed code and number. No retry. */
     public synchronized void approve(Review review, int selectedNumber) throws Exception { decide(review, true, selectedNumber); }
     public synchronized void deny(Review review) throws Exception { decide(review, false, 0); }

@@ -498,8 +498,13 @@ pub fn register_routes(
                 )
                 .service(
                     web::scope("/identity")
-                        .wrap(RateLimit::per_endpoint_scoped("identity", rl.identity_per_endpoint, 60))
+                        .wrap(RateLimit::per_endpoint_scoped(
+                            "identity",
+                            rl.identity_per_endpoint,
+                            60,
+                        ))
                         .wrap(RateLimit::global_per_ip("identity", rl.identity_per_ip, 60))
+                        .configure(crate::modules::organization::action_approval::identity_routes)
                         .configure(crate::modules::device_login::handlers::routes)
                         .configure(crate::modules::identity::handlers::routes),
                 )
@@ -507,6 +512,7 @@ pub fn register_routes(
                     web::scope("/orgs")
                         .wrap(RateLimit::per_endpoint(rl.orgs_per_endpoint, 60))
                         .wrap(RateLimit::global_per_ip("orgs", rl.orgs_per_ip, 60))
+                        .configure(crate::modules::organization::action_approval::org_routes)
                         .configure(crate::modules::organization::handlers::routes),
                 )
                 .configure(crate::modules::oidc::handlers::routes)

@@ -51,6 +51,8 @@ Reviews are bound to the client/enrollment and expire. A decision attempt consum
 
 ## Attestation and development
 
+For the 0.3 workspace API-key confirmation flow, use `Protocol.parseActionQr`, `client.previewAction`, then `client.approveAction` or `client.denyAction` after explicit review. This is a distinct QR purpose from phone sign-in. See the [action-approval guide](../../docs/reference/15_phone_action_approval.md) for browser behavior, policy and error handling.
+
 Implement `AttestationProvider.requestToken(requestHash)` using your application's Play Integrity configuration. Return the provider token bound to the exact supplied hash. The SDK computes the enrollment binding using the public key, host package name, key ID and production environment; it submits the statement to Rooiam. The reference app includes an adapter using standard Play Integrity requests. The operator must configure the server's package allowlist and verifier credentials for the consuming app. Certificate recognition currently relies on Google's `PLAY_RECOGNIZED` verdict; Rooiam does not expose a separate certificate-digest pinning setting. See the [Play Integrity setup guide](../../docs/production/23_android_play_integrity.md).
 
 The default constructor requires HTTPS and an attestation provider for enrollment. The four-argument constructor with `true` explicitly enables local preview only when the host application is debuggable. It permits loopback HTTP and enrollment without attestation. It does not override server approval policy. Do not ship a debuggable production application.
