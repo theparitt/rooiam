@@ -33,7 +33,7 @@
 //!
 //! 1. Add a variant to [`RiskSignal`].
 //! 2. Add detection logic inside [`evaluate`].
-//! 3. Document it in the table above and in `docs/internal/36_audit_log_color_system.md`.
+//! 3. Document it in the table above and the public audit-log reference.
 
 use sqlx::PgPool;
 use uuid::Uuid;

@@ -1,7 +1,6 @@
 // Tenant-facing product vocabulary is intentionally locked here so
 // section names and page headers do not drift over time.
-// Keep this aligned with rooiam-admin/src/lib/domain-labels.ts and
-// docs/internal/08_domain_model.md.
+// Keep this aligned with rooiam-admin/src/lib/domain-labels.ts.
 export const WORKSPACE_LABEL = 'Workspace'
 export const WORKSPACE_LABEL_PLURAL = 'Workspaces'
 export const WORKSPACE_LABEL_LOWER = 'workspace'

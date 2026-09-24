@@ -73,7 +73,6 @@ If a page is not linked from here, it may still exist, but it is not part of the
 - [Data Boundaries](./identity_data_boundary.md)
 - [Product Surface Map](./reference/05_product_surface_map.md)
 - [Auth Models By Surface](./production/18_auth_models_by_surface.md)
-- [Internal Market-Fit Review](./internal/37_market_fit_review_and_roadmap_2026-04-03.md)
 
 ## Public Reference Highlights
 
@@ -87,41 +86,3 @@ If a page is not linked from here, it may still exist, but it is not part of the
 
 - `rooiam-docs` on `5175`: public docs UI
 - `rooiam-book` on `5176`: longer-form architecture / IAM textbook
-
-## Developer Notes
-
-The `docs/internal/` tree is maintainers-only planning and engineering context.
-It is intentionally separate from the canonical public docs path.
-
----
-
-## Developer Notes 🛠️
-
-These notes are for the maintainers of Rooiam. They track our progress and internal plans.
-
-### 🏗️ Engineering Index
-
-- [Internal Home 🧿](./internal/00_index.md)
-- [Current Status 📅](./internal/34_current_status_2026-03-21.md) (Check here for today's work)
-- [Features List ✅](./internal/features.md)
-- [Data Flow 🌊](./internal/data_flow.md)
-- [Code Style ✨](./internal/code_styling.md)
-
-### 🗺️ Product Plans & Roadmaps
-
-- [Master Plan 🗺️](./internal/master_plan.md)
-- [Product Phases 📈](./internal/product_phases.md)
-- [Release Roadmap 🚀](./internal/release_roadmap.md)
-- [Server Roadmap 🏗️](./internal/server_roadmap.md)
-- [Product Policy 📜](./internal/product_policy.md)
-
-### 🏁 Phase Checklist
-
-- [Tenant Model](./internal/tenant_admin_model.md)
-- [UI Plan](./internal/tenant_ui_plan.md)
-- [Developer Platform Checklist](./internal/phase2_developer_platform_checklist.md)
-- [API Test Checklist](./internal/phase2_rest_api_test_checklist.md)
-- [Phase 3 Details](./internal/phase3_implementation.md)
-- [Phase 4 Details](./internal/phase4_implementation.md)
-- [Phase 5 Demo Checklist](./internal/phase5_demo_checklist.md)
-- [Self Host Checklist](./internal/phase6_self_host_checklist.md)

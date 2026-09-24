@@ -9,7 +9,7 @@ type DemoLoginHintProps = {
   mailboxUrl?: string | null
 }
 
-// Keep demo login hint layout aligned with docs/internal/11_demo_login_hint_rules.md.
+// Keep demo login hint layout consistent across the demo surfaces.
 export default function DemoLoginHint({
   title,
   email,

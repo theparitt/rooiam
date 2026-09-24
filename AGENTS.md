@@ -1,13 +1,8 @@
 # Rooiam Agent Rules
 
-Before making product, API, UI, roadmap, or architecture changes in this repo, read:
-
-- [docs/internal/product_policy.md](./docs/internal/product_policy.md)
-
-That document is the product doctrine for Rooiam.
-
-It is not optional context.
-It defines the direction this product is supposed to move toward.
+Before making product, API, UI, roadmap, or architecture changes, use the public
+[roadmap](./docs/roadmap.md) and the rules below. Maintainers may also have
+private planning notes outside this public repository; read them when available.
 
 ## Required Rule
 
@@ -29,4 +24,4 @@ Avoid changes that add:
 
 ## Implementation Rule
 
-If a proposed change conflicts with `docs/internal/product_policy.md`, the doctrine wins unless the user explicitly decides to change the doctrine itself.
+When a user explicitly decides to change product direction, follow that decision.

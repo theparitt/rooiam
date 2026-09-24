@@ -48,7 +48,7 @@ The server has a trusted-device login protocol separate from WebAuthn. The mobil
 | Push-token registration | `PUT /v1/identity/me/devices/{id}/push-token` |
 | Mobile decision | `GET /v1/identity/device-login/intents/{public_id}`, `POST /v1/identity/device-login/approve`, `POST /v1/identity/device-login/reject` |
 
-Implementation modules include Apple App Attest and Google Play Integrity verification, plus policy-controlled compatibility verification. Exact request bodies, signing payloads, and policy settings are in the [mobile contract](../internal/44_mobile_device_login_contract.md) and current handler/service code. The server stores push tokens but does not itself deliver APNs/FCM notifications.
+Implementation modules include Apple App Attest and Google Play Integrity verification, plus policy-controlled compatibility verification. The current handler/service code defines the exact request bodies and signing payloads; the [Play Integrity guide](../production/23_android_play_integrity.md) explains the Android verification policy. The server stores push tokens but does not itself deliver APNs/FCM notifications.
 
 The development checkout includes `rooiam-examples/example-5-android-reference-app`, the hosted QR screen, and a real-signing Node harness in `rooiam-examples/device-login`. These are preview integrations. The assisted physical-phone journey, lifecycle recovery and Play-backed vendor verification have passed for the reference package in internal beta. Start with the [screen-by-screen walkthrough](../getting-started/10_android_phone_sign_in_walkthrough.md) or the [Android SDK integration guide](./14_android_sdk_integration.md).
 

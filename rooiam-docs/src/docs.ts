@@ -263,9 +263,10 @@ export function resolveDocHref(currentSource: string, href: string): string | nu
   const repositoryPath = normalizePath(
     rawPath.startsWith('/') ? rawPath.split('/') : [...baseDir, ...rawPath.split('/')],
   )
-  // Root README/operator guides and internal notes live in the repository,
-  // rather than in the public site's route catalog.
-  if (!repositoryPath.startsWith('docs/') || repositoryPath.startsWith('docs/internal/')) {
+  // Internal notes are not published or linked from the public site.
+  if (repositoryPath.startsWith('docs/internal/')) return null
+  // Root README and operator guides live in the repository rather than the site's route catalog.
+  if (!repositoryPath.startsWith('docs/')) {
     const url = `https://github.com/theparitt/rooiam/blob/main/${repositoryPath}`
     return rawHash ? `${url}#${rawHash}` : url
   }

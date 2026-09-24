@@ -102,11 +102,4 @@ Production Compose uses the first pair of ports; the demo quickstart uses the se
 | `http://localhost:8025` / `http://localhost:8026` | Production / demo Mailhog inbox |
 | `http://localhost:9001` / `http://localhost:19001` | Production / demo MinIO console |
 
-## Legacy Notes
-
-Older mission-style pages were moved out of the public getting-started path.
-
-If you need them for historical reference, they now live under:
-- `docs/internal/legacy-getting-started/`
-
-If you are starting fresh, follow the canonical links above instead.
+Older mission-style pages are maintained separately. Start with the current guides above.

@@ -40,7 +40,7 @@ The Ed25519 seed and random device token are encrypted with a non-exportable And
 
 Release enrollment requires a Play Integrity project number. The backend must be configured with Google verification credentials, preferably keyless ADC, and the expected package allowlist. Google's `PLAY_RECOGNIZED` verdict checks the Play-distributed package/certificate; Rooiam has no separate certificate pinning setting. Follow the [Play Integrity setup guide](../../docs/production/23_android_play_integrity.md) and install through the operator's supported Play test track for real vendor certification. The debug app can enroll without attestation, but the server's default verified-attestation policy rejects its approvals. Do not relax production policy to make a sideloaded build pass.
 
-See the [protocol](../../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../../test/device-login.md). The Play-distributed reference package passed strict Play Integrity verification in internal beta on a Redmi Note 9; other packages and devices need their own validation.
+See the [SDK and device-login reference](../../docs/reference/13_sdk_and_device_login.md) and [certification runbook](../../test/device-login.md). The Play-distributed reference package passed strict Play Integrity verification in internal beta on a Redmi Note 9; other packages and devices need their own validation.
 
 On a dedicated test installation, `./gradlew :sdk:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection in the SDK test application's sandbox. **It clears that test vault.** The instrumented test APK is also buildable with `:sdk:assembleDebugAndroidTest`; building it does not execute it on hardware.
 

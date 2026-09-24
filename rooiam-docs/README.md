@@ -1,6 +1,6 @@
 # Rooiam documentation site
 
-This Vite/React application renders the repository's `docs/**/*.md` files. Edit those Markdown sources to update public documentation. `docs/internal/` contains maintainer plans and historical reports and is excluded from the public site.
+This Vite/React application renders the repository's public `docs/**/*.md` files. Edit those Markdown sources to update public documentation. Private maintainer notes are kept outside the public repository.
 
 ```bash
 cd rooiam-docs

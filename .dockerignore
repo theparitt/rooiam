@@ -1,4 +1,5 @@
 .git
+docs/internal/
 **/node_modules
 **/dist
 **/target
@@ -7,4 +8,3 @@
 **/.env.*
 !rooiam-server/.env.template
 !*.template
-

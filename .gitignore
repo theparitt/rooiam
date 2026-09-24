@@ -1,5 +1,6 @@
 # ── Secrets & Config ─────────────────────────────────────────────────────────
 .env
+/docs/internal/
 /.local/
 .env.local
 .env.*.local

@@ -1,6 +1,6 @@
 # Device-login certification runbook
 
-This runbook separates automated local evidence from real-phone/vendor acceptance. Current results are in [the closeout evidence](../docs/internal/49_v0.2_closeout_evidence_2026-09-23.md); the [earlier snapshot](../docs/internal/45_v0.2_current_status_2026-09-23.md) is historical.
+This runbook separates automated local evidence from real-phone/vendor acceptance. Maintainer closeout evidence is kept outside the public repository; the public [Play Integrity guide](../docs/production/23_android_play_integrity.md) describes the supported verifier setup.
 
 ## Isolated local stack
 

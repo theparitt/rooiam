@@ -1,5 +1,5 @@
 // Canonical user-facing terminology for the admin console.
-// Keep this aligned with rooiam-app/src/lib/domain-labels.ts and docs/internal/08_domain_model.md.
+// Keep this aligned with rooiam-app/src/lib/domain-labels.ts.
 // API field names still use org/tenant/client in many places for compatibility with the server contract.
 // Do not rename transport keys just to match UI wording unless the backend contract changes too.
 // Membership terminology:

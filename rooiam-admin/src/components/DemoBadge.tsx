@@ -4,7 +4,7 @@ type DemoBadgeProps = {
     className?: string
 }
 
-// Keep badge visuals aligned with docs/internal/12_demo_badge_rules.md.
+// Keep badge visuals consistent across the demo surfaces.
 export default function DemoBadge({ className = '' }: DemoBadgeProps) {
     return (
         <span

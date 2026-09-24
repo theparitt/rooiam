@@ -34,5 +34,3 @@ These are provisional directions, with scope guided by real integrations. Dates 
 | 1.0 | Stable compatibility | A documented support and compatibility commitment for the supported APIs, protocols and SDKs |
 
 Security, safe recovery and tenant isolation are requirements throughout this work. OIDC, passkeys, Google/Microsoft login, workspaces and roles already exist; later milestones improve them. Enterprise federation and additional SDK languages are driven by demand, not prerequisites for every adopter.
-
-Maintainers can find the detailed scope, outstanding evidence and implementation handoff in the [internal release roadmap](./internal/release_roadmap.md).

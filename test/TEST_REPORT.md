@@ -873,7 +873,7 @@ Each test file runs in order. Within a file, requests run sequentially. Captured
 
 **Result: ✅ PASSED — 10 requests, 0 failures**
 
-> **Note:** Scenarios 1, 2, and 4 document known server-side gaps. The server currently accepts invalid values with 200. Tests reflect current behaviour; see [Issue 9 in `05_known_issues.md`](../docs/internal/05_known_issues.md) for the fix.
+> **Note:** Scenarios 1, 2, and 4 document historical server-side validation gaps. Recheck current behavior before treating these results as current.
 
 | # | Request | Expected | Result | What It Proves |
 |---|---------|----------|--------|----------------|
@@ -920,7 +920,7 @@ Each test file runs in order. Within a file, requests run sequentially. Captured
 
 **Tests:** `55_profile_input_validation.http` scenarios 1, 2, 4 document current behaviour with "known gap" comments rather than asserting 400.
 
-**Fix:** See [Issue 9 in `docs/internal/05_known_issues.md`](../docs/internal/05_known_issues.md) for the required server-side validation code.
+**Fix:** Recheck current profile validation and add regression tests for empty or excessive display names if the gap remains.
 
 ---
 

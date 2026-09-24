@@ -98,5 +98,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 Apache-2.0 — see [LICENSE](LICENSE).
 
 ---
-
-<sub>Maintainer planning notes live under `docs/internal/` and are not part of the public user path.</sub>

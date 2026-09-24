@@ -57,7 +57,6 @@ impl OrganizationService {
         //
         // Keep this list in sync with:
         //   • rooiam-app/src/pages/AppHome.tsx  (RESERVED_SLUGS constant)
-        //   • docs/internal/23_reserved_slugs.md
         const RESERVED_SLUGS: &[&str] = &[
             // rooiam-app SPA routing keywords (:context path segment)
             "tenant", // /tenant/:section  — tenant-scoped views (workspaces, audit logs, access)

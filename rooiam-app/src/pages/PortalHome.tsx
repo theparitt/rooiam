@@ -1294,7 +1294,7 @@ const panelClass = 'glass-card rounded-3xl shadow-xl'
     // Slugs that cannot be used for a workspace because they are top-level path
     // segments in the rooiam-app router or the Rooiam server.  A workspace named
     // "tenant" would make /tenant/overview resolve to the wrong page for all users.
-    // Keep in sync with: service.rs create_tenant() and docs/internal/23_reserved_slugs.md
+    // Keep in sync with service.rs create_tenant().
     const createWorkspace = async (e: React.FormEvent) =>
     {
         e.preventDefault()
