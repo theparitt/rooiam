@@ -65,6 +65,15 @@ type WorkspaceBranding = {
     login_method_order: LoginMethodKey[]
 }
 
+function workspaceScopedPhoneRedirect(redirectUri: string, workspaceSlug: string): string {
+    if (!workspaceSlug) return redirectUri
+    const url = new URL(redirectUri, window.location.origin)
+    // The API resolves the workspace from the redirect query. Keep the portal
+    // destination and its login policy bound to the same workspace.
+    url.searchParams.set('workspace', workspaceSlug)
+    return url.toString()
+}
+
 export default function MagicLinkPage()
 {
     const API = getApiBase()
@@ -960,7 +969,9 @@ export default function MagicLinkPage()
                     </div>
                     {phoneSelected && authMethods.device_login_enabled && !mfaChallengeId && !sent && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext) && (
                         <DeviceLogin input={{
-                            redirect_uri: isEmbedded ? undefined : redirectUri || undefined,
+                            redirect_uri: isEmbedded ? undefined : (clientId
+                                ? redirectUri
+                                : workspaceScopedPhoneRedirect(redirectUri, workspaceSlug || workspaceBranding?.slug || '')) || undefined,
                             widget_login_context: widgetLoginContext || undefined,
                             widget_embed_origin: isEmbedded ? window.location.origin : undefined,
                             surface: 'tenant',
