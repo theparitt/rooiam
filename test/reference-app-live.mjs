@@ -6,8 +6,15 @@ import { createReferenceApp } from '../rooiam-examples/example-4-reference-app/a
 
 // Deliberately restricted to the disposable stack in device-login.env.example.
 const database = 'postgres://postgres:rooiam-local-test@127.0.0.1:15439/rooiam_test'
-const rooiam = 'http://127.0.0.1:15470'
-const appOrigin = 'http://127.0.0.1:15474'
+const rooiam = process.env.ROOIAM_REFERENCE_TEST_API_ORIGIN || 'http://127.0.0.1:15470'
+const appOrigin = process.env.ROOIAM_REFERENCE_TEST_APP_ORIGIN || 'http://127.0.0.1:15474'
+for (const origin of [rooiam, appOrigin]) {
+  const url = new URL(origin)
+  assert.equal(url.protocol, 'http:')
+  assert.equal(url.hostname, '127.0.0.1')
+  assert.equal(url.pathname, '/')
+}
+const appPort = Number(new URL(appOrigin).port)
 const suffix = crypto.randomUUID().slice(0, 8)
 const clientId = `reference-app-${suffix}`
 const secretResult = spawnSync('cargo', ['run', '--quiet', '--example', 'generate_client_secret'], { cwd: new URL('../rooiam-server', import.meta.url), encoding: 'utf8', env: { ...process.env, SQLX_OFFLINE: 'true' } })
@@ -34,7 +41,7 @@ try {
   clientUuid = sql(`INSERT INTO oauth_clients(client_id,client_secret_hash,app_name,app_type,org_id,status) VALUES (:'client_id',:'secret_hash','Phase D reference','web',:'org_id','active') RETURNING id;`, { client_id: clientId, secret_hash: clientSecretHash, org_id: org })
   sql(`INSERT INTO oauth_client_redirect_uris(oauth_client_id,redirect_uri) VALUES (:'client_uuid',:'callback'), (:'client_uuid',:'logout'); INSERT INTO oauth_client_allowed_embed_origins(oauth_client_id,origin) VALUES (:'client_uuid',:'origin');`, { client_uuid: clientUuid, callback: `${appOrigin}/callback`, logout: `${appOrigin}/`, origin: appOrigin })
   const reference = createReferenceApp({ appBaseUrl: appOrigin, apiBase: `${rooiam}/v1`, widgetUrl: `${rooiam}/login-widget`, workspaceId: org, clientId, clientSecret, secureCookie: false })
-  server = reference.app.listen(15474, '127.0.0.1'); await once(server, 'listening')
+  server = reference.app.listen(appPort, '127.0.0.1'); await once(server, 'listening')
   const start = await fetch(`${appOrigin}/login`, { redirect: 'manual' })
   assert.equal(start.status, 200)
   assert.equal((await start.text()).includes(clientSecret), false)

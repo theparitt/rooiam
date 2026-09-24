@@ -807,7 +807,7 @@ async fn extract_bearer_self_session(
     let token = extract_bearer_token(req)?;
     let runtime_config = load_runtime_app_config(state.get_ref()).await?;
     let oidc_service = OIDCService::new(state.db.clone(), std::sync::Arc::new(runtime_config));
-    let claims = oidc_service.validate_access_token(token)?;
+    let claims = oidc_service.validate_access_token(token).await?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     let session_id = Uuid::parse_str(&claims.sid).map_err(|_| AppError::Unauthorized)?;
 

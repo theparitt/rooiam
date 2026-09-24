@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::{
+    decode, decode_header, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation,
+};
 use rand::{rngs::OsRng, RngCore};
 use rsa::{pkcs8::DecodePublicKey, traits::PublicKeyParts, RsaPublicKey};
 use serde::{Deserialize, Serialize};
@@ -100,7 +102,8 @@ pub struct OAuthClientInternal {
     pub org_id: Option<Uuid>,
 }
 
-enum SigningMaterial {
+#[derive(Clone)]
+pub(super) enum SigningMaterial {
     Hmac {
         secret: Vec<u8>,
     },
@@ -109,6 +112,11 @@ enum SigningMaterial {
         private_key_pem: String,
         public_key_pem: String,
     },
+}
+
+enum VerificationMaterial {
+    Hmac(Vec<u8>),
+    Rsa(String),
 }
 
 impl OIDCService {
@@ -308,8 +316,8 @@ impl OIDCService {
                 AppError::Internal(format!("Failed to mark authorization code as used: {}", e))
             })?;
 
-        // Generate Access Token (JWT for this example, signed with JWT_SECRET)
-        // In a real OIDC server, we'd use RSA keys instead of symmetric, but this works for MVP.
+        // Issue access and ID tokens with the same active key. A rotation between
+        // these two encodes must not give one token response two different kids.
         let now = Utc::now();
         let (public_client_id, client_org_id): (String, Option<uuid::Uuid>) =
             sqlx::query_as("SELECT client_id, org_id FROM oauth_clients WHERE id = $1")
@@ -349,7 +357,8 @@ impl OIDCService {
             scopes: code_record.scopes.clone(),
         };
 
-        let access_token = encode_oidc_token(&self.config, &claims, "access token")?;
+        let signing = signing_material_for_issue(&self.db, &self.config).await?;
+        let access_token = encode_oidc_token(&signing, &claims, "access token")?;
 
         // Generate ID token if 'openid' scope was requested.
         // Include email/profile claims when the matching scopes were also requested,
@@ -435,7 +444,7 @@ impl OIDCService {
                 picture,
             };
 
-            id_token = Some(encode_oidc_token(&self.config, &id_claims, "id token")?);
+            id_token = Some(encode_oidc_token(&signing, &id_claims, "id token")?);
         }
 
         // Generate Refresh Token
@@ -605,7 +614,8 @@ impl OIDCService {
             sid: record.session_id.to_string(),
             scopes: record.scopes.clone(),
         };
-        let access_token = encode_oidc_token(&self.config, &claims, "access token")?;
+        let signing = signing_material_for_issue(&self.db, &self.config).await?;
+        let access_token = encode_oidc_token(&signing, &claims, "access token")?;
 
         // Issue rotated refresh token (same family, points back to old token)
         let mut new_rt_bytes = [0u8; 32];
@@ -810,12 +820,12 @@ impl OIDCService {
         }))
     }
 
-    pub fn introspect_access_token(
+    pub async fn introspect_access_token(
         &self,
         token: &str,
         client_public_id: &str,
     ) -> Result<serde_json::Value, AppError> {
-        let claims = match self.validate_access_token(token) {
+        let claims = match self.validate_access_token(token).await {
             Ok(value) => value,
             Err(AppError::Unauthorized) => return Ok(json!({ "active": false })),
             Err(err) => return Err(err),
@@ -837,13 +847,17 @@ impl OIDCService {
         }))
     }
 
-    pub fn validate_access_token(&self, token: &str) -> Result<AccessTokenClaims, AppError> {
-        let mut validation = Validation::new(signing_algorithm(&self.config));
+    pub async fn validate_access_token(&self, token: &str) -> Result<AccessTokenClaims, AppError> {
+        let material = verification_material_for_token(&self.db, &self.config, token).await?;
+        let mut validation = Validation::new(match &material {
+            VerificationMaterial::Rsa(_) => Algorithm::RS256,
+            VerificationMaterial::Hmac(_) => Algorithm::HS256,
+        });
         validation.validate_aud = false;
         validation.set_issuer(&[self.config.server.issuer_url.as_str()]);
 
-        let claims = match oidc_signing_material(&self.config)? {
-            SigningMaterial::Rsa { public_key_pem, .. } => {
+        let claims = match material {
+            VerificationMaterial::Rsa(public_key_pem) => {
                 let decoding_key =
                     DecodingKey::from_rsa_pem(public_key_pem.as_bytes()).map_err(|e| {
                         AppError::Internal(format!("Invalid OIDC public key PEM: {}", e))
@@ -852,7 +866,7 @@ impl OIDCService {
                     .map_err(|_| AppError::Unauthorized)?
                     .claims
             }
-            SigningMaterial::Hmac { secret } => {
+            VerificationMaterial::Hmac(secret) => {
                 let decoding_key = DecodingKey::from_secret(&secret);
                 decode::<AccessTokenClaims>(token, &decoding_key, &validation)
                     .map_err(|_| AppError::Unauthorized)?
@@ -864,7 +878,7 @@ impl OIDCService {
     }
 
     pub async fn userinfo(&self, token: &str) -> Result<serde_json::Value, AppError> {
-        let claims = self.validate_access_token(token)?;
+        let claims = self.validate_access_token(token).await?;
         let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
         let record = sqlx::query!(
@@ -920,11 +934,14 @@ impl OIDCService {
     }
 }
 
-pub fn oidc_signing_alg(config: &AppConfig) -> &'static str {
-    match oidc_signing_material(config) {
-        Ok(SigningMaterial::Rsa { .. }) => "RS256",
-        _ => "HS256",
-    }
+pub async fn oidc_signing_alg_from_db(
+    db: &PgPool,
+    config: &AppConfig,
+) -> Result<&'static str, AppError> {
+    Ok(match signing_material_for_issue(db, config).await? {
+        SigningMaterial::Rsa { .. } => "RS256",
+        SigningMaterial::Hmac { .. } => "HS256",
+    })
 }
 
 pub fn oidc_jwks(config: &AppConfig) -> Result<Vec<serde_json::Value>, AppError> {
@@ -956,14 +973,7 @@ pub async fn oidc_jwks_from_db(
     db: &sqlx::PgPool,
     config: &AppConfig,
 ) -> Result<Vec<serde_json::Value>, AppError> {
-    let rollover_hours: i64 = sqlx::query_scalar(
-        "SELECT value::bigint FROM system_settings WHERE key = 'signing_key_rollover_hours'",
-    )
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or(24);
+    let rollover_hours = signing_key_rollover_hours(db).await?;
 
     #[derive(sqlx::FromRow)]
     struct KeyRow {
@@ -990,48 +1000,59 @@ pub async fn oidc_jwks_from_db(
         ))
     })?;
 
-    if rows.is_empty() {
-        // No DB keys — fall back to config-based keys
+    if !db_signing_keys_exist(db).await? {
         return oidc_jwks(config);
     }
 
     let mut keys = Vec::new();
     for row in rows {
-        if let Ok(public_key) = RsaPublicKey::from_public_key_pem(&row.public_key_pem) {
-            keys.push(serde_json::json!({
-                "kty": "RSA",
-                "use": "sig",
-                "kid": row.kid,
-                "alg": "RS256",
-                "n": URL_SAFE_NO_PAD.encode(public_key.n().to_bytes_be()),
-                "e": URL_SAFE_NO_PAD.encode(public_key.e().to_bytes_be()),
-            }));
+        keys.push(rsa_jwk(&row.kid, &row.public_key_pem)?);
+    }
+
+    // Tokens issued from the configured key just before the first DB rotation
+    // remain verifiable only for the configured rollover window.
+    if config_key_in_rollover(db, rollover_hours).await? {
+        if let SigningMaterial::Rsa {
+            kid,
+            public_key_pem,
+            ..
+        } = oidc_signing_material(config)?
+        {
+            if keys.iter().any(|key| key["kid"] == kid) {
+                return Err(AppError::Internal(
+                    "Configured OIDC key ID collides with a rotated key.".into(),
+                ));
+            }
+            keys.push(rsa_jwk(&kid, &public_key_pem)?);
         }
     }
 
     Ok(keys)
 }
 
-fn signing_algorithm(config: &AppConfig) -> Algorithm {
-    match oidc_signing_material(config) {
-        Ok(SigningMaterial::Rsa { .. }) => Algorithm::RS256,
-        _ => Algorithm::HS256,
-    }
+fn rsa_jwk(kid: &str, public_key_pem: &str) -> Result<serde_json::Value, AppError> {
+    let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)
+        .map_err(|e| AppError::Internal(format!("Invalid OIDC public key PEM: {}", e)))?;
+    Ok(serde_json::json!({
+        "kty": "RSA", "use": "sig", "kid": kid, "alg": "RS256",
+        "n": URL_SAFE_NO_PAD.encode(public_key.n().to_bytes_be()),
+        "e": URL_SAFE_NO_PAD.encode(public_key.e().to_bytes_be()),
+    }))
 }
 
-fn encode_oidc_token<T: Serialize>(
-    config: &AppConfig,
+pub(super) fn encode_oidc_token<T: Serialize>(
+    material: &SigningMaterial,
     claims: &T,
     token_kind: &str,
 ) -> Result<String, AppError> {
-    match oidc_signing_material(config)? {
+    match material {
         SigningMaterial::Rsa {
             kid,
             private_key_pem,
             ..
         } => {
             let mut header = Header::new(Algorithm::RS256);
-            header.kid = Some(kid);
+            header.kid = Some(kid.clone());
             let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
                 .map_err(|e| AppError::Internal(format!("Invalid OIDC private key PEM: {}", e)))?;
             encode(&header, claims, &encoding_key)
@@ -1046,7 +1067,117 @@ fn encode_oidc_token<T: Serialize>(
     }
 }
 
-fn oidc_signing_material(config: &AppConfig) -> Result<SigningMaterial, AppError> {
+async fn db_signing_keys_exist(db: &PgPool) -> Result<bool, AppError> {
+    Ok(
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM oidc_signing_keys)")
+            .fetch_one(db)
+            .await?,
+    )
+}
+
+pub(super) async fn signing_material_for_issue(
+    db: &PgPool,
+    config: &AppConfig,
+) -> Result<SigningMaterial, AppError> {
+    let active: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT kid, private_key_pem, public_key_pem FROM oidc_signing_keys WHERE is_active = true ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await?;
+    if let Some((kid, private_key_pem, public_key_pem)) = active {
+        return Ok(SigningMaterial::Rsa {
+            kid,
+            private_key_pem,
+            public_key_pem,
+        });
+    }
+    if db_signing_keys_exist(db).await? {
+        return Err(AppError::Internal(
+            "No active OIDC signing key exists after key rotation.".into(),
+        ));
+    }
+    oidc_signing_material(config)
+}
+
+async fn signing_key_rollover_hours(db: &PgPool) -> Result<i64, AppError> {
+    let hours: Option<i64> = sqlx::query_scalar(
+        "SELECT value::bigint FROM system_settings WHERE key = 'signing_key_rollover_hours'",
+    )
+    .fetch_optional(db)
+    .await?;
+    Ok(hours.unwrap_or(24).max(0))
+}
+
+async fn config_key_in_rollover(db: &PgPool, rollover_hours: i64) -> Result<bool, AppError> {
+    let retired_at: Option<DateTime<Utc>> = sqlx::query_scalar(
+        r#"SELECT COALESCE(
+            (SELECT value::timestamptz FROM system_settings WHERE key = 'oidc_config_key_retired_at'),
+            (SELECT MIN(created_at) FROM oidc_signing_keys)
+        )"#,
+    )
+    .fetch_one(db)
+    .await?;
+    Ok(retired_at.map_or(true, |at| Utc::now() < at + Duration::hours(rollover_hours)))
+}
+
+async fn verification_material_for_token(
+    db: &PgPool,
+    config: &AppConfig,
+    token: &str,
+) -> Result<VerificationMaterial, AppError> {
+    let header = decode_header(token).map_err(|_| AppError::Unauthorized)?;
+    let configured = oidc_signing_material(config)?;
+    if !db_signing_keys_exist(db).await? {
+        return match configured {
+            SigningMaterial::Rsa {
+                kid,
+                public_key_pem,
+                ..
+            } if header.alg == Algorithm::RS256 && header.kid.as_deref() == Some(kid.as_str()) => {
+                Ok(VerificationMaterial::Rsa(public_key_pem))
+            }
+            SigningMaterial::Hmac { secret } if header.alg == Algorithm::HS256 => {
+                Ok(VerificationMaterial::Hmac(secret))
+            }
+            _ => Err(AppError::Unauthorized),
+        };
+    }
+
+    let rollover_hours = signing_key_rollover_hours(db).await?;
+    if header.alg == Algorithm::RS256 {
+        if let Some(kid) = header.kid.as_deref() {
+            let public_key: Option<String> = sqlx::query_scalar(
+                "SELECT public_key_pem FROM oidc_signing_keys WHERE kid = $1 AND (is_active = true OR (retired_at IS NOT NULL AND retired_at > NOW() - ($2 || ' hours')::interval))",
+            )
+            .bind(kid)
+            .bind(rollover_hours)
+            .fetch_optional(db)
+            .await?;
+            if let Some(key) = public_key {
+                return Ok(VerificationMaterial::Rsa(key));
+            }
+        }
+    }
+
+    if config_key_in_rollover(db, rollover_hours).await? {
+        return match configured {
+            SigningMaterial::Rsa {
+                kid,
+                public_key_pem,
+                ..
+            } if header.alg == Algorithm::RS256 && header.kid.as_deref() == Some(kid.as_str()) => {
+                Ok(VerificationMaterial::Rsa(public_key_pem))
+            }
+            SigningMaterial::Hmac { secret } if header.alg == Algorithm::HS256 => {
+                Ok(VerificationMaterial::Hmac(secret))
+            }
+            _ => Err(AppError::Unauthorized),
+        };
+    }
+    Err(AppError::Unauthorized)
+}
+
+pub(super) fn oidc_signing_material(config: &AppConfig) -> Result<SigningMaterial, AppError> {
     match (
         config.oidc.private_key_pem.as_ref(),
         config.oidc.public_key_pem.as_ref(),

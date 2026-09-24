@@ -251,6 +251,189 @@ async fn authorize_callback_boundary_and_session_recovery(pool: sqlx::PgPool) {
     }
 }
 
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires disposable DATABASE_URL"]
+async fn rotated_signing_key_matches_jwks_and_retired_keys_expire(pool: sqlx::PgPool) {
+    use super::super::service::{self, oidc_jwks_from_db, oidc_signing_alg_from_db};
+    use jsonwebtoken::decode_header;
+    use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey};
+
+    let config = test_config("https://iam.example.test");
+    let now = chrono::Utc::now();
+    let claims = service::AccessTokenClaims {
+        iss: config.server.issuer_url.clone(),
+        sub: Uuid::new_v4().to_string(),
+        aud: "test-client".into(),
+        exp: (now + chrono::Duration::minutes(5)).timestamp(),
+        iat: now.timestamp(),
+        sid: Uuid::new_v4().to_string(),
+        scopes: vec!["openid".into()],
+    };
+    let legacy = service::encode_oidc_token(
+        &service::oidc_signing_material(&config).unwrap(),
+        &claims,
+        "test token",
+    )
+    .unwrap();
+    assert_eq!(
+        oidc_signing_alg_from_db(&pool, &config).await.unwrap(),
+        "HS256"
+    );
+
+    let mut first_rotated_token = None;
+    for kid in ["rotated-one", "rotated-two"] {
+        let private = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).unwrap();
+        let public = rsa::RsaPublicKey::from(&private);
+        if kid == "rotated-two" {
+            sqlx::query("UPDATE oidc_signing_keys SET is_active=false, retired_at=NOW() WHERE is_active=true")
+                .execute(&pool).await.unwrap();
+        }
+        sqlx::query("INSERT INTO oidc_signing_keys(kid,private_key_pem,public_key_pem,is_active) VALUES($1,$2,$3,true)")
+            .bind(kid)
+            .bind(private.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF).unwrap().as_str())
+            .bind(public.to_public_key_pem(rsa::pkcs8::LineEnding::LF).unwrap())
+            .execute(&pool).await.unwrap();
+        let material = service::signing_material_for_issue(&pool, &config)
+            .await
+            .unwrap();
+        let token = service::encode_oidc_token(&material, &claims, "test token").unwrap();
+        assert_eq!(decode_header(&token).unwrap().kid.as_deref(), Some(kid));
+        assert_eq!(
+            oidc_signing_alg_from_db(&pool, &config).await.unwrap(),
+            "RS256"
+        );
+        let jwks = oidc_jwks_from_db(&pool, &config).await.unwrap();
+        assert!(jwks.iter().any(|key| key["kid"] == kid));
+        let service = service::OIDCService::new(
+            pool.clone(),
+            Arc::new(test_config("https://iam.example.test")),
+        );
+        assert_eq!(
+            service.validate_access_token(&token).await.unwrap().sub,
+            claims.sub
+        );
+        assert_eq!(
+            service.validate_access_token(&legacy).await.unwrap().sub,
+            claims.sub
+        );
+        if kid == "rotated-one" {
+            first_rotated_token = Some(token);
+            sqlx::query("INSERT INTO system_settings(key,value) VALUES('oidc_config_key_retired_at',NOW()::text) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value")
+                .execute(&pool).await.unwrap();
+        } else {
+            assert_eq!(
+                service
+                    .validate_access_token(first_rotated_token.as_ref().unwrap())
+                    .await
+                    .unwrap()
+                    .sub,
+                claims.sub
+            );
+        }
+    }
+
+    let client: Uuid = sqlx::query_scalar(
+        "INSERT INTO oauth_clients(client_id,app_name,app_type) VALUES('rotated-client','Rotation regression','spa') RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+    let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let session = Uuid::new_v4();
+    SessionRepository::new(pool.clone())
+        .create_session(
+            session,
+            user,
+            &hex::encode(Sha256::digest(b"rotation-session")),
+            chrono::Utc::now() + chrono::Duration::minutes(10),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let issuer = service::OIDCService::new(
+        pool.clone(),
+        Arc::new(test_config("https://iam.example.test")),
+    );
+    let verifier = "v".repeat(43);
+    let challenge = base64::Engine::encode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        Sha256::digest(verifier.as_bytes()),
+    );
+    let code = issuer
+        .create_authorization_code(
+            client,
+            user,
+            session,
+            "https://app.example.test/callback",
+            vec!["openid".into()],
+            Some(&challenge),
+            Some("S256"),
+            None,
+        )
+        .await
+        .unwrap();
+    let issued = issuer
+        .exchange_code_for_tokens(
+            &code,
+            client,
+            "https://app.example.test/callback",
+            Some(&verifier),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        decode_header(&issued.access_token).unwrap().kid.as_deref(),
+        Some("rotated-two")
+    );
+    assert_eq!(
+        decode_header(issued.id_token.as_ref().unwrap())
+            .unwrap()
+            .kid
+            .as_deref(),
+        Some("rotated-two")
+    );
+    assert_eq!(
+        issuer
+            .validate_access_token(&issued.access_token)
+            .await
+            .unwrap()
+            .sub,
+        user.to_string()
+    );
+    let refresh = issued.refresh_token.unwrap();
+    let rotated = issuer
+        .exchange_refresh_token(&refresh, client)
+        .await
+        .unwrap();
+    assert_eq!(
+        decode_header(&rotated.access_token).unwrap().kid.as_deref(),
+        Some("rotated-two")
+    );
+    assert_ne!(rotated.refresh_token.as_deref(), Some(refresh.as_str()));
+
+    sqlx::query(
+        "UPDATE oidc_signing_keys SET retired_at=NOW()-interval '48 hours' WHERE kid='rotated-one'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let jwks = oidc_jwks_from_db(&pool, &config).await.unwrap();
+    assert!(!jwks.iter().any(|key| key["kid"] == "rotated-one"));
+    sqlx::query("UPDATE system_settings SET value=(NOW()-interval '48 hours')::text WHERE key='oidc_config_key_retired_at'")
+        .execute(&pool).await.unwrap();
+    let service = service::OIDCService::new(pool.clone(), Arc::new(config));
+    assert!(service.validate_access_token(&legacy).await.is_err());
+    assert!(service
+        .validate_access_token(first_rotated_token.as_ref().unwrap())
+        .await
+        .is_err());
+}
+
 fn test_config(issuer_url: &str) -> AppConfig {
     AppConfig {
         mode: ServerMode::Test,

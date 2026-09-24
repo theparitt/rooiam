@@ -12,10 +12,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": ["dist"],
   "scripts": {
     "gen": "openapi-typescript ../../spec/openapi.json -o src/generated/schema.ts",
     "build": "tsc",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

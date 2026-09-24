@@ -5,7 +5,7 @@ RooIAM SDK is the integration surface for downstream applications that want to u
 This repo currently contains:
 
 - [android](./android)
-  - standalone Android device-login SDK (alpha.3 preview)
+  - standalone Android device-login SDK (`0.4.0-alpha.1` beta)
   - protocol, protected credentials, enrollment and signed approval
   - consumed by [example-5-android-reference-app](../rooiam-examples/example-5-android-reference-app)
 
@@ -28,6 +28,7 @@ Package version: `0.1.0`. `spec/openapi.json` is generated from the Rust server 
 The browser package exports `buildHostedLoginUrl({ apiOrigin, workspaceId, clientId })`. OIDC code exchange has a typed token response; refresh rotation is implemented by the server, while the browser SDK currently has no dedicated refresh helper. Serialize refresh requests and replace the old refresh token after success.
 
 See the [SDK and device-login reference](../docs/reference/13_sdk_and_device_login.md) for current boundaries and server-only capabilities.
+For verified package-consumer commands, supported versions and upgrade limits, see the [SDK support and upgrade guide](../docs/reference/17_sdk_support_and_upgrade.md).
 
 ## Start Here
 

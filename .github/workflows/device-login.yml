@@ -23,8 +23,10 @@ jobs:
       - run: npm ci --prefix rooiam-sdk/packages/js-browser && npm ci --prefix rooiam-sdk/packages/js-server
       - run: node rooiam-sdk/scripts/sync-openapi.mjs --check
       - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib modules::device_login -- --include-ignored
+      - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib rotated_signing_key_matches_jwks_and_retired_keys_expire -- --include-ignored
       - run: npm test --prefix rooiam-sdk/packages/js-browser && npm test --prefix rooiam-sdk/packages/js-server
       - run: npm run build --prefix rooiam-sdk/packages/js-browser && npm run build --prefix rooiam-sdk/packages/js-server
+      - run: node test/sdk-package-consumer.mjs
       - run: node --test rooiam-examples/device-login/fake-phone.test.mjs
       - run: npm ci --prefix rooiam-examples/example-4-reference-app && npm test --prefix rooiam-examples/example-4-reference-app
       - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app

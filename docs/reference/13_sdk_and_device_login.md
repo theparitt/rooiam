@@ -1,12 +1,12 @@
 # SDK and Device Login Reference
 
-This page describes the development checkout for 0.2. Existing server/SDK package versions remain `0.1.0`; package versions and the REST path prefix (`/v1`) are separate identifiers.
+This page describes the current development checkout. The TypeScript SDK package versions remain `0.1.0`; the Android package is `0.4.0-alpha.1`. Package versions, Rooiam milestones and the REST path prefix (`/v1`) are separate identifiers. See the [support and upgrade guide](./17_sdk_support_and_upgrade.md) for checked consumers and distribution status.
 
 ## TypeScript SDKs
 
 `rooiam-sdk/packages/js-browser` contains `@rooiam/sdk-browser`. `rooiam-sdk/packages/js-server` contains `@rooiam/sdk-server`. Their generated types come from `rooiam-sdk/spec/openapi.json`; the server source is `rooiam-server/src/openapi.rs` plus handler annotations.
 
-For repository development, install dependencies and build each SDK package from its own directory with `npm install` and `npm run build`. The package manifests and source define available methods; a server route does not automatically imply a handwritten SDK helper exists.
+For repository development, install dependencies with `npm ci` and build each SDK package from its own directory with `npm run build`. `npm pack` runs the build first and includes only `dist`. The package manifests and source define available methods; a server route does not automatically imply a handwritten SDK helper exists.
 
 The browser SDK exports `buildHostedLoginUrl`:
 
@@ -58,6 +58,4 @@ For the downstream boundary after authentication, use [`example-4-reference-app`
 
 Regenerate the contract with `node rooiam-sdk/scripts/sync-openapi.mjs`; `--check` detects server/spec/schema drift. Workspace phone login defaults off and requires both platform policy and workspace opt-in. Use the [API/SDK smoke checklist](../production/22_api_and_sdk_smoke_checklist.md) to validate a deployment and its native clients.
 
-## Next milestone
-
-[Rooiam 0.2](../roadmap.md) targets a verified Android + hosted-login QR journey on this foundation. The current protocol uses a browser nonce for device-login completion; this is separate from downstream OIDC PKCE. New scan-secret, claim or authorization-code fields from design proposals are not current API parameters.
+The current protocol uses a browser nonce for device-login completion; this is separate from downstream OIDC PKCE. New scan-secret, claim or authorization-code fields from design proposals are not current API parameters.

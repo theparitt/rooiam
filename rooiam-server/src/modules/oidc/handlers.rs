@@ -2,7 +2,7 @@ use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse, ResponseError}
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::service::{oidc_signing_alg, OIDCService};
+use super::service::{oidc_signing_alg_from_db, OIDCService};
 use crate::bootstrap::state::AppState;
 use crate::modules::audit::service::{AuditEvent, AuditService};
 use crate::modules::session::{
@@ -229,9 +229,9 @@ pub async fn discovery(state: web::Data<AppState>) -> Result<HttpResponse, AppEr
         jwks_uri: format!("{}/.well-known/jwks.json", issuer),
         response_types_supported: vec!["code"],
         subject_types_supported: vec!["public"],
-        id_token_signing_alg_values_supported: vec![oidc_signing_alg(&std::sync::Arc::new(
-            runtime_config.clone(),
-        ))],
+        id_token_signing_alg_values_supported: vec![
+            oidc_signing_alg_from_db(&state.db, &runtime_config).await?,
+        ],
         scopes_supported: vec!["openid", "profile", "email"],
         claims_supported: vec!["sub", "email", "email_verified", "name", "picture", "sid"],
         grant_types_supported: vec!["authorization_code", "refresh_token"],
@@ -667,11 +667,14 @@ pub async fn introspect(
                     .await?
             }
             Some("access_token") => {
-                oidc_service.introspect_access_token(&form.token, &client.client_id)?
+                oidc_service
+                    .introspect_access_token(&form.token, &client.client_id)
+                    .await?
             }
             _ => {
-                let access =
-                    oidc_service.introspect_access_token(&form.token, &client.client_id)?;
+                let access = oidc_service
+                    .introspect_access_token(&form.token, &client.client_id)
+                    .await?;
                 if access.get("active").and_then(|value| value.as_bool()) == Some(true) {
                     access
                 } else {

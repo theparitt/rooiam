@@ -25,13 +25,16 @@ The portal and API are deployed, and the SDK/example flow has passed a real-phon
 
 The production flow passed an assisted revoke and re-enrollment test on the same Play-installed Android phone. A different replacement handset and tenant-built apps still need their own validation.
 
+## Now — Integrate and upgrade
+
+**0.5 developer integration.** Build the TypeScript and Android SDKs from source, try them in a separate application, and follow the [supported-client and upgrade guide](./reference/17_sdk_support_and_upgrade.md). The guide names checked versions, includes a working app-owned session example, and explains Android upgrade and signing-key behavior. SDK packages are available as repository artifacts; they are not published to npm or Maven Central. A simulated clean-clone consumer has passed, but an independent person's walkthrough and another physical replacement phone are still untested.
+
 ## Looking ahead
 
 These are provisional directions, with scope guided by real integrations. Dates are not promised, and optional tracks may move or be skipped.
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.5 | Developer adoption | A tested upgrade path and clearer first integration for supported SDKs and applications |
 | 0.6 | Tenant access assurance | Stronger organization ownership, RBAC and cross-tenant isolation checks for existing features |
 | 0.7 | Workspace approval policies | Clearer control over which identity changes need confirmation |
 | 0.8 | Self-hosted reliability | More predictable upgrades, backup, restore and failure handling; additional company identity connections only where needed |

@@ -2642,6 +2642,15 @@ async fn rotate_signing_key(
 
     let mut tx = state.db.begin().await?;
 
+    // Persist the first move away from the configured signing key. The oldest
+    // retired DB key may later be pruned, but its deletion must not reopen
+    // acceptance of the configured key after the rollover window.
+    sqlx::query(
+        "INSERT INTO system_settings (key, value) VALUES ('oidc_config_key_retired_at', COALESCE((SELECT MIN(created_at)::text FROM oidc_signing_keys), NOW()::text)) ON CONFLICT (key) DO NOTHING",
+    )
+    .execute(&mut *tx)
+    .await?;
+
     // Retire the current active key (set retired_at so it stays in JWKS during rollover window)
     sqlx::query(
         "UPDATE oidc_signing_keys SET is_active = false, retired_at = NOW() WHERE is_active = true",

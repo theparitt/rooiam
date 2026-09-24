@@ -7,6 +7,7 @@ const done: Item[] = [
     { text: 'Passwordless sign-in with magic links, passkeys and social login' },
     { text: 'Workspace branding, access policies and MFA' },
     { text: 'App integration with OIDC and TypeScript SDKs' },
+    { text: 'SDK integration and upgrade guide' },
     { text: 'Self-hosting with Docker' },
     { text: 'Android phone sign-in', note: 'preview' },
 ]
@@ -18,7 +19,7 @@ const nextRelease: Item[] = [
 ]
 
 const planned: Item[] = [
-    { text: 'Smoother app integration and upgrades' },
+    { text: 'Stronger tenant access assurance' },
     { text: 'iOS support after real-device testing' },
 ]
 
