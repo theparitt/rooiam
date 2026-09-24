@@ -1,6 +1,6 @@
 # Android phone sign-in: a screen-by-screen walkthrough
 
-This guide takes you from a fresh Android reference app to a completed browser sign-in. It is for someone **trying the existing Rooiam app**. If you are building your own Android app, read the [Android SDK integration guide](../reference/14_android_sdk_integration.md) next.
+This guide takes you from a fresh Android reference app to a completed browser sign-in. It is for a tester with access to the **Rooiam Reference internal Play test** or a developer running its source. Rooiam Reference is not currently a public app download. If you are building your own Android app, start with [Build your first Android phone sign-in app](./11_build_your_first_android_app.md).
 
 The screen images below are **illustrations of the current reference app**, with example codes and domains. They are not captures of a live sign-in. The app deliberately blocks Android screenshots with `FLAG_SECURE`, and a real QR or email link must never be put in public documentation. Button labels and the order of screens match the current source; device styling may differ.
 
@@ -82,4 +82,4 @@ After approval, the phone says `Approved. Return to your browser to finish sign-
 
 To remove access, tap **Revoke this phone** in the app or use **My Security → Trusted phones**. Sign-out of the hosted login and revocation of the device are separate actions.
 
-For a full new-developer setup and validation checklist, continue with the [SDK integration guide](../reference/14_android_sdk_integration.md). The [reference app source](../../rooiam-examples/example-5-android-reference-app/src/main/java/com/rooiam/mobile/MainActivity.java) implements these screens.
+For a full new-developer setup and validation checklist, continue with [Build your first Android phone sign-in app](./11_build_your_first_android_app.md), then the [SDK integration guide](../reference/14_android_sdk_integration.md). The [reference app source](../../rooiam-examples/example-5-android-reference-app/src/main/java/com/rooiam/mobile/MainActivity.java) implements these screens.

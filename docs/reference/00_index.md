@@ -5,6 +5,8 @@ This section collects stable lookup-style docs. These are the canonical referenc
 ## Core Reference
 
 - [SDK and Device Login Reference](./13_sdk_and_device_login.md)
+- [Build your first Android phone sign-in app](../getting-started/11_build_your_first_android_app.md)
+- [Android SDK Integration](./14_android_sdk_integration.md)
 
 - [Integration API Contract](./01_integration_api_contract.md)
 - [API Key Cookbook](./02_api_key_cookbook.md)

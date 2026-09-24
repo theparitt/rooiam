@@ -79,11 +79,11 @@ rooiam-examples/ Integration examples (widget / account / backend)
 
 Early-stage but usable for evaluation, internal use, and early adopters. The core IAM, tenant portal, and workspace API-key flows work; production packaging and operator polish continue after `0.1`.
 
-## Next: Rooiam 0.2
+## Android phone sign-in
 
-**Scan. Match. Approve.** The next milestone targets a complete trusted-device login: scan a browser QR with an enrolled Android phone, verify the number, approve, and finish signing in securely.
+**Scan. Match. Approve.** An enrolled Android phone can scan a browser QR, verify the number, approve, and finish signing in. The reference app has completed a Play-backed, strict-verification journey on a real phone; it is still distributed through internal testing rather than as a public app.
 
-The server protocol and TypeScript SDK foundations exist; the integrated Android/hosted-login experience and release security evidence are planned work. See the [0.2 roadmap and acceptance criteria](docs/roadmap.md).
+To build your own app, follow the [beginner Android tutorial](docs/getting-started/11_build_your_first_android_app.md) and [SDK guide](docs/reference/14_android_sdk_integration.md). See the [roadmap](docs/roadmap.md) for current scope and next steps.
 
 ## Security
 

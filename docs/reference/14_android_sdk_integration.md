@@ -1,6 +1,6 @@
 # Build an Android QR sign-in app with the Rooiam SDK
 
-This is the integration guide for an Android developer building an app like [Rooiam Reference](../../rooiam-examples/example-5-android-reference-app/README.md). For a guided tour of the finished screens, start with the [screen-by-screen walkthrough](../getting-started/10_android_phone_sign_in_walkthrough.md). The SDK is a **preview** Android library; the reference app is an example host, not an app template that owns your product's login session.
+This is the detailed SDK integration guide for an Android developer building an app like [Rooiam Reference](../../rooiam-examples/example-5-android-reference-app/README.md). For prerequisites, Google registration, and a first working build, start with the [beginner's app tutorial](../getting-started/11_build_your_first_android_app.md). For a guided tour of the finished screens, use the [screen-by-screen walkthrough](../getting-started/10_android_phone_sign_in_walkthrough.md). The SDK is a **preview** Android library; the reference app is an example host, not an app template that owns your product's login session.
 
 The library owns origin and QR validation, device-key storage, registration, request preview, signatures, decisions and revocation. **Your app owns** its authenticated Rooiam session, camera and permission UI, user confirmation, lifecycle, Play Integrity adapter, package signing and distribution. It does not need to handle the SDK's private key or raw device token.
 

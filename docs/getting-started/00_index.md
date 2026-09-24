@@ -34,7 +34,8 @@ Use this when you want:
 
 - [Run the Full Local Development Stack](./02_run_local_development.md)
 - [Android phone sign-in walkthrough](./10_android_phone_sign_in_walkthrough.md) — follow each app and browser screen
-- [Android SDK integration](../reference/14_android_sdk_integration.md) — build your own scanning app
+- [Build your first Android phone sign-in app](./11_build_your_first_android_app.md) — from a fresh clone to your own Play-backed test
+- [Android SDK integration](../reference/14_android_sdk_integration.md) — annotated SDK calls and lifecycle details
 
 Use this when you want:
 - a real dev environment (not Docker)
