@@ -25,7 +25,7 @@ const planned: Item[] = [
 const columns = [
     {
         label: 'Available today',
-        version: 'build with Rooiam',
+        version: '0.2 · preview',
         color: '#B5EFD5',
         border: '#90DDB5',
         iconColor: '#2a8a5a',
@@ -65,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Next: use your phone to confirm sensitive workspace changes, starting with API-key creation.
+                        Android phone sign-in is in preview. Next, 0.3 will let workspace admins confirm sensitive changes from their phone.
                     </p>
                 </div>
 

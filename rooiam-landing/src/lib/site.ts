@@ -1,5 +1,5 @@
 export const GITHUB_REPO_URL = 'https://github.com/theparitt/rooiam'
-export const DOCS_BASE_URL = import.meta.env.VITE_DOCS_URL?.trim() || 'http://localhost:5175'
+export const DOCS_BASE_URL = import.meta.env.VITE_DOCS_URL?.trim() || (import.meta.env.PROD ? 'https://docs.rooiam.com' : 'http://localhost:5175')
 export const APP_BASE_URL = import.meta.env.VITE_APP_URL?.trim() || 'http://localhost:5172'
 export const DEMO_BASE_URL = import.meta.env.VITE_DEMO_URL?.trim() || 'http://localhost:5184'
 export const DEMO_APP_BASE_URL = import.meta.env.VITE_DEMO_APP_URL?.trim() || 'http://localhost:5182'

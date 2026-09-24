@@ -8,7 +8,8 @@ Rooiam is self-hosted passwordless identity for multi-tenant SaaS. We are buildi
 
 The Android SDK and example app are available in the repository. The reference app is available to invited Play testers. Public availability follows production deployment review.
 
-- [Android integration guide](https://github.com/theparitt/rooiam/tree/main/rooiam-sdk/android#readme)
+- [Android integration guide](./reference/14_android_sdk_integration.md)
+- [Phone sign-in walkthrough](./getting-started/10_android_phone_sign_in_walkthrough.md)
 - [Android example app](https://github.com/theparitt/rooiam/tree/main/rooiam-examples/example-5-android-reference-app)
 - [SDK and device-login reference](./reference/13_sdk_and_device_login.md)
 
