@@ -18,8 +18,8 @@ const nextRelease: Item[] = [
 
 const planned: Item[] = [
     { text: 'Easier OIDC and SDK integration' },
-    { text: 'Phone approval on iOS' },
     { text: 'Safer account recovery and device replacement' },
+    { text: 'iOS support after real-device testing' },
 ]
 
 const columns = [
