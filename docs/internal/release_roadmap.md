@@ -1,21 +1,21 @@
 # Rooiam Release Roadmap
 
-Updated: 2026-09-23. **Canonical version sequence and scope.** This supersedes earlier version assignments in the device-login design, SDK phases and product-phase history. Versions below describe intended outcomes, not shipped capabilities or delivery dates.
+Updated: 2026-09-24. **Canonical version sequence and scope.** This supersedes earlier version assignments in the device-login design, SDK phases and product-phase history. Versions below describe intended outcomes, not shipped capabilities or delivery dates.
 
 Rooiam remains the **self-hosted passwordless IAM for multi-tenant SaaS**. Phone approval extends identity and access controls; payment, deployment and business workflows belong to consuming applications.
 
 ## Current decision
 
-- **0.2 implementation:** Android SDK, Android reference app, browser QR, workspace method controls and application-owned callback/session are implemented. The assisted real-phone happy path passes.
-- **0.2 release:** still preview. Lifecycle, trust-policy, independent integration and remaining release evidence are not all accepted. Use the [0.2 closeout checklist](./48_v0.2_exit_checklist.md), backed by the [evidence snapshot](./45_v0.2_current_status_2026-09-23.md).
+- **0.2 engineering milestone:** accepted for the documented **internal-test/beta** scope. Android SDK/reference, hosted browser QR, workspace method controls, application-owned callback/session, recovery tests, strict real-Google verification and a Play Protect-enabled fresh install on Redmi have recorded evidence. See the [release-scope checklist](./48_v0.2_exit_checklist.md) and [latest evidence](./49_v0.2_closeout_evidence_2026-09-23.md).
+- **0.2 public release:** still Android preview. The named test origin runs on Windows/WSL with local operator ADC; unattended production credentials/hosting and public Play/package support are not certified. Do not equate acceptance of the internal beta with general availability.
 - **0.3:** next planned milestone: phone confirmation for sensitive identity actions. First vertical slice: create a workspace API key. The [implementation plan](./47_v0.3_sensitive_action_approval.md) is the execution handoff; its implementation tasks remain open.
-- Planning 0.3 can proceed while 0.2 evidence is collected. It does not close 0.2 gates or justify rewriting the working login protocol.
+- Begin 0.3 without rewriting the accepted login protocol. The separate production/distribution track remains visible and cannot be silently rolled into 0.3 feature work.
 
 ## Adaptation of the supplied proposal
 
 | Suggestion | Current Rooiam | Decision |
 |---|---|---|
-| Android sign-in is complete | Happy path and SDK/example builds pass; restart, vendor and independent acceptance remain | Separate implementation completion from release acceptance |
+| Android sign-in is complete | Internal beta now has assisted restart, vendor, Play fresh-install and browser evidence; independent human adoption and public production are not claimed | Separate engineering acceptance from public release |
 | 0.3 authorizes any action, including payments and deployments | Product doctrine keeps business operations in consuming apps | Start with one Rooiam-owned identity operation; defer generic downstream grants |
 | Replace login with a generic authorization request | Device-login v1, browser nonce binding and downstream OIDC PKCE already work | Add a separate action-purpose protocol; preserve v1 signing bytes and routes |
 | 0.4 introduces OIDC, passkeys and token lifecycle | Discovery/JWKS, PKCE, revocation/introspection, refresh rotation and passkeys exist | Verify compatibility and improve adoption; do not reschedule existing features as new |
@@ -27,7 +27,7 @@ Rooiam remains the **self-hosted passwordless IAM for multi-tenant SaaS**. Phone
 
 ## Version sequence
 
-0.2 is active; 0.3 is the scoped next milestone. **0.4–0.9 are provisional planning slots**, reviewed after 0.3 adoption. Optional tracks may move or be skipped; they are not all prerequisites for 1.0.
+0.2 internal-beta engineering acceptance is closed; 0.3 is the scoped next feature milestone. **0.4–0.9 are provisional planning slots**, reviewed after 0.3 adoption. Optional tracks may move or be skipped; they are not all prerequisites for 1.0.
 
 | Version | Product thesis | Increment over today's system | Exit evidence / dependency |
 |---|---|---|---|

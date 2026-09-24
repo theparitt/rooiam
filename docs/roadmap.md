@@ -6,7 +6,7 @@ Rooiam is self-hosted passwordless identity for multi-tenant SaaS. We are buildi
 
 **0.2 preview.** Users scan a browser QR code, review the request on their enrolled Android phone and approve to continue. Workspaces can offer phone sign-in alongside passkeys, magic links and social login, and choose its position in the login widget.
 
-The Android SDK and example app are available in the repository. The preview also includes a web reference app that handles its own callback and application session. Further reliability and release validation is in progress.
+The Android SDK and example app are available in the repository. The reference app is available to invited Play testers. Public availability follows production deployment review.
 
 - [Android integration guide](https://github.com/theparitt/rooiam/tree/main/rooiam-sdk/android#readme)
 - [Android example app](https://github.com/theparitt/rooiam/tree/main/rooiam-examples/example-5-android-reference-app)
