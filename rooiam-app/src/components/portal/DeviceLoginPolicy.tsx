@@ -28,7 +28,17 @@ export default function DeviceLoginPolicy({ disabled, workspaceId, compact = fal
     }
     if (compact) return <div>
         <PortalToggleRow label="Phone sign-in" checked={enabled} disabled={disabled || busy || !loaded}
-            onChange={save} hint={loaded && !platformEnabled ? 'Disabled by platform policy. Your workspace preference is saved separately.' : 'Approve with an enrolled phone. Changes save immediately.'} />
+            onChange={save} hint={loaded && !platformEnabled ? 'Disabled by platform policy. Your workspace preference is saved separately.' : 'Requires a supported phone app and enrolled users. Changes save immediately.'} />
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            <p className="font-bold">Before offering Phone sign-in</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-5">
+                <li>Confirm your Rooiam operator has enabled phone verification and supplied a supported Android app to your users.</li>
+                <li>Enable Phone sign-in here and place its button on your workspace login screen.</li>
+                <li>Have each user install that app, sign in to Rooiam and enroll their phone.</li>
+                <li>Users can then scan a browser QR, compare the code and approve.</li>
+            </ol>
+            <p className="mt-2">A public Rooiam phone app is not available yet. Leave this off unless your operator has provided an app and installation instructions. <a className="font-bold underline underline-offset-2" href="https://docs.rooiam.com/tenant-phone-sign-in">Read the tenant guide</a>.</p>
+        </div>
         {message && <p role="status" className="mt-2 text-xs text-gray-600">{message}</p>}
     </div>
     return <section className="rounded-2xl border bg-white p-5">

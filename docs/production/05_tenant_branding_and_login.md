@@ -75,6 +75,8 @@ Use the `Preview` section in the tenant portal to:
 - adjust card/logo/title visibility
 - copy embed snippets
 
+Before enabling Phone sign-in, read [Phone sign-in for tenant workspaces](../tenant_phone_sign_in.md). A workspace toggle does not distribute an app or enroll users.
+
 ## 6. Branding in Magic-Link Email
 
 Tenant branding now extends to tenant-facing magic-link email too.
