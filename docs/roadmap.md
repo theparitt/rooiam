@@ -31,11 +31,15 @@ The production flow passed an assisted revoke and re-enrollment test on the same
 
 ## Next — Protect workspace boundaries
 
-**0.6 backend candidate.** Workspace ownership handoff and existing role, API-key and approval boundaries have been hardened. Production rollout and live verification are planned with the pending 0.5 and 0.7 server updates; these changes are not live yet.
+**0.6 backend candidate.** Workspace ownership handoff and existing role, API-key and approval boundaries have been hardened. Production rollout and live verification are planned in one server update with 0.5–0.8; these changes are not live yet.
 
 ## Next — Make key confirmation more precise
 
 **0.7 engineering candidate.** Workspace owners can choose whether phone confirmation applies to no API keys, full-access owner keys, or every API key. This is scoped to key creation; it will become available when the matching backend and portal are deployed together.
+
+## Next — Predictable self-hosted operation
+
+**0.8 engineering candidate.** Operators can create a private PostgreSQL backup, prove it restores in an isolated container, and follow a concrete image upgrade and failure checklist. A local readiness-probe baseline is recorded separately from login capacity. These procedures still need verification on the production host before an operational reliability claim.
 
 ## Looking ahead
 
@@ -43,7 +47,6 @@ These are provisional directions, with scope guided by real integrations. Dates 
 
 | Version | Direction | What it means for adopters |
 |---|---|---|
-| 0.8 | Self-hosted reliability | More predictable upgrades, backup, restore and failure handling; additional company identity connections only where needed |
 | 0.9 | iOS exploration | Bring the supported device protocol to iOS only when real iPhone testing is available |
 | 1.0 | Stable compatibility | A documented support and compatibility commitment for the supported APIs, protocols and SDKs |
 

@@ -14,18 +14,21 @@ This checklist focuses on:
 ## 1. Public API health
 
 ```bash
+curl -i https://api.rooiam.com/ready
 curl -i https://api.rooiam.com/health
 ```
 
 Expected:
 
 - `HTTP/1.1 200 OK`
+- `/ready` returns `"ready":true` with PostgreSQL and Redis both reachable
 - JSON body with `"status":"ok"`
 - `"checks":{"database":{"ok":true},"redis":{"ok":true}}`
 
 Operator note:
 
 - Confirm the reported environment label is what you intended for the public server.
+- Confirm `/health` reports the expected `build.git_sha` for the image just deployed. See [backup and upgrade checks](./25_backup_restore_and_upgrade.md) before changing server images.
 
 ## 2. OpenAPI availability
 

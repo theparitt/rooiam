@@ -41,6 +41,8 @@ Use it in this order:
 21. [Rate Limits And Abuse Protection](./21_rate_limits_and_abuse_protection.md)
 22. [API And SDK Smoke Checklist](./22_api_and_sdk_smoke_checklist.md)
 23. [Android Play Integrity Setup](./23_android_play_integrity.md)
+24. [Cloud Run Play Integrity Decoder](./24_cloud_run_play_integrity_decoder.md)
+25. [Backup, Restore and Upgrade](./25_backup_restore_and_upgrade.md)
 
 ## Running a Public Demo Instance Alongside Production
 
