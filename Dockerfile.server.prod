@@ -2,6 +2,9 @@ FROM rust:1.88-bookworm AS builder
 
 WORKDIR /build
 
+ARG ROOIAM_BUILD_REVISION=unknown
+ARG ROOIAM_BUILD_BRANCH=unknown
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -13,7 +16,9 @@ RUN apt-get update \
 COPY rooiam-server /build
 
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --locked
+RUN ROOIAM_BUILD_REVISION="$ROOIAM_BUILD_REVISION" \
+    ROOIAM_BUILD_BRANCH="$ROOIAM_BUILD_BRANCH" \
+    cargo build --release --locked
 
 FROM debian:bookworm-slim
 
