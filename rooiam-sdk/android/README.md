@@ -2,6 +2,8 @@
 
 Standalone Android library for device-login v1. The [Android reference app](../../rooiam-examples/example-5-android-reference-app/README.md) lives in `rooiam-examples` and consumes this library. Minimum Android API 26; Java 17 build toolchain. Package `com.rooiam.sdk`, local preview coordinates `com.rooiam:android-sdk:0.2.0-alpha.4`. This package has **not** been published to Maven Central.
 
+For a step-by-step implementation with annotated code, see [Build an Android QR sign-in app](../../docs/reference/14_android_sdk_integration.md). For each screen the user sees, see the [phone sign-in walkthrough](../../docs/getting-started/10_android_phone_sign_in_walkthrough.md).
+
 ## Add to an application
 
 The reference app includes this directory as its `:sdk` project and uses:
@@ -59,7 +61,7 @@ One enrollment per host application installation is supported. The SDK uses the 
 
 The consuming app **must exclude `vault.xml` from cloud backup and device transfer**, including Android 12+ data extraction rules and older backup rules, or disable backup as the reference app does. Do not restore private enrollment data into another installation. The SDK intentionally does not override the host application's global backup policy.
 
-Rooiam owns API/protocol correctness, origin/account binding, key handling and server-side attestation verification. Integrators own login/session integration, camera permission/UI, lifecycle UX, explicit user confirmation, app signing/distribution and their Play Integrity project. Protected installation of the reference APK is a reference distribution gate, not an Android library release prerequisite. Vendor verification and independent SDK integration still require separate evidence.
+Rooiam owns API/protocol correctness, origin/account binding, key handling and server-side attestation verification. Integrators own login/session integration, camera permission/UI, lifecycle UX, explicit user confirmation, app signing/distribution and their Play Integrity project. Protected installation of the reference APK is a reference distribution gate, not an Android library release prerequisite. Other applications still require their own Play package, project and integration verification.
 
 ## Validation
 
@@ -67,4 +69,4 @@ Rooiam owns API/protocol correctness, origin/account binding, key handling and s
 ./gradlew assembleRelease testDebugUnitTest lintDebug assembleDebugAndroidTest
 ```
 
-Run these commands from this SDK directory. JVM tests cover origin/QR/email-link validation and HTTP redirect/credential isolation, status handling and no retry. `connectedDebugAndroidTest` tests Keystore persistence/signing/tamper detection in the SDK test application's sandbox. It clears that test vault; use a dedicated test device. Building the test APK does not execute it. The alpha.3 assisted Redmi Note 9 regression passed camera scan, approval and downstream application session using the existing alpha.2 enrollment; see the [evidence snapshot](../../docs/internal/45_v0.2_current_status_2026-09-23.md). Lifecycle recovery, independent integration and vendor verification remain separate gates.
+Run these commands from this SDK directory. JVM tests cover origin/QR/email-link validation and HTTP redirect/credential isolation, status handling and no retry. `connectedDebugAndroidTest` tests Keystore persistence/signing/tamper detection in the SDK test application's sandbox. It clears that test vault; use a dedicated test device. Building the test APK does not execute it. The Redmi Note 9 reference-package journey has since passed lifecycle recovery and Play-backed vendor verification in internal beta; see the [evidence snapshot](../../docs/internal/45_v0.2_current_status_2026-09-23.md). This does not certify a different consuming app.

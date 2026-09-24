@@ -33,6 +33,8 @@ Use this when you want:
 ### Normal developer setup
 
 - [Run the Full Local Development Stack](./02_run_local_development.md)
+- [Android phone sign-in walkthrough](./10_android_phone_sign_in_walkthrough.md) — follow each app and browser screen
+- [Android SDK integration](../reference/14_android_sdk_integration.md) — build your own scanning app
 
 Use this when you want:
 - a real dev environment (not Docker)

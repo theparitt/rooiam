@@ -1,6 +1,8 @@
 # Example 5 — Android reference app
 
-This is a reference consumer of the [Android SDK](../../rooiam-sdk/android/README.md), which lives separately in `rooiam-sdk/android`. Open this directory in Android Studio. Its Gradle settings include the SDK as `:sdk` from the same repository; the application is the root project. An assisted Redmi Note 9 camera sign-in and alpha.4 lifecycle recovery checks passed while retaining the original enrollment. Vendor certification remains separate.
+This is a reference consumer of the [Android SDK](../../rooiam-sdk/android/README.md), which lives separately in `rooiam-sdk/android`. Open this directory in Android Studio. Its Gradle settings include the SDK as `:sdk` from the same repository; the application is the root project. An assisted Redmi Note 9 camera sign-in and alpha.4 lifecycle recovery checks passed while retaining the original enrollment. The Play-distributed reference package later passed strict Play Integrity verification in internal beta; other consuming apps need their own verification.
+
+Follow the illustrated [screen-by-screen walkthrough](../../docs/getting-started/10_android_phone_sign_in_walkthrough.md) to try the app. To build your own app, use the [annotated SDK integration guide](../../docs/reference/14_android_sdk_integration.md).
 
 The SDK owns origin/QR validation, enrollment, protected credentials, request review, signing and revocation. The reference app owns its WebView login, camera permission/scanner, review dialog and lifecycle restoration. Play Integrity is supplied by the host through an adapter; the SDK has no camera or Google Play dependency.
 
@@ -38,7 +40,7 @@ The Ed25519 seed and random device token are encrypted with a non-exportable And
 
 Release enrollment requires a Play Integrity project number. The backend must be configured with Google verification credentials, preferably keyless ADC, and the expected package allowlist. Google's `PLAY_RECOGNIZED` verdict checks the Play-distributed package/certificate; Rooiam has no separate certificate pinning setting. Follow the [Play Integrity setup guide](../../docs/production/23_android_play_integrity.md) and install through the operator's supported Play test track for real vendor certification. The debug app can enroll without attestation, but the server's default verified-attestation policy rejects its approvals. Do not relax production policy to make a sideloaded build pass.
 
-See the [protocol](../../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../../test/device-login.md). Vendor attestation has not been certified with this app yet.
+See the [protocol](../../docs/internal/44_mobile_device_login_contract.md) and [certification runbook](../../test/device-login.md). The Play-distributed reference package passed strict Play Integrity verification in internal beta on a Redmi Note 9; other packages and devices need their own validation.
 
 On a dedicated test installation, `./gradlew :sdk:connectedDebugAndroidTest` checks Keystore encryption, signing, persistence and tamper rejection in the SDK test application's sandbox. **It clears that test vault.** The instrumented test APK is also buildable with `:sdk:assembleDebugAndroidTest`; building it does not execute it on hardware.
 

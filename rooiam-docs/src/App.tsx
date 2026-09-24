@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, ExternalLink, Menu, Search, X, Code, FileText, Layout, ShieldCheck, Zap, Moon, Sun } from 'lucide-react'
+import { BookOpen, ChevronRight, ExternalLink, Menu, Search, X, Code, FileText, Layout, ShieldCheck, Zap, Moon, Sun, Copy, Check } from 'lucide-react'
 import { ReactNode, useMemo, useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Link, Navigate, useLocation } from 'react-router-dom'
@@ -32,6 +32,38 @@ function textFromChildren(children: ReactNode): string {
     return textFromChildren((children as { props?: { children?: ReactNode } }).props?.children)
   }
   return ''
+}
+
+function DocCodeBlock({ children }: { children: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const codeElement = children && typeof children === 'object' && 'props' in children
+    ? children as { props?: { className?: string; children?: ReactNode } }
+    : null
+  const language = /language-([\w+-]+)/.exec(codeElement?.props?.className || '')?.[1] || 'text'
+  const code = textFromChildren(codeElement?.props?.children ?? children).replace(/\n$/, '')
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="docs-code my-7 overflow-hidden rounded-2xl">
+      <div className="docs-code-toolbar flex items-center justify-between gap-3 px-5 py-3">
+        <span className="docs-code-language">{language}</span>
+        <button type="button" onClick={copyCode} className="docs-code-copy inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold" aria-label={copied ? 'Code copied' : 'Copy code'}>
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="m-0 overflow-x-auto px-5 py-5 text-[13px] leading-7 font-mono"><code className={codeElement?.props?.className || ''}>{codeElement?.props?.children ?? children}</code></pre>
+    </div>
+  )
 }
 
 function DocMarkdown({ sourcePath, body }: { sourcePath: string; body: string }) {
@@ -74,27 +106,7 @@ function DocMarkdown({ sourcePath, body }: { sourcePath: string; body: string })
             {children}
           </blockquote>
         ),
-        pre: ({ children, ...props }) => {
-          let language = ''
-          if (children && typeof children === 'object' && 'props' in children) {
-            const className = (children as any).props?.className || ''
-            const match = /language-(\w+)/.exec(className)
-            if (match) language = match[1]
-          }
-          return (
-            <div className="group relative my-6 overflow-hidden rounded-2xl shadow-sm border border-border bg-muted/30">
-              {language && (
-                <div className="absolute top-0 right-0 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-primary z-10 opacity-70 bg-card border-b border-l border-border rounded-bl-2xl">
-                   {language}
-                </div>
-              )}
-              <pre className="selection:bg-primary/20 text-[13px] font-mono leading-relaxed p-6 overflow-x-auto m-0 bg-transparent text-foreground" {...props}>
-                {children}
-              </pre>
-            </div>
-          )
-
-        },
+        pre: ({ children }) => <DocCodeBlock>{children}</DocCodeBlock>,
         code: ({ className, children, ...props }) => {
           const isHighlight = className && (className.includes('hljs') || className.includes('language-'))
           if (!isHighlight) {
@@ -122,6 +134,12 @@ function DocMarkdown({ sourcePath, body }: { sourcePath: string; body: string })
           </th>
         ),
         td: ({ children }) => <td className="px-10 py-6 text-sm text-foreground font-semibold border-t border-border/50">{children}</td>,
+        img: ({ src, alt }) => (
+          <figure className="docs-figure my-8">
+            <img src={src} alt={alt || ''} loading="lazy" className="mx-auto block max-h-[680px] max-w-full rounded-2xl" />
+            {alt && <figcaption className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground">{alt}</figcaption>}
+          </figure>
+        ),
         a: ({ href, children }) => {
           const resolvedHref = href ? resolveDocHref(sourcePath, href) : null
           if (!resolvedHref) {

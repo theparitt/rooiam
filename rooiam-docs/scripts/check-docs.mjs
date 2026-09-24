@@ -20,6 +20,10 @@ try {
 
   const errors = []
   for (const doc of docList) {
+    for (const match of doc.body.matchAll(/!\[[^\]]*\]\((\/[^)]+)\)/g)) {
+      const asset = path.join(siteRoot, 'public', match[1].slice(1))
+      if (!fs.existsSync(asset)) errors.push(`${doc.sourcePath}: missing public image ${match[1]}`)
+    }
     for (const match of doc.body.matchAll(/\]\(([^)]+)\)/g)) {
       const href = match[1]
       if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith('#')) continue

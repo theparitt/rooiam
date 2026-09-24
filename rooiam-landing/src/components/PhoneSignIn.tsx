@@ -1,5 +1,4 @@
 import { ScanLine, Smartphone, Check } from 'lucide-react'
-import { GITHUB_REPO_URL } from '../lib/site'
 
 const steps = [
     { icon: ScanLine, title: 'Scan', text: 'Scan the QR code on your browser with your enrolled phone.' },
@@ -50,13 +49,13 @@ export default function PhoneSignIn() {
                     </div>
                 </div>
                 <div className="mt-7 flex flex-wrap gap-3">
-                    <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-sdk/android#readme`} target="_blank" rel="noreferrer"
+                    <a href="https://docs.rooiam.com/reference/android-sdk-integration" target="_blank" rel="noreferrer"
                         className="rounded-xl bg-purple-700 px-5 py-3 text-sm font-bold text-white hover:bg-purple-800 transition-colors">
                         Android integration guide →
                     </a>
-                    <a href={`${GITHUB_REPO_URL}/tree/main/rooiam-examples/example-5-android-reference-app`} target="_blank" rel="noreferrer"
+                    <a href="https://docs.rooiam.com/getting-started/android-phone-sign-in-walkthrough" target="_blank" rel="noreferrer"
                         className="rounded-xl border border-purple-200 bg-white px-5 py-3 text-sm font-bold text-purple-700 hover:bg-purple-50 transition-colors">
-                        View the example app →
+                        Follow the app walkthrough →
                     </a>
                 </div>
             </div>

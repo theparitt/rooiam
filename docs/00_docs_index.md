@@ -29,11 +29,13 @@ If a page is not linked from here, it may still exist, but it is not part of the
 
 ## Next Release
 
-[Rooiam 0.2 — Trusted Device & QR Authentication](./roadmap.md): Scan. Match. Approve. The next milestone aims to complete and verify the Android-to-browser journey on the existing server foundation. This is planned work, not a released mobile feature.
+[Rooiam 0.2 — Trusted Device & QR Authentication](./roadmap.md): the Android-to-browser journey has passed internal beta testing. The Android SDK and reference app remain preview integrations; see the roadmap for release boundaries.
 
 ## Start Here
 
 - [SDK and Device Login Reference](./reference/13_sdk_and_device_login.md)
+- [Android phone sign-in walkthrough](./getting-started/10_android_phone_sign_in_walkthrough.md)
+- [Build an Android app with the SDK](./reference/14_android_sdk_integration.md)
 
 - [Quick Start](./getting-started/00_index.md)
 - [Production Guide](./production/00_index.md)

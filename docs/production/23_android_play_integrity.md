@@ -2,7 +2,7 @@
 
 Use this guide for an application consuming the Rooiam Android SDK. The application owner supplies its Play Console app, Cloud project, signing and distribution. The SDK does not provide a shared Rooiam Play project for other developers' apps.
 
-The reference app's Play-distributed alpha.5 build passed a real Play Integrity verification and QR approval on a Redmi Note 9 in an isolated strict-policy environment on 2026-09-23. Alpha.6 then updated through Play with Play Protect scanning on and completed another phone sign-in using the original enrollment. This is evidence for that package, device and test track; it does not certify other apps or Android devices. The initial alpha.5 installation occurred while Play Protect scanning was off, so a fresh installation with scanning on is not claimed. Building or sideloading a debug APK does not establish either result.
+The reference app's Play-distributed alpha.5 build passed a real Play Integrity verification and QR approval on a Redmi Note 9 in an isolated strict-policy environment on 2026-09-23. Alpha.6 then updated through Play with Play Protect scanning on and completed another phone sign-in using the original enrollment. A later fresh Play installation with Play Protect scanning on completed enrollment and browser sign-in through a stable HTTPS test origin, without a Play Protect warning. This is evidence for that package, device and test track; it does not certify other apps or Android devices. The initial alpha.5 installation occurred while Play Protect scanning was off, so its installation must not be counted as the protected fresh-install result. Building or sideloading a debug APK does not establish either result.
 
 ## Prepare the application
 
