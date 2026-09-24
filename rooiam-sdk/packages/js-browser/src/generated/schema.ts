@@ -1563,7 +1563,8 @@ export interface components {
             email: string;
         };
         SetPolicy: {
-            required: boolean;
+            mode?: string | null;
+            required?: boolean | null;
         };
         StartApproval: {
             /** Format: date-time */

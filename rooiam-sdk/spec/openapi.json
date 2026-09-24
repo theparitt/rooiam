@@ -4150,12 +4150,18 @@
       },
       "SetPolicy": {
         "type": "object",
-        "required": [
-          "required"
-        ],
         "properties": {
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "required": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
