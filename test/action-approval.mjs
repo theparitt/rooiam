@@ -136,6 +136,19 @@ sql(`UPDATE organization_members SET status = 'inactive' WHERE organization_id =
 reject(await request('/orgs/current/api-keys', { method: 'POST', cookie: owner, body: { ...keyBody, label: 'removed-role key', approval_id: removedRole.id, browser_proof: removedRole.browser_proof } }))
 sql(`UPDATE organization_members SET status = 'active' WHERE organization_id = '${orgId}' AND user_id = '${me.id}'`)
 
+// An approved request cannot exceed the workspace's ten-active-key limit.
+// The existing successful key accounts for one; add nine disposable fixtures.
+sql(`INSERT INTO tenant_api_keys (org_id, created_by, label, key_hash, key_prefix, permission_preset, allowed_permissions)
+  SELECT '${orgId}', '${me.id}', 'limit-fixture-${suffix}-' || g.n,
+    md5('limit-fixture-${suffix}-' || g.n), 'limit-fixt', 'workspace_admin', ARRAY['workspace.read']
+  FROM generate_series(1, 9) AS g(n)`)
+const atLimit = await start('limit key')
+expect(await request('/identity/action-approvals/approve', { method: 'POST', cookie: owner, body: signedDecision(atLimit, await phonePreview(atLimit)) }), 200)
+reject(await request('/orgs/current/api-keys', { method: 'POST', cookie: owner, body: { ...keyBody, label: 'limit key', approval_id: atLimit.id, browser_proof: atLimit.browser_proof } }))
+assert.equal(sql(`SELECT COUNT(*) FROM tenant_api_keys WHERE org_id = '${orgId}' AND revoked = FALSE`), '10')
+assert.equal(expect(await request('/orgs/current/action-approvals/status', { method: 'POST', cookie: owner, body: { id: atLimit.id, browser_proof: atLimit.browser_proof } }), 200).status, 'approved')
+sql(`DELETE FROM tenant_api_keys WHERE org_id = '${orgId}' AND label LIKE 'limit-fixture-${suffix}-%'`)
+
 const expired = await start('expired key')
 sql(`UPDATE workspace_action_approvals SET expires_at = NOW() - interval '1 second' WHERE id = '${expired.id}'`)
 assert.equal(expect(await request('/orgs/current/action-approvals/status', { method: 'POST', cookie: owner, body: { id: expired.id, browser_proof: expired.browser_proof } }), 200).status, 'expired')
@@ -151,4 +164,4 @@ assert.equal(keys.filter(k => k.id === created.key.id).length, 1)
 assert.ok(keys.every(k => !Object.hasOwn(k, 'raw_key')))
 expect(await request('/orgs/current/api-keys/' + created.key.id, { method: 'DELETE', cookie: owner }), 200)
 expect(await request('/orgs/current/api-key-phone-policy', { method: 'PUT', cookie: owner, body: { required: false } }), 200)
-console.log('PASS: policy-off behavior, direct-route enforcement, bindings, signature purpose, exact payload, replay, deny, cancel, race, policy/role change, expiry, device revocation, and one-time key')
+console.log('PASS: policy-off behavior, direct-route enforcement, bindings, signature purpose, exact payload, replay, deny, cancel, race, key limit, policy/role change, expiry, device revocation, and one-time key')
