@@ -5,8 +5,8 @@ Rooiam can require the administrator creating a **workspace API key** to confirm
 ## Before enabling it
 
 1. Run a Rooiam server and tenant portal that include the 0.3 action-approval API and migrations `0063`–`0064`. Upgrade both together. The policy defaults to **off**.
-2. The workspace owner needs a recently signed-in portal session and an enrolled, verified phone. The Android app must use an SDK with `previewAction` and `approveAction` support; the reference app is only an example.
-3. In **Workspace → API Keys**, the owner selects **Require phone confirmation**. A separate setting controls whether Phone appears as a login method.
+2. The workspace owner needs a recently signed-in portal session and an enrolled, verified phone **on that same Rooiam account**. A phone enrolled for a different account cannot confirm the owner's request. The Android app must use an SDK with `previewAction` and `approveAction` support; the reference app is only an example.
+3. In **Workspace Settings → API Keys**, the owner selects **Require phone confirmation**. A separate setting controls whether Phone appears as a login method.
 4. Check that each administrator who may create a key has an eligible enrolled phone. When confirmation is required, an administrator without one cannot create a key. Dedicated lost-phone recovery is planned for 0.4; the owner can turn the requirement off from a recent authenticated session if they still have account access.
 
 ## What the administrator sees
