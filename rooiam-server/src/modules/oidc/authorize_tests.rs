@@ -82,6 +82,81 @@ fn authorize_rejects_legacy_resume_parameter() {
 
 #[sqlx::test(migrations = "./migrations")]
 #[ignore = "requires disposable DATABASE_URL and ROOIAM_OIDC_TEST_REDIS_URL"]
+async fn token_endpoint_authenticates_basic_and_post_without_mixing_methods(pool: sqlx::PgPool) {
+    let (secret, secret_hash) =
+        crate::shared::oauth_client::generate_confidential_client_secret().unwrap();
+    sqlx::query("INSERT INTO oauth_clients(client_id,client_secret_hash,app_name,app_type) VALUES($1,$2,'OIDC token regression','web')")
+        .bind("token-regression-client")
+        .bind(secret_hash)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let redis = redis::Client::open(std::env::var("ROOIAM_OIDC_TEST_REDIS_URL").unwrap())
+        .unwrap()
+        .get_connection_manager()
+        .await
+        .unwrap();
+    let state = web::Data::new(AppState {
+        db: pool,
+        redis,
+        config: Arc::new(test_config("https://iam.example.test")),
+        started_at: std::time::Instant::now(),
+    });
+    let app = actix_test::init_service(
+        App::new()
+            .app_data(state)
+            .route("/token", web::post().to(token)),
+    )
+    .await;
+    let basic = base64::engine::general_purpose::STANDARD
+        .encode(format!("token-regression-client:{secret}"));
+    let code_request = "grant_type=authorization_code&code=not-issued&redirect_uri=https%3A%2F%2Fapp.example.test%2Fcallback";
+
+    // Authentication succeeds for both advertised methods, then the fake code
+    // fails as invalid_grant. Incorrect or mixed credentials fail earlier.
+    for (authorization, body, expected) in [
+        (
+            Some(format!("Basic {basic}")),
+            code_request.to_string(),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            None,
+            format!("{code_request}&client_id=token-regression-client&client_secret={secret}"),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            Some("Basic dG9rZW4tcmVncmVzc2lvbi1jbGllbnQ6d3Jvbmc=".into()),
+            code_request.to_string(),
+            StatusCode::UNAUTHORIZED,
+        ),
+        (
+            Some(format!("Basic {basic}")),
+            format!("{code_request}&client_id=token-regression-client&client_secret={secret}"),
+            StatusCode::UNAUTHORIZED,
+        ),
+    ] {
+        let mut request = actix_test::TestRequest::post()
+            .uri("/token")
+            .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
+            .set_payload(body);
+        if let Some(value) = authorization {
+            request = request.insert_header(("Authorization", value));
+        }
+        let response = actix_test::call_service(&app, request.to_request()).await;
+        assert_eq!(response.status(), expected);
+        let body: serde_json::Value = actix_test::read_body_json(response).await;
+        let error = if expected == StatusCode::BAD_REQUEST {
+            "invalid_grant"
+        } else {
+            "invalid_client"
+        };
+        assert_eq!(body["error"], error);
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires disposable DATABASE_URL and ROOIAM_OIDC_TEST_REDIS_URL"]
 async fn authorize_callback_boundary_and_session_recovery(pool: sqlx::PgPool) {
     for (key, value) in [
         ("issuer_url", "https://iam.example.test"),

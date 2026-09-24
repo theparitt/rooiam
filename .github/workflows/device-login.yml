@@ -11,9 +11,15 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       SQLX_OFFLINE: 'true'
       DATABASE_URL: postgres://postgres:test-only@localhost:5432/postgres
+      ROOIAM_OIDC_TEST_REDIS_URL: redis://localhost:6379/
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,13 +31,15 @@ jobs:
       - run: node rooiam-sdk/scripts/sync-openapi.mjs --check
       - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib modules::device_login -- --include-ignored
       - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib modules::organization
-      - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib rotated_signing_key_matches_jwks_and_retired_keys_expire -- --include-ignored
+      - run: cargo test --manifest-path rooiam-server/Cargo.toml --lib modules::oidc -- --include-ignored
       - run: npm test --prefix rooiam-sdk/packages/js-browser && npm test --prefix rooiam-sdk/packages/js-server
       - run: npm run build --prefix rooiam-sdk/packages/js-browser && npm run build --prefix rooiam-sdk/packages/js-server
       - run: node test/sdk-package-consumer.mjs
       - run: node --test rooiam-examples/device-login/fake-phone.test.mjs
       - run: npm ci --prefix rooiam-examples/example-4-reference-app && npm test --prefix rooiam-examples/example-4-reference-app
       - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app
+      - run: npm ci --prefix rooiam-docs && npm run check:docs --prefix rooiam-docs && npm run build --prefix rooiam-docs
+      - run: npm ci --prefix rooiam-landing && npm run build --prefix rooiam-landing
       - run: node rooiam-server/widget/build.mjs && git diff --exit-code -- rooiam-server/assets/device-login.js
   android:
     runs-on: ubuntu-latest

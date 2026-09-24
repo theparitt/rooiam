@@ -27,9 +27,9 @@ If a page is not linked from here, it may still exist, but it is not part of the
 > - **`rooiam-admin`**: platform operator console
 > - **`rooiam-app`**: tenant login and workspace portal
 
-## Next Release
+## Release status
 
-[Rooiam 0.2 — Trusted Device & QR Authentication](./roadmap.md): the Android-to-browser journey has passed internal beta testing. The Android SDK and reference app remain preview integrations; see the roadmap for release boundaries.
+[Android phone sign-in and recovery](./roadmap.md) are available for evaluation, with the 0.3–0.4 flows tested on a Play-installed reference app. The 0.5–1.0 source changes remain release candidates until the matching backend and portal are deployed and checked together. The Android SDK and reference app are developer integrations, not a general-purpose tenant app.
 
 ## Start Here
 
