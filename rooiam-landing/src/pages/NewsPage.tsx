@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { ArrowRight, Check, QrCode, ShieldCheck, Smartphone } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { DOCS_BASE_URL, GITHUB_REPO_URL } from '../lib/site'
@@ -30,11 +30,11 @@ export default function NewsPage() {
 
                 <section className="mx-auto max-w-6xl px-6 pb-24 md:px-12">
                     <article className="grid overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)] lg:grid-cols-[0.9fr_1.1fr]">
-                        <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#e9fff7] via-[#f9f2ff] to-[#ffe8f0] p-8">
-                            <img src="/characters/telmi.png" alt="Telmi, Rooiam’s character" loading="lazy" className="absolute bottom-0 -left-8 h-[90%] w-[55%] object-contain object-bottom mix-blend-multiply" />
-                            <div className="relative ml-[35%] flex h-36 w-36 items-center justify-center rounded-[2rem] border-4 border-white bg-white/90 shadow-xl" aria-hidden="true">
-                                <ShieldCheck className="h-20 w-20 text-[#5b44be]" strokeWidth={1.5} />
-                            </div>
+                        <div className="relative flex min-h-[300px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#e9fff7] via-[#f9f2ff] to-[#ffe8f0] p-3 sm:min-h-[360px] sm:p-5">
+                            <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-white/45" aria-hidden="true" />
+                            <div className="absolute -bottom-20 -right-14 h-52 w-52 rounded-full bg-white/40" aria-hidden="true" />
+                            <img src="/characters/telmi-phone-recovery.webp" alt="Telmi holds a replacement phone after securing her account" loading="lazy"
+                                className="relative z-10 h-[290px] w-full object-contain sm:h-[350px] lg:h-full lg:max-h-[440px]" />
                         </div>
                         <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
                             <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest">
@@ -55,28 +55,11 @@ export default function NewsPage() {
                     </article>
                     <article className="mt-8 overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)]">
                         <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-                            <div className="relative flex min-h-[360px] items-center justify-end overflow-hidden bg-gradient-to-br from-[#ffe8f0] via-[#f9f2ff] to-[#e9fff7] p-5 sm:min-h-[430px] sm:p-8">
+                            <div className="relative flex min-h-[330px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#ffe8f0] via-[#f9f2ff] to-[#e9fff7] p-3 sm:min-h-[410px] sm:p-5">
                                 <div className="absolute -left-12 -top-12 h-44 w-44 rounded-full bg-white/40" aria-hidden="true" />
                                 <div className="absolute -bottom-16 -right-10 h-52 w-52 rounded-full bg-white/40" aria-hidden="true" />
-                                <img src="/characters/telmi.png" alt="Telmi, Rooiam’s character" loading="lazy"
-                                    className="absolute bottom-0 -left-[9%] h-[94%] w-[78%] object-contain object-bottom mix-blend-multiply" />
-                                <div className="relative flex w-[48%] flex-col items-center gap-4" aria-hidden="true">
-                                    <div className="w-full rounded-2xl border border-white bg-white/95 p-3 text-center shadow-xl sm:p-5">
-                                        <p className="mb-2 text-[10px] font-black text-gray-600 sm:text-xs">Browser QR</p>
-                                        <QrCode className="mx-auto h-16 w-16 text-violet-700 sm:h-20 sm:w-20" strokeWidth={1.3} />
-                                        <p className="mt-2 text-[10px] font-bold text-gray-500 sm:text-xs">Scan to sign in</p>
-                                    </div>
-                                    <div className="w-full rounded-[1.5rem] border-[4px] border-[#2a243e] bg-white p-3 shadow-2xl sm:p-4">
-                                        <div className="mx-auto mb-3 h-1 w-8 rounded-full bg-gray-200" />
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ffe9f0] text-[#cf5a82]">
-                                            <Smartphone className="h-5 w-5" />
-                                        </div>
-                                        <p className="mt-3 text-xs font-black leading-snug text-[#29243b] sm:text-sm">Approve this sign-in?</p>
-                                        <div className="mt-3 flex items-center justify-center gap-1 rounded-xl bg-[#dff8ed] px-2 py-2 text-[10px] font-black text-[#226e54] sm:text-xs">
-                                            <Check className="h-4 w-4" /> Approve
-                                        </div>
-                                    </div>
-                                </div>
+                                <img src="/characters/telmi-qr-signin.webp" alt="Telmi scans a browser QR code using her phone" loading="lazy"
+                                    className="relative z-10 h-[320px] w-full object-contain sm:h-[400px] lg:h-full lg:max-h-[470px]" />
                             </div>
 
                             <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
@@ -102,18 +85,24 @@ export default function NewsPage() {
                             </div>
                         </div>
                     </article>
-                    <article className="mt-8 rounded-[2rem] border border-[#ead9ef] bg-white p-7 sm:p-10">
-                        <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest">
-                            <span className="rounded-full bg-[#e2f7ec] px-3 py-1.5 text-[#277454]">Release</span>
-                            <time dateTime="2026-03" className="text-gray-500">March 2026</time>
+                    <article className="mt-8 grid overflow-hidden rounded-[2rem] border border-[#ead9ef] bg-white shadow-[0_24px_70px_-50px_rgba(80,47,105,0.4)] lg:grid-cols-[0.9fr_1.1fr]">
+                        <div className="relative flex min-h-[290px] items-center justify-center overflow-hidden bg-gradient-to-br from-[#fff1df] via-[#f9f2ff] to-[#e9fff7] p-3 sm:p-5">
+                            <img src="/characters/telmi-first-release.webp" alt="Telmi welcomes visitors to the first Rooiam release" loading="lazy"
+                                className="relative h-[290px] w-full object-contain sm:h-[350px] lg:h-full lg:max-h-[400px]" />
                         </div>
-                        <h2 className="mt-5 text-2xl font-black text-[#29243b] sm:text-3xl">Rooiam 0.1.0 is here</h2>
-                        <p className="mt-3 max-w-3xl text-base font-semibold leading-relaxed text-gray-600">
-                            The first public release brings passwordless sign-in, multi-tenant workspaces, OIDC integration and a self-hosted deployment path together in one identity platform.
-                        </p>
-                        <a href={`${DOCS_BASE_URL}/changelog`} className="mt-5 inline-flex items-center gap-1.5 text-sm font-black text-violet-700 hover:text-violet-900">
-                            Read the release notes <ArrowRight className="h-4 w-4" />
-                        </a>
+                        <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
+                            <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest">
+                                <span className="rounded-full bg-[#e2f7ec] px-3 py-1.5 text-[#277454]">Release</span>
+                                <time dateTime="2026-03" className="text-gray-500">March 2026</time>
+                            </div>
+                            <h2 className="mt-5 text-2xl font-black text-[#29243b] sm:text-3xl">Rooiam 0.1.0 is here</h2>
+                            <p className="mt-3 max-w-3xl text-base font-semibold leading-relaxed text-gray-600">
+                                The first public release brings passwordless sign-in, multi-tenant workspaces, OIDC integration and a self-hosted deployment path together in one identity platform.
+                            </p>
+                            <a href={`${DOCS_BASE_URL}/changelog`} className="mt-5 inline-flex items-center gap-1.5 text-sm font-black text-violet-700 hover:text-violet-900">
+                                Read the release notes <ArrowRight className="h-4 w-4" />
+                            </a>
+                        </div>
                     </article>
                 </section>
             </main>
