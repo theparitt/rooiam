@@ -217,6 +217,8 @@ pub struct DeviceAttestationConfig {
     pub google_play_service_account_private_key_pem: Option<String>,
     pub google_play_use_adc: bool,
     pub google_play_token_uri: String,
+    pub google_play_decode_proxy_url: Option<String>,
+    pub google_play_decode_proxy_secret: Option<String>,
 }
 
 impl AppConfig {
@@ -475,6 +477,18 @@ impl AppConfig {
             "ROOIAM_GOOGLE_PLAY_TOKEN_URI",
             "Google OAuth token URI for Play Integrity backend verification",
         );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL",
+            "HTTPS Cloud Run Play Integrity decoder URL",
+        );
+        check_optional_secret(
+            "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET",
+            "shared secret for the Cloud Run Play Integrity decoder",
+        );
+        check_optional_val(
+            "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET_PATH",
+            "path to a mounted file containing the decoder shared secret",
+        );
 
         // ── Mode-specific ──────────────────────────────────────────────────────
         match mode {
@@ -706,6 +720,15 @@ impl AppConfig {
                     .unwrap_or(false),
                 google_play_token_uri: env::var("ROOIAM_GOOGLE_PLAY_TOKEN_URI")
                     .unwrap_or_else(|_| "https://oauth2.googleapis.com/token".to_string()),
+                google_play_decode_proxy_url: env::var("ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                google_play_decode_proxy_secret: load_pem(
+                    "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET",
+                    "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET_PATH",
+                )
+                .map(|value| value.trim().to_string()),
             },
             rate_limit: {
                 // Hardcoded defaults per mode.
@@ -1219,6 +1242,9 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH",
         "ROOIAM_GOOGLE_PLAY_USE_ADC",
         "ROOIAM_GOOGLE_PLAY_TOKEN_URI",
+        "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL",
+        "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET",
+        "ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET_PATH",
         "ROOIAM_OIDC_PRIVATE_KEY_PEM",
         "ROOIAM_OIDC_PRIVATE_KEY_PATH",
         "ROOIAM_OIDC_PUBLIC_KEY_PEM",

@@ -5,6 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::OnceCell;
+use url::Url;
 
 use crate::bootstrap::config::DeviceAttestationConfig;
 
@@ -15,19 +16,37 @@ const GOOGLE_PLAY_INTEGRITY_SCOPE: &str = "https://www.googleapis.com/auth/playi
 const GOOGLE_OAUTH_GRANT_TYPE_JWT_BEARER: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const GOOGLE_PLAY_INTEGRITY_API_BASE: &str = "https://playintegrity.googleapis.com";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct GooglePlayIntegrityVerifierConfig {
     credential_source: GooglePlayCredentialSource,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum GooglePlayCredentialSource {
+    DecodeProxy {
+        url: String,
+        secret: String,
+    },
     ServiceAccountKey {
         email: String,
         private_key_pem: String,
         token_uri: String,
     },
     ApplicationDefault,
+}
+
+impl std::fmt::Debug for GooglePlayIntegrityVerifierConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let source = match &self.credential_source {
+            GooglePlayCredentialSource::DecodeProxy { .. } => "decode_proxy",
+            GooglePlayCredentialSource::ServiceAccountKey { .. } => "service_account_key",
+            GooglePlayCredentialSource::ApplicationDefault => "adc",
+        };
+        formatter
+            .debug_struct("GooglePlayIntegrityVerifierConfig")
+            .field("credential_source", &source)
+            .finish()
+    }
 }
 
 static GOOGLE_PLAY_ADC: OnceCell<AccessTokenCredentials> = OnceCell::const_new();
@@ -122,6 +141,63 @@ pub(crate) struct GooglePlayTestingDetails {
 pub(crate) fn load_google_play_integrity_verifier_config(
     config: &DeviceAttestationConfig,
 ) -> Result<GooglePlayIntegrityVerifierConfig, GooglePlayVerificationError> {
+    if config.google_play_decode_proxy_url.is_some()
+        || config.google_play_decode_proxy_secret.is_some()
+    {
+        if config.google_play_use_adc
+            || config.google_play_service_account_private_key_pem.is_some()
+        {
+            return Err(GooglePlayVerificationError::Unavailable(
+                "Configure one Google Play credential source: the decode proxy, ADC, or a service-account key."
+                    .into(),
+            ));
+        }
+        let raw_url = config
+            .google_play_decode_proxy_url
+            .as_deref()
+            .ok_or_else(|| {
+                GooglePlayVerificationError::Unavailable(
+                    "Google Play decode proxy URL is missing.".into(),
+                )
+            })?;
+        let url = Url::parse(raw_url).map_err(|_| {
+            GooglePlayVerificationError::Unavailable(
+                "Google Play decode proxy URL is invalid.".into(),
+            )
+        })?;
+        if url.scheme() != "https"
+            || url.host_str().is_none()
+            || url.username() != ""
+            || url.password().is_some()
+            || url.port().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(GooglePlayVerificationError::Unavailable(
+                "Google Play decode proxy URL must be a bare HTTPS origin.".into(),
+            ));
+        }
+        let secret = config
+            .google_play_decode_proxy_secret
+            .as_deref()
+            .ok_or_else(|| {
+                GooglePlayVerificationError::Unavailable(
+                    "Google Play decode proxy secret is missing.".into(),
+                )
+            })?;
+        if secret.len() < 32 || !secret.is_ascii() {
+            return Err(GooglePlayVerificationError::Unavailable(
+                "Google Play decode proxy secret must contain at least 32 ASCII characters.".into(),
+            ));
+        }
+        return Ok(GooglePlayIntegrityVerifierConfig {
+            credential_source: GooglePlayCredentialSource::DecodeProxy {
+                url: url.origin().ascii_serialization(),
+                secret: secret.to_string(),
+            },
+        });
+    }
     if config.google_play_use_adc {
         if config.google_play_service_account_private_key_pem.is_some() {
             return Err(GooglePlayVerificationError::Unavailable(
@@ -171,18 +247,32 @@ pub(crate) async fn decode_google_play_integrity_token(
     package_name: &str,
     integrity_token: &str,
 ) -> Result<GooglePlayTokenPayloadExternal, GooglePlayVerificationError> {
-    let access_token = fetch_google_access_token(http_client, config).await?;
-    let url = format!(
-        "{}/v1/{}:decodeIntegrityToken",
-        GOOGLE_PLAY_INTEGRITY_API_BASE,
-        package_name.trim()
-    );
-    let response = http_client
-        .post(&url)
-        .bearer_auth(&access_token)
+    if !package_name
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'_')
+        || package_name.is_empty()
+    {
+        return Err(GooglePlayVerificationError::Rejected(
+            "Google Play Integrity package name is invalid.".into(),
+        ));
+    }
+    let (base_url, proxy_secret) = match &config.credential_source {
+        GooglePlayCredentialSource::DecodeProxy { url, secret } => (url.as_str(), Some(secret)),
+        _ => (GOOGLE_PLAY_INTEGRITY_API_BASE, None),
+    };
+    let url = format!("{base_url}/v1/{package_name}:decodeIntegrityToken");
+    let mut request = http_client.post(&url);
+    if let Some(secret) = proxy_secret {
+        request = request.header("X-Rooiam-Proxy-Secret", secret);
+    } else {
+        let access_token = fetch_google_access_token(http_client, config).await?;
+        request = request.bearer_auth(&access_token);
+    }
+    let response = request
         .json(&DecodeIntegrityTokenRequest {
             integrity_token: integrity_token.trim(),
         })
+        .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
         .map_err(|error| {
@@ -401,6 +491,14 @@ async fn fetch_google_access_token(
     http_client: &Client,
     config: &GooglePlayIntegrityVerifierConfig,
 ) -> Result<String, GooglePlayVerificationError> {
+    if matches!(
+        config.credential_source,
+        GooglePlayCredentialSource::DecodeProxy { .. }
+    ) {
+        return Err(GooglePlayVerificationError::Unavailable(
+            "The Google Play decode proxy does not provide a Google access token.".into(),
+        ));
+    }
     let GooglePlayCredentialSource::ServiceAccountKey {
         email,
         private_key_pem,
@@ -532,6 +630,8 @@ mod credential_tests {
             google_play_service_account_private_key_pem: None,
             google_play_use_adc: false,
             google_play_token_uri: "https://oauth2.googleapis.com/token".into(),
+            google_play_decode_proxy_url: None,
+            google_play_decode_proxy_secret: None,
         }
     }
 
@@ -569,6 +669,31 @@ mod credential_tests {
                 .unwrap()
                 .credential_source,
             GooglePlayCredentialSource::ServiceAccountKey { .. }
+        ));
+    }
+
+    #[test]
+    fn decode_proxy_requires_https_secret_and_exclusive_credential_source() {
+        let mut settings = config();
+        settings.google_play_decode_proxy_url = Some("http://example.com".into());
+        settings.google_play_decode_proxy_secret = Some("s".repeat(64));
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings),
+            Err(GooglePlayVerificationError::Unavailable(_))
+        ));
+
+        settings.google_play_decode_proxy_url = Some("https://decoder.example.com".into());
+        let loaded = load_google_play_integrity_verifier_config(&settings).unwrap();
+        assert!(matches!(
+            &loaded.credential_source,
+            GooglePlayCredentialSource::DecodeProxy { .. }
+        ));
+        assert!(!format!("{loaded:?}").contains(&"s".repeat(64)));
+
+        settings.google_play_use_adc = true;
+        assert!(matches!(
+            load_google_play_integrity_verifier_config(&settings),
+            Err(GooglePlayVerificationError::Unavailable(_))
         ));
     }
 

@@ -1,0 +1,9 @@
+# Combine with the active production Compose file only after deploying and testing
+# the Cloud Run decoder. Keep the secret in the host's private .env, outside Git.
+services:
+  server:
+    environment:
+      ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL: ${ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL:?Set the Cloud Run HTTPS origin}
+      ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET_PATH: /run/secrets/rooiam-play-proxy
+    volumes:
+      - ${ROOIAM_PLAY_PROXY_SECRET_FILE:?Set the private host secret file path}:/run/secrets/rooiam-play-proxy:ro

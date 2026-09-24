@@ -19,6 +19,8 @@ From `rooiam-examples/example-5-android-reference-app`, select the certification
 
 Create a backend service account in the linked project for Play Integrity token decoding. Google documents the [server-side decode request](https://developer.android.com/google/play/integrity/standard). Prefer [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) with an attached service account on Google Cloud or [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) for a self-hosted deployment. If organization policy disables service-account key creation, keep that policy enabled; Rooiam can use ADC without a key.
 
+For a home-hosted Rooiam server without a workload OIDC issuer, deploy the small [Cloud Run decoder](./24_cloud_run_play_integrity_decoder.md) with an attached service account. Rooiam calls it over HTTPS with a private shared secret and still checks the returned verdict, registered package, request hash, and device policy locally. This requires no Google service-account key on the home server.
+
 For keyless verification, configure the server:
 
 ```dotenv

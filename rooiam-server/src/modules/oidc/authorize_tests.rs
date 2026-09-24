@@ -305,6 +305,8 @@ fn test_config(issuer_url: &str) -> AppConfig {
             google_play_service_account_private_key_pem: None,
             google_play_use_adc: false,
             google_play_token_uri: "https://oauth2.googleapis.com/token".into(),
+            google_play_decode_proxy_url: None,
+            google_play_decode_proxy_secret: None,
         },
         rate_limit: RateLimitConfig {
             auth_per_endpoint: u64::MAX,

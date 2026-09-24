@@ -150,6 +150,9 @@ Normal setups should change `ROOIAM_SERVER_URL`. Explicit `ROOIAM_GOOGLE_REDIREC
 | `ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PATH` | path to Google service-account private key PEM | Android vendor verification |
 | `ROOIAM_GOOGLE_PLAY_SERVICE_ACCOUNT_PRIVATE_KEY_PEM` | inline Google service-account private key PEM | Android vendor verification |
 | `ROOIAM_GOOGLE_PLAY_TOKEN_URI` | Google OAuth token endpoint | defaults to Google standard token URI |
+| `ROOIAM_GOOGLE_PLAY_DECODE_PROXY_URL` | HTTPS origin of a Play Integrity decoder running with an attached Google service account | use with the matching proxy secret; mutually exclusive with ADC and private-key mode |
+| `ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET` | secret authenticating Rooiam to that decoder | at least 32 ASCII characters; keep outside Git |
+| `ROOIAM_GOOGLE_PLAY_DECODE_PROXY_SECRET_PATH` | path to a mounted file containing the decoder secret | preferable to inline environment value for Docker |
 
 ## Storage And Media
 
