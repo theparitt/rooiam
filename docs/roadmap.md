@@ -15,9 +15,9 @@ The Android SDK and example app source are available in the repository. Rooiam d
 
 ## Next — Confirm sensitive changes
 
-**0.3 planned.** Let workspace administrators confirm one sensitive change from their phone: creating a workspace API key when policy requires it. The phone shows the exact request before approval. Existing workspace permissions still apply.
+**0.3 in testing.** Let workspace administrators confirm one sensitive change from their phone: creating a workspace API key when policy requires it. The phone shows the exact request before approval. Existing workspace permissions still apply.
 
-This is planned functionality, not an available API. It extends Rooiam's identity controls; your application continues to own its business operations.
+The API and example app are implemented, but the real-phone acceptance and production rollout are still pending. It extends Rooiam's identity controls; your application continues to own its business operations.
 
 ## Looking ahead
 

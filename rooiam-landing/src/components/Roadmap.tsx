@@ -33,8 +33,8 @@ const columns = [
         icon: <Check className="w-3.5 h-3.5" />,
     },
     {
-        label: 'Up next',
-        version: '0.3 · planned',
+        label: 'In testing',
+        version: '0.3 · preview',
         color: '#B5D5FF',
         border: '#7aadff',
         iconColor: '#2255bb',
@@ -65,7 +65,7 @@ export default function Roadmap()
                         <span style={{ color: '#aaa' }}>Where we're going.</span>
                     </h2>
                     <p className="text-base font-semibold text-gray-400 max-w-xl mx-auto">
-                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in is in preview; 0.3 will add approval for sensitive changes.
+                        Core sign-in, workspaces, OIDC and self-hosting are available. Android phone sign-in is in preview; phone confirmation for workspace API keys is being tested for 0.3.
                     </p>
                 </div>
 
