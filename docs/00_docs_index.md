@@ -37,6 +37,7 @@ If a page is not linked from here, it may still exist, but it is not part of the
 - [Android phone sign-in walkthrough](./getting-started/10_android_phone_sign_in_walkthrough.md)
 - [Build an Android app with the SDK](./reference/14_android_sdk_integration.md)
 - [Confirm API-key creation with an Android phone](./reference/15_phone_action_approval.md)
+- [1.0 compatibility and OpenID conformance scope](./reference/19_compatibility_and_conformance.md)
 
 - [Quick Start](./getting-started/00_index.md)
 - [Production Guide](./production/00_index.md)

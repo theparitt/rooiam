@@ -1,12 +1,14 @@
 # Reference Guide
 
-This section collects stable lookup-style docs. These are the canonical reference pages for `0.1`.
+This section collects lookup-style docs for the current source and planned compatibility contract. See each page's status before treating a feature as released.
 
 ## Core Reference
 
 - [SDK and Device Login Reference](./13_sdk_and_device_login.md)
 - [Build your first Android phone sign-in app](../getting-started/11_build_your_first_android_app.md)
 - [Android SDK Integration](./14_android_sdk_integration.md)
+- [SDK Support and Upgrade](./17_sdk_support_and_upgrade.md)
+- [1.0 Compatibility and OpenID Conformance](./19_compatibility_and_conformance.md)
 
 - [Integration API Contract](./01_integration_api_contract.md)
 - [API Key Cookbook](./02_api_key_cookbook.md)

@@ -5,6 +5,38 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[test]
+fn basic_client_auth_decodes_form_encoded_credentials() {
+    let encoded = base64::engine::general_purpose::STANDARD.encode("client%3Aid:p%40ss%3Aword");
+    let req = actix_test::TestRequest::default()
+        .insert_header(("Authorization", format!("basic {encoded}")))
+        .to_http_request();
+    let (id, secret) = client_credentials(&req, Some("client:id"), None).unwrap();
+    assert_eq!(id, "client:id");
+    assert_eq!(secret.as_deref(), Some("p@ss:word"));
+}
+
+#[test]
+fn client_auth_rejects_conflicting_methods_and_identities() {
+    let encoded = base64::engine::general_purpose::STANDARD.encode("trusted:secret");
+    let req = actix_test::TestRequest::default()
+        .insert_header(("Authorization", format!("Basic {encoded}")))
+        .to_http_request();
+    assert!(client_credentials(&req, Some("trusted"), Some("body-secret")).is_err());
+    assert!(client_credentials(&req, Some("attacker"), None).is_err());
+    assert!(client_credentials(&req, None, None).is_ok());
+}
+
+#[test]
+fn invalid_client_sends_basic_challenge() {
+    let response = map_token_error(AppError::Unauthorized);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response.headers().get("www-authenticate").unwrap(),
+        "Basic realm=\"Rooiam OIDC\""
+    );
+}
+
 fn request(callback: &str) -> AuthorizeRequest {
     AuthorizeRequest {
         response_type: "code".into(),

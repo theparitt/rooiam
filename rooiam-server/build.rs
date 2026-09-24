@@ -1,8 +1,18 @@
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs");
+    // This crate lives below the repository root; watch the resolved Git paths
+    // (also valid in linked worktrees) so local builds do not report a stale SHA.
+    for path in ["HEAD", "packed-refs"] {
+        if let Some(git_path) = command_output("git", &["rev-parse", "--git-path", path]) {
+            println!("cargo:rerun-if-changed={git_path}");
+        }
+    }
+    if let Some(head_ref) = command_output("git", &["symbolic-ref", "--quiet", "HEAD"]) {
+        if let Some(git_path) = command_output("git", &["rev-parse", "--git-path", &head_ref]) {
+            println!("cargo:rerun-if-changed={git_path}");
+        }
+    }
     println!("cargo:rerun-if-env-changed=ROOIAM_BUILD_REVISION");
     println!("cargo:rerun-if-env-changed=ROOIAM_BUILD_BRANCH");
 

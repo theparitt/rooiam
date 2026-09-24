@@ -1,4 +1,8 @@
-use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{
+    http::{header, StatusCode},
+    web, HttpRequest, HttpResponse, ResponseError,
+};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -70,7 +74,7 @@ pub struct TokenRequest {
     pub code: Option<String>,
     pub refresh_token: Option<String>,
     pub redirect_uri: Option<String>,
-    pub client_id: String,
+    pub client_id: Option<String>,
     pub client_secret: Option<String>,
     pub code_verifier: Option<String>,
 }
@@ -80,7 +84,7 @@ pub struct TokenRequest {
 pub struct RevocationRequest {
     pub token: String,
     pub token_type_hint: Option<String>,
-    pub client_id: String,
+    pub client_id: Option<String>,
     pub client_secret: Option<String>,
 }
 
@@ -89,7 +93,7 @@ pub struct RevocationRequest {
 pub struct IntrospectionRequest {
     pub token: String,
     pub token_type_hint: Option<String>,
-    pub client_id: String,
+    pub client_id: Option<String>,
     pub client_secret: Option<String>,
 }
 
@@ -107,10 +111,56 @@ fn extract_bearer_token(req: &HttpRequest) -> Result<&str, AppError> {
 }
 
 fn oauth_error_response(status: StatusCode, error: &str, description: &str) -> HttpResponse {
-    HttpResponse::build(status).json(serde_json::json!({
+    let mut response = HttpResponse::build(status);
+    if status == StatusCode::UNAUTHORIZED && error == "invalid_client" {
+        response.insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"Rooiam OIDC\""));
+    }
+    response.json(serde_json::json!({
         "error": error,
         "error_description": description,
     }))
+}
+
+/// RFC 6749 section 2.3.1: Basic credentials are form-encoded before Base64.
+/// Exactly one authentication method is allowed; a body client_id may only
+/// repeat the Basic identity, never override it.
+fn client_credentials(
+    req: &HttpRequest,
+    body_client_id: Option<&str>,
+    body_secret: Option<&str>,
+) -> Result<(String, Option<String>), AppError> {
+    let Some(header_value) = req.headers().get(header::AUTHORIZATION) else {
+        let id = body_client_id
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| AppError::Validation("Missing client_id".into()))?;
+        return Ok((id.to_owned(), body_secret.map(str::to_owned)));
+    };
+    let raw = header_value.to_str().map_err(|_| AppError::Unauthorized)?;
+    let (scheme, encoded) = raw.split_once(' ').ok_or(AppError::Unauthorized)?;
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return Err(AppError::Unauthorized);
+    }
+    if body_secret.is_some() {
+        return Err(AppError::Validation(
+            "Do not send client_secret in both Basic and form authentication".into(),
+        ));
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| AppError::Unauthorized)?;
+    let decoded = std::str::from_utf8(&decoded).map_err(|_| AppError::Unauthorized)?;
+    let (encoded_id, encoded_secret) = decoded.split_once(':').ok_or(AppError::Unauthorized)?;
+    let decode = |value: &str| -> String {
+        url::form_urlencoded::parse(format!("value={value}").as_bytes())
+            .next()
+            .map(|(_, value)| value.into_owned())
+            .unwrap_or_default()
+    };
+    let id = decode(encoded_id);
+    if id.is_empty() || body_client_id.is_some_and(|body| body != id) {
+        return Err(AppError::Unauthorized);
+    }
+    Ok((id, Some(decode(encoded_secret))))
 }
 
 fn map_token_error(err: AppError) -> HttpResponse {
@@ -235,8 +285,12 @@ pub async fn discovery(state: web::Data<AppState>) -> Result<HttpResponse, AppEr
         scopes_supported: vec!["openid", "profile", "email"],
         claims_supported: vec!["sub", "email", "email_verified", "name", "picture", "sid"],
         grant_types_supported: vec!["authorization_code", "refresh_token"],
-        token_endpoint_auth_methods_supported: vec!["client_secret_post", "none"],
-        code_challenge_methods_supported: vec!["S256", "plain"],
+        token_endpoint_auth_methods_supported: vec![
+            "client_secret_basic",
+            "client_secret_post",
+            "none",
+        ],
+        code_challenge_methods_supported: vec!["S256"],
     };
 
     Ok(HttpResponse::Ok().json(metadata))
@@ -500,6 +554,7 @@ pub async fn authorize(
     ),
 )]
 pub async fn token(
+    req: HttpRequest,
     state: web::Data<AppState>,
     form: web::Form<TokenRequest>,
 ) -> Result<HttpResponse, AppError> {
@@ -509,12 +564,21 @@ pub async fn token(
     let result: Result<HttpResponse, AppError> =
         async {
             // Validate client authentication (required for all grant types)
-            let client = oidc_service.get_client(&form.client_id).await?;
+            let (client_id, client_secret) = client_credentials(
+                &req,
+                form.client_id.as_deref(),
+                form.client_secret.as_deref(),
+            )?;
+            let client = oidc_service.get_client(&client_id).await?;
             if client.app_type == "web" {
-                let secret = form.client_secret.as_deref().ok_or_else(|| {
+                let secret = client_secret.as_deref().ok_or_else(|| {
                     AppError::Validation("Missing 'client_secret' for web application".into())
                 })?;
                 oidc_service.validate_client_secret(&client, secret)?;
+            } else if client_secret.is_some() {
+                return Err(AppError::Validation(
+                    "Public client must not send client_secret".into(),
+                ));
             }
 
             let token_response =
@@ -549,7 +613,10 @@ pub async fn token(
                     )),
                 };
 
-            Ok(HttpResponse::Ok().json(token_response))
+            Ok(HttpResponse::Ok()
+                .insert_header((header::CACHE_CONTROL, "no-store"))
+                .insert_header((header::PRAGMA, "no-cache"))
+                .json(token_response))
         }
         .await;
 
@@ -591,6 +658,7 @@ pub async fn userinfo(
     ),
 )]
 pub async fn revoke(
+    req: HttpRequest,
     state: web::Data<AppState>,
     form: web::Form<RevocationRequest>,
 ) -> Result<HttpResponse, AppError> {
@@ -598,12 +666,21 @@ pub async fn revoke(
     let oidc_service = OIDCService::new(state.db.clone(), std::sync::Arc::new(runtime_config));
 
     let result: Result<HttpResponse, AppError> = async {
-        let client = oidc_service.get_client(&form.client_id).await?;
+        let (client_id, client_secret) = client_credentials(
+            &req,
+            form.client_id.as_deref(),
+            form.client_secret.as_deref(),
+        )?;
+        let client = oidc_service.get_client(&client_id).await?;
         if client.app_type == "web" {
-            let secret = form.client_secret.as_deref().ok_or_else(|| {
+            let secret = client_secret.as_deref().ok_or_else(|| {
                 AppError::Validation("Missing 'client_secret' for web application".into())
             })?;
             oidc_service.validate_client_secret(&client, secret)?;
+        } else if client_secret.is_some() {
+            return Err(AppError::Validation(
+                "Public client must not send client_secret".into(),
+            ));
         }
 
         match form.token_type_hint.as_deref() {
@@ -645,6 +722,7 @@ pub async fn revoke(
     ),
 )]
 pub async fn introspect(
+    req: HttpRequest,
     state: web::Data<AppState>,
     form: web::Form<IntrospectionRequest>,
 ) -> Result<HttpResponse, AppError> {
@@ -652,12 +730,21 @@ pub async fn introspect(
     let oidc_service = OIDCService::new(state.db.clone(), std::sync::Arc::new(runtime_config));
 
     let result: Result<HttpResponse, AppError> = async {
-        let client = oidc_service.get_client(&form.client_id).await?;
+        let (client_id, client_secret) = client_credentials(
+            &req,
+            form.client_id.as_deref(),
+            form.client_secret.as_deref(),
+        )?;
+        let client = oidc_service.get_client(&client_id).await?;
         if client.app_type == "web" {
-            let secret = form.client_secret.as_deref().ok_or_else(|| {
+            let secret = client_secret.as_deref().ok_or_else(|| {
                 AppError::Validation("Missing 'client_secret' for web application".into())
             })?;
             oidc_service.validate_client_secret(&client, secret)?;
+        } else if client_secret.is_some() {
+            return Err(AppError::Validation(
+                "Public client must not send client_secret".into(),
+            ));
         }
 
         let payload = match form.token_type_hint.as_deref() {

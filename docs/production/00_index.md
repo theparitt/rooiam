@@ -43,6 +43,7 @@ Use it in this order:
 23. [Android Play Integrity Setup](./23_android_play_integrity.md)
 24. [Cloud Run Play Integrity Decoder](./24_cloud_run_play_integrity_decoder.md)
 25. [Backup, Restore and Upgrade](./25_backup_restore_and_upgrade.md)
+26. [OpenID Conformance Checks](./26_openid_conformance_checks.md)
 
 ## Running a Public Demo Instance Alongside Production
 
