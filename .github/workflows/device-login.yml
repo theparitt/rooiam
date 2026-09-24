@@ -40,8 +40,8 @@ jobs:
       - run: npm ci --prefix rooiam-app && npm run build --prefix rooiam-app
       - run: |
           mkdir -p docs/internal
-          trap 'unlink docs/internal/.ci-private-build-sentinel.md' EXIT
-          printf 'ROOIAM_PRIVATE_DOC_SENTINEL_FOR_BUILD_CHECK\n' > docs/internal/.ci-private-build-sentinel.md
+          trap 'unlink docs/internal/ci-private-build-sentinel.md' EXIT
+          printf 'ROOIAM_PRIVATE_DOC_SENTINEL_FOR_BUILD_CHECK\n' > docs/internal/ci-private-build-sentinel.md
           npm ci --prefix rooiam-docs
           npm run check:docs --prefix rooiam-docs
           npm run build --prefix rooiam-docs
