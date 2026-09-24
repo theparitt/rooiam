@@ -1509,7 +1509,7 @@ export interface components {
             code: string;
         };
         IntrospectionRequest: {
-            client_id: string;
+            client_id?: string | null;
             client_secret?: string | null;
             token: string;
             token_type_hint?: string | null;
@@ -1554,7 +1554,7 @@ export interface components {
             surface?: string | null;
         };
         RevocationRequest: {
-            client_id: string;
+            client_id?: string | null;
             client_secret?: string | null;
             token: string;
             token_type_hint?: string | null;
@@ -1611,7 +1611,7 @@ export interface components {
             widget_login_context?: string | null;
         };
         TokenRequest: {
-            client_id: string;
+            client_id?: string | null;
             client_secret?: string | null;
             code?: string | null;
             code_verifier?: string | null;

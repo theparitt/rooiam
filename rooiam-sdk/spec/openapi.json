@@ -3911,12 +3911,14 @@
       "IntrospectionRequest": {
         "type": "object",
         "required": [
-          "token",
-          "client_id"
+          "token"
         ],
         "properties": {
           "client_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "client_secret": {
             "type": [
@@ -4111,12 +4113,14 @@
       "RevocationRequest": {
         "type": "object",
         "required": [
-          "token",
-          "client_id"
+          "token"
         ],
         "properties": {
           "client_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "client_secret": {
             "type": [
@@ -4363,12 +4367,14 @@
       "TokenRequest": {
         "type": "object",
         "required": [
-          "grant_type",
-          "client_id"
+          "grant_type"
         ],
         "properties": {
           "client_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "client_secret": {
             "type": [
