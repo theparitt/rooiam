@@ -13,9 +13,12 @@ RUN apt-get update \
 COPY rooiam-server /build
 
 ENV SQLX_OFFLINE=true
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
+
+ARG ROOIAM_BUILD_REVISION=unknown
+LABEL org.opencontainers.image.revision="${ROOIAM_BUILD_REVISION}"
 
 WORKDIR /app
 

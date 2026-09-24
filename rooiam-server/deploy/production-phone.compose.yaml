@@ -1,0 +1,7 @@
+# Merge with the existing production docker-compose.yml after the API image is deployed.
+# Phone sign-in remains disabled until the platform and workspace switches are set.
+services:
+  server:
+    environment:
+      ROOIAM_GOOGLE_PLAY_USE_ADC: ${ROOIAM_GOOGLE_PLAY_USE_ADC:-false}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}

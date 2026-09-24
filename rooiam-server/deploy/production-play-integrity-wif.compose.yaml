@@ -1,0 +1,10 @@
+# Optional second override after configuring a renewable external-account source.
+# The private host directory must contain application-default-credentials.json
+# and every token-source file referenced by that config. Never commit the files.
+services:
+  server:
+    environment:
+      ROOIAM_GOOGLE_PLAY_USE_ADC: "true"
+      GOOGLE_APPLICATION_CREDENTIALS: /run/rooiam/google/application-default-credentials.json
+    volumes:
+      - ${ROOIAM_PLAY_CREDENTIALS_DIR:?Set the private host credential directory}:/run/rooiam/google:ro

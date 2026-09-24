@@ -25,21 +25,21 @@ test -s "$backup"
 pg_restore --list "$backup" >/dev/null
 ```
 
-Obtain the reviewed source commit on the server (clone/pull the repository, or transfer an archive), then build a uniquely tagged image from its root. **Do not use or overwrite `latest`** for this rollout. Record the actual commit SHA in the release log.
+Obtain the reviewed source commit on the server (clone/pull the repository, or transfer an archive), then use the build helper from its root. It refuses uncommitted server changes, builds with the lockfile, tags the image with the commit SHA and labels the image with the full revision. **Do not use or overwrite `latest`** for this rollout. Record the actual commit SHA and image ID in the release log.
 
 ```bash
 cd ~/rooiam-source
 git status --short
 git rev-parse HEAD
-docker build -f Dockerfile.server.prod -t rooiam-server:phone-$(git rev-parse --short HEAD) .
+bash rooiam-server/scripts/build_production_image.sh
 ```
 
-In `~/rooiam/.env`, set `ROOIAM_SERVER_IMAGE` to that exact image tag. Keep `ROOIAM_GOOGLE_PLAY_USE_ADC` unset for this first stage. Do not copy the test host's operator ADC or Play tokens. From the active production Compose directory:
+In `~/rooiam/.env`, set `ROOIAM_SERVER_IMAGE` to the exact image tag printed by the helper. Keep `ROOIAM_GOOGLE_PLAY_USE_ADC` unset for this first stage. Do not copy the test host's operator ADC or Play tokens. Copy the tracked [`production-phone.compose.yaml`](../../rooiam-server/deploy/production-phone.compose.yaml) alongside the active production Compose file, then from that directory:
 
 ```bash
 cd ~/rooiam
-docker compose config --quiet
-docker compose up -d --no-deps server
+docker compose -f docker-compose.yml -f production-phone.compose.yaml config --quiet
+docker compose -f docker-compose.yml -f production-phone.compose.yaml up -d --no-deps server
 docker compose ps server
 docker compose logs --tail=100 server
 ```
@@ -60,7 +60,7 @@ Expect `62` as the maximum migration version, health `ok`, and the phone-policy 
 
 The server is a self-hosted Docker workload. `ROOIAM_GOOGLE_PLAY_USE_ADC=true` alone is insufficient: ADC must exist **inside** the container and be refreshable without a human browser session. The Google organization blocks service-account key creation; keep that policy in place. Use a supported Workload Identity Federation source for this host, or move this verifier workload to a Google Cloud runtime with an attached service account. A local `gcloud auth application-default login --impersonate-service-account` session is certification-only, not the production credential. See [the Play Integrity configuration](../production/23_android_play_integrity.md) and [Google's ADC guidance](https://cloud.google.com/docs/authentication/application-default-credentials).
 
-For a self-hosted WIF setup, create a private Compose override that passes `ROOIAM_GOOGLE_PLAY_USE_ADC=true`, sets `GOOGLE_APPLICATION_CREDENTIALS` to an in-container path and mounts the external-account configuration plus its renewable token source read-only. Grant that workload impersonation of the service account in the Play-linked Cloud project. Verify token refresh and a real Google decode from the running container before enforcing strict policy. Do not commit credentials, tokens or the private override. The reference app uses package `com.rooiam.reference` and linked project number `1028955371558`; other consumer apps need their own package/project.
+For a self-hosted WIF setup, use the tracked [`production-play-integrity-wif.compose.yaml`](../../rooiam-server/deploy/production-play-integrity-wif.compose.yaml) as an additional override. Set `ROOIAM_PLAY_CREDENTIALS_DIR` to a private directory containing the external-account configuration and its renewable token source. Grant that workload impersonation of the service account in the Play-linked Cloud project. Verify token refresh and a real Google decode from the running container before enforcing strict policy. Do not commit credentials or tokens. The reference app uses package `com.rooiam.reference` and linked project number `1028955371558`; other consumer apps need their own package/project.
 
 Set the platform attestation policy to require attestation and vendor verification, disallow development environments, and allow only the intended package IDs. The exact settings and negative tests are in [the Play Integrity guide](../production/23_android_play_integrity.md). A test-origin phone enrollment does not move to the production origin automatically; enroll against production separately after the verifier is ready.
 
