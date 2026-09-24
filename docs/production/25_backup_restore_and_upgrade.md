@@ -39,6 +39,8 @@ The verifier checks the SHA-256, starts a **network-isolated disposable** Postgr
 
 `/ready` is the dependency gate; `/health` is the detailed diagnostic and build identity; `/metrics` provides uptime, dependency and database-pool gauges. Set `ROOIAM_METRICS_TOKEN` in the protected Compose environment or restrict metrics to a private listener; do not expose unprotected metrics publicly. Alert on repeated 503 readiness, PostgreSQL/Redis errors, failed backups, failed restore verification, low free disk and growing database-pool pressure. A green `/ready` does not prove SMTP, MinIO or Google Play Integrity; test those flows separately.
 
+For a repeatable **dependency-probe** baseline on a staging host, run `python3 test/operator-readiness-capacity.py --url http://127.0.0.1:5170/ready --requests 500 --concurrency 8` and record the host, PostgreSQL/Redis versions, latency and failures. This measures only readiness, so it cannot establish concurrent-login capacity or a production SLA. Test real login flows separately in a scheduled window.
+
 ## Recovery from a lost host
 
 Provision a clean host with a supported PostgreSQL version and protected network, restore the saved environment/secrets and MinIO objects, then restore the **verified** PostgreSQL archive to a new empty database with the matching `pg_restore` client. After creating the application database role and configuring protected `PG*` connection settings, the database step is:
