@@ -11,7 +11,8 @@ export default function TrustedDevices({ disabled = false }: { disabled?: boolea
     const [loading, setLoading] = useState(true)
     useEffect(() => { let active = true; sdk.trustedDevices.list().then(list => { if (active) setDevices(list) }).catch(() => { if (active) setMessage('Could not load trusted phones.') }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [sdk])
     async function revoke(id: string) {
-        if (!window.confirm('Revoke this phone? It will stop approving sign-ins and pending API-key requests. Review your other browser sessions if the phone is lost.')) return
+        const selected = devices.find(device => device.id === id)
+        if (!selected || !window.confirm(`Revoke ${selected.device_label} (ID …${id.slice(-8)})? It will stop approving sign-ins and pending API-key requests. Review your other browser sessions if the phone is lost.`)) return
         setBusy(true)
         try { await sdk.trustedDevices.revoke(id); setDevices(await sdk.trustedDevices.list()); setMessage('Phone revoked. Pending approvals from it have been stopped. Review My Sessions if it may be stolen.') }
         catch (e) { setMessage(e instanceof Error ? e.message : 'Could not revoke the phone.') }
@@ -32,7 +33,7 @@ export default function TrustedDevices({ disabled = false }: { disabled?: boolea
         {message && <p role="status" className="text-sm">{message}</p>}
         {!loading && !devices.length && <p className="text-sm">No trusted phones registered. Sign in to your Android app and enroll this account to add one.</p>}
         {devices.map(device => <div key={device.id} className="flex items-center justify-between gap-3 border-t pt-3">
-            <div><p className="font-semibold">{device.device_label}</p><p className="text-xs text-gray-600">{device.revoked_at ? 'Revoked' : device.attestation.status === 'verified' ? 'Attestation verified' : `Attestation: ${device.attestation.status}`}</p></div>
+            <div><p className="font-semibold">{device.device_label}</p><p className="text-xs text-gray-600">{device.revoked_at ? 'Revoked' : device.attestation.status === 'verified' ? 'Attestation verified' : `Attestation: ${device.attestation.status}`}</p><p className="text-xs text-gray-500">Enrolled {new Date(device.created_at).toLocaleString()} · ID …{device.id.slice(-8)}{device.last_used_at ? ` · Last used ${new Date(device.last_used_at).toLocaleString()}` : ''}</p></div>
             {!device.revoked_at && <button disabled={disabled || busy} className="text-sm text-red-700 underline disabled:opacity-50" onClick={() => revoke(device.id)}>Revoke phone</button>}
         </div>)}
     </section>
