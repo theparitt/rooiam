@@ -7,7 +7,7 @@ Rooiam can require the administrator creating a **workspace API key** to confirm
 1. Run a Rooiam server and tenant portal that include the 0.3 action-approval API and migrations `0063`–`0064`. Upgrade both together. The policy defaults to **off**.
 2. The workspace owner needs a recently signed-in portal session and an enrolled, verified phone **on that same Rooiam account**. A phone enrolled for a different account cannot confirm the owner's request. The Android app must use an SDK with `previewAction` and `approveAction` support; the reference app is only an example.
 3. In **Workspace Settings → API Keys**, the owner selects **Require phone confirmation**. A separate setting controls whether Phone appears as a login method.
-4. Check that each administrator who may create a key has an eligible enrolled phone. When confirmation is required, an administrator without one cannot create a key. Dedicated lost-phone recovery is planned for 0.4; the owner can turn the requirement off from a recent authenticated session if they still have account access.
+4. Check that each administrator who may create a key has an eligible enrolled phone. When confirmation is required, an administrator without one cannot create a key. Prepare an independent sign-in method and follow the [lost-phone recovery guide](./16_lost_phone_and_replacement.md) if a device is lost or replaced.
 
 ## What the administrator sees
 
@@ -61,6 +61,6 @@ The phone's authenticated endpoints are `GET /v1/identity/action-approvals/{id}`
 | The phone rejects the QR | Check the app's configured API origin, installed SDK version and that this is an action-approval QR, not a login QR. |
 | Approval is denied or expires | Start a new request in the browser; decisions and five-minute requests are single-use. |
 | Approval succeeds but key creation fails | Refresh the browser, inspect the key list, and check whether membership, policy or key configuration changed. Do not retry a lost final response automatically. |
-| No eligible phone is available | Required confirmation fails closed. The owner can disable the opt-in policy after a recent sign-in; lost-account recovery is a separate 0.4 milestone. |
+| No eligible phone is available | Required confirmation fails closed. Use an independent sign-in method and follow the [lost-phone recovery guide](./16_lost_phone_and_replacement.md) to revoke and replace the phone. |
 
 Operators must still configure Play Integrity for the Android app package and maintain the verified-device policy described in the [Play Integrity guide](../production/23_android_play_integrity.md). A package verified for the Rooiam reference app does not automatically certify a tenant's app.
