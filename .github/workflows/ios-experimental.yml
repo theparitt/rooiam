@@ -1,0 +1,20 @@
+name: Experimental iOS SDK compile
+on:
+  push:
+    paths:
+      - 'rooiam-sdk/ios/**'
+      - '.github/workflows/ios-experimental.yml'
+  pull_request:
+    paths:
+      - 'rooiam-sdk/ios/**'
+      - '.github/workflows/ios-experimental.yml'
+  workflow_dispatch:
+jobs:
+  ios-sdk:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - name: Compile iOS SDK for simulator
+        working-directory: rooiam-sdk/ios
+        run: xcodebuild -scheme RooiamPhoneSDK -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
