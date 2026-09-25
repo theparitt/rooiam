@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Activity, ArrowRight, Check, ChevronRight, CircleAlert, Code2, HelpCircle, Minus, Monitor, Search, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
@@ -157,16 +157,37 @@ export default function TestingPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {category.rows.map((row) => <tr key={row.topic} className="border-t border-[#f0e8f3] align-top">
-                                    <td className="px-4 py-4"><ResultBadge result={row.result} /></td>
-                                    <th scope="row" className="px-4 py-4 font-black">{row.topic}</th>
-                                    <td className="px-5 py-4 font-semibold leading-relaxed text-[#5c536c]">{row.description}</td>
-                                    <td className="px-4 py-4 text-xs font-bold leading-relaxed text-[#756b82]">
-                                        {row.evidenceHref
-                                            ? <a href={row.evidenceHref} target="_blank" rel="noreferrer" className="text-violet-700 underline-offset-2 hover:underline">{row.evidence} ↗</a>
-                                            : row.evidence}
-                                    </td>
-                                </tr>)}
+                                {category.rows.map((row) => <Fragment key={row.topic}>
+                                    <tr className="border-t border-[#f0e8f3] align-top">
+                                        <td className="px-4 py-4"><ResultBadge result={row.result} /></td>
+                                        <th scope="row" className="px-4 py-4 font-black">{row.topic}</th>
+                                        <td className="px-5 py-4 font-semibold leading-relaxed text-[#5c536c]">{row.description}</td>
+                                        <td className="px-4 py-4 text-xs font-bold leading-relaxed text-[#756b82]">
+                                            {row.evidenceHref
+                                                ? <a href={row.evidenceHref} target="_blank" rel="noreferrer" className="text-violet-700 underline-offset-2 hover:underline">{row.evidence} ↗</a>
+                                                : row.evidence}
+                                        </td>
+                                    </tr>
+                                    {row.breakdown && <tr className="border-t border-[#f0e8f3] bg-[#fdfaff]"><td colSpan={4} className="px-4 py-3 sm:px-5">
+                                        <details className="group rounded-2xl border border-[#eadcf3] bg-white px-4 py-3">
+                                            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-violet-700 marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 [&::-webkit-details-marker]:hidden">
+                                                <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
+                                                View all {row.breakdown.reduce((count, group) => count + group.modules.length, 0)} Basic OP module results
+                                            </summary>
+                                            <p className="mt-3 text-sm font-semibold leading-relaxed text-[#62596f]">All modules were launched on one isolated candidate. “Failed” describes the suite result; a check blocked at authorization does not prove its downstream feature is broken. No Basic OP module passed.</p>
+                                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                                {row.breakdown.map((group) => <section key={group.heading} className="rounded-xl border border-[#eee4f2] bg-[#fffcff] p-4">
+                                                    <div className="flex flex-wrap items-center gap-2"><ResultBadge result={group.result} /><h3 className="text-sm font-black">{group.heading}</h3></div>
+                                                    <p className="mt-2 text-xs font-semibold leading-relaxed text-[#62596f]">{group.explanation}</p>
+                                                    <ul className="mt-3 space-y-1.5 border-t border-[#eee4f2] pt-3">
+                                                        {group.modules.map((module) => <li key={module} className="break-all font-mono text-[11px] leading-relaxed text-[#514760]">{module}</li>)}
+                                                    </ul>
+                                                </section>)}
+                                            </div>
+                                            <p className="mt-4 text-xs font-semibold leading-relaxed text-[#756b82]">Config OP’s 35 passes belong to a separate discovery/JWKS plan. The later optional-PKCE setting has not been rerun through the official Basic OP suite.</p>
+                                        </details>
+                                    </td></tr>}
+                                </Fragment>)}
                             </tbody>
                         </table>
                     </div>

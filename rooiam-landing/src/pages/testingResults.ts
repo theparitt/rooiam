@@ -13,6 +13,7 @@ export type TestingRow = {
     description: string
     evidence: string
     evidenceHref?: string
+    breakdown?: { result: Result; heading: string; explanation: string; modules: string[] }[]
 }
 
 export type TestingCategory = {
@@ -47,7 +48,33 @@ export const testingCategories: TestingCategory[] = [
         lastTestedAt: '2026-09-25T05:06:06Z',
         rows: [
             { topic: 'Config OP · discovery & JWKS', result: 'passed', description: 'All 35 metadata and signing-key checks passed.', evidence: '24 Sep · Suite 5.3.1 · source 81068f4', evidenceHref: `${GITHUB_REPO_URL}/commit/81068f4` },
-            { topic: 'Basic OP · complete profile*', result: 'not-passed', description: '17 failed, 3 review, 3 skipped, 12 no verdict; none passed.', evidence: '25 Sep · Suite 5.3.1 · strict PKCE · source 860fcb0', evidenceHref: `${GITHUB_REPO_URL}/commit/860fcb0` },
+            {
+                topic: 'Basic OP · complete profile*', result: 'not-passed',
+                description: '0 passed of 35 launched: 17 failed, 3 await human review, 3 skipped, and 12 have no verdict. Expand for every module and what these results mean.',
+                evidence: '25 Sep · Suite 5.3.1 · strict PKCE · source 860fcb0', evidenceHref: `${GITHUB_REPO_URL}/commit/860fcb0`,
+                breakdown: [
+                    {
+                        result: 'not-passed', heading: '17 failed',
+                        explanation: 'These modules failed at authorization before their intended downstream checks. Omitted S256 was rejected; even a valid S256 request without a Rooiam session could not continue through hosted sign-in. This does not establish that UserInfo, refresh, claims, or code-reuse handling themselves failed.',
+                        modules: ['oidcc-server', 'oidcc-userinfo-get', 'oidcc-userinfo-post-header', 'oidcc-userinfo-post-body', 'oidcc-ensure-request-without-nonce-succeeds-for-code-flow', 'oidcc-scope-profile', 'oidcc-scope-email', 'oidcc-alternate-happy-flow', 'oidcc-prompt-login', 'oidcc-prompt-none-logged-in', 'oidcc-max-age-1', 'oidcc-id-token-hint', 'oidcc-codereuse', 'oidcc-codereuse-30seconds', 'oidcc-server-client-secret-post', 'oidcc-refresh-token', 'oidcc-ensure-request-with-valid-pkce-succeeds'],
+                    },
+                    {
+                        result: 'review', heading: '3 awaiting review',
+                        explanation: 'The suite accepted screenshots for human review; none is an approved pass. The missing-response-type request returned HTTP 400 JSON on this candidate.',
+                        modules: ['oidcc-response-type-missing', 'oidcc-ensure-registered-redirect-uri', 'oidcc-ensure-request-object-with-redirect-uri'],
+                    },
+                    {
+                        result: 'skipped', heading: '3 skipped',
+                        explanation: 'Optional address and phone scopes were not advertised, so the suite skipped these scope checks.',
+                        modules: ['oidcc-scope-address', 'oidcc-scope-phone', 'oidcc-scope-all'],
+                    },
+                    {
+                        result: 'no-verdict', heading: '12 without a verdict',
+                        explanation: 'The suite stopped before the required browser interaction completed. Its POST-authorization module is included here; a separate direct POST to /v1/oidc/authorize returned 404 on this candidate.',
+                        modules: ['oidcc-display-page', 'oidcc-display-popup', 'oidcc-prompt-none-not-logged-in', 'oidcc-max-age-10000', 'oidcc-ensure-request-with-unknown-parameter-succeeds', 'oidcc-login-hint', 'oidcc-ui-locales', 'oidcc-claims-locales', 'oidcc-ensure-request-with-acr-values-succeeds', 'oidcc-ensure-post-request-succeeds', 'oidcc-unsigned-request-object-supported-correctly-or-rejected-as-unsupported', 'oidcc-claims-essential'],
+                    },
+                ],
+            },
             { topic: 'Basic browser sign-in', result: 'not-passed', description: 'A direct request cannot continue through hosted login. Strict mode also rejects an omitted S256 challenge.', evidence: '25 Sep · isolated candidate' },
             { topic: 'Token, UserInfo & refresh', result: 'blocked', description: 'Many Basic OP modules stopped at authorization before their intended downstream check.', evidence: '25 Sep · Basic OP run' },
             { topic: 'POST authorization', result: 'no-verdict', description: 'The suite did not finish this module; a direct POST to /v1/oidc/authorize returned 404.', evidence: '25 Sep · isolated candidate' },
