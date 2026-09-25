@@ -1,13 +1,9 @@
 import { useEffect } from 'react'
-import { ArrowRight, Check, CircleAlert, Clock3, HelpCircle, Minus, SearchX } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Activity, ArrowRight, Check, CircleAlert, Code2, HelpCircle, Minus, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
-import { DOCS_BASE_URL, GITHUB_REPO_URL } from '../lib/site'
-
-const conformanceGuide = `${DOCS_BASE_URL}/reference/compatibility-and-conformance`
-const testingGuide = `${DOCS_BASE_URL}/production/openid-conformance-checks`
-
-type Result = 'passed' | 'not-passed' | 'blocked' | 'no-verdict' | 'review' | 'skipped' | 'not-tested'
+import { testingCategories, type Result, type TestingCategory } from './testingResults'
 
 const resultStyle: Record<Result, { label: string; className: string; icon: typeof Check }> = {
     passed: { label: 'Passed', className: 'bg-[#e2f7ec] text-[#196c4a]', icon: Check },
@@ -19,6 +15,13 @@ const resultStyle: Record<Result, { label: string; className: string; icon: type
     'not-tested': { label: 'Not tested', className: 'bg-[#edf1f8] text-[#455b7b]', icon: SearchX },
 }
 
+const categoryIcons: Record<TestingCategory['id'], typeof ShieldCheck> = {
+    openid: ShieldCheck,
+    android: Smartphone,
+    sdk: Code2,
+    operations: Activity,
+}
+
 function ResultBadge({ result }: { result: Result }) {
     const { label, className, icon: Icon } = resultStyle[result]
     return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-black ${className}`}>
@@ -26,33 +29,11 @@ function ResultBadge({ result }: { result: Result }) {
     </span>
 }
 
-const suiteRows: { suite: string; topic: string; result: Result; detail: string; run: string; revision: string }[] = [
-    {
-        suite: 'OpenID Foundation 5.3.1', topic: 'Config OP', result: 'passed',
-        detail: '35 / 35 discovery and signing-key checks.', run: '24 Sep 2026', revision: '81068f4',
-    },
-    {
-        suite: 'OpenID Foundation 5.3.1', topic: 'Basic OP', result: 'not-passed',
-        detail: '17 failed · 3 review · 3 skipped · 12 no verdict. None passed.', run: '25 Sep 2026', revision: '860fcb0',
-    },
-    {
-        suite: 'Rooiam source tests', topic: 'OIDC regression', result: 'passed',
-        detail: '11 / 11 local tests, including the new PKCE policy.', run: '25 Sep 2026', revision: '752bf3e',
-    },
-]
-
-const topicRows: { topic: string; result: Result; detail: string }[] = [
-    { topic: 'Discovery & signing keys', result: 'passed', detail: 'Config OP passed on an isolated HTTPS candidate.' },
-    { topic: 'Basic browser sign-in', result: 'not-passed', detail: 'Strict PKCE rejects requests without S256; even with S256, a direct request cannot continue through hosted login.' },
-    { topic: 'Token, UserInfo & refresh', result: 'blocked', detail: 'Many modules stopped at authorization. Their downstream behavior was not independently established by this suite run.' },
-    { topic: 'POST authorization', result: 'no-verdict', detail: 'The suite did not reach a verdict; a direct POST to /v1/oidc/authorize returned 404 on the candidate.' },
-    { topic: 'Error & redirect handling', result: 'review', detail: '3 modules need human review of screenshots. Review is not a pass.' },
-    { topic: 'Optional address/phone scopes', result: 'skipped', detail: '3 modules skipped because these optional scopes were not advertised.' },
-    { topic: 'Basic OP with optional PKCE', result: 'not-tested', detail: 'The official suite has not been rerun with confidential_optional. Local source tests do not count as an OpenID result.' },
-    { topic: 'Live production conformance', result: 'not-tested', detail: 'These official suite results came from isolated candidates, not api.rooiam.com.' },
-]
-
 export default function TestingPage() {
+    const [searchParams, setSearchParams] = useSearchParams()
+    const activeId = searchParams.get('category')
+    const category = testingCategories.find((item) => item.id === activeId) ?? testingCategories[0]
+
     useEffect(() => {
         const previousTitle = document.title
         document.title = 'Testing status | Rooiam'
@@ -69,68 +50,72 @@ export default function TestingPage() {
                         <span className="h-1 w-1 rounded-full bg-violet-300" aria-hidden="true" />
                         <time dateTime="2026-09-25">Updated 25 September 2026</time>
                     </div>
-                    <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-5xl">Testing, at a glance.</h1>
+                    <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-5xl">What we tested.</h1>
                     <p className="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-[#635b72] sm:text-lg">
-                        OpenID coverage is partial: Config OP passed, Basic OP did not. Rooiam is not OpenID-certified.
+                        Choose a category to see each topic, its result, and the environment that was actually checked.
                     </p>
                 </header>
 
-                <section aria-labelledby="suite-results" className="mt-9">
-                    <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+                <nav aria-label="Testing categories" className="mt-9 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {testingCategories.map((item) => {
+                        const Icon = categoryIcons[item.id]
+                        const active = category.id === item.id
+                        return <button
+                            key={item.id}
+                            type="button"
+                            aria-pressed={active}
+                            aria-controls="testing-category-panel"
+                            onClick={() => setSearchParams(item.id === 'openid' ? {} : { category: item.id })}
+                            className={`min-w-0 rounded-[1.25rem] border px-3 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:px-4 ${active
+                                ? 'border-[#bca0ec] bg-[#f4ebff] shadow-[0_12px_35px_-25px_rgba(80,47,105,0.45)]'
+                                : 'border-[#e8daed] bg-white hover:border-[#cbb5e9] hover:bg-[#fcf8ff]'}`}
+                        >
+                            <span className="flex items-center gap-2 text-sm font-black"><Icon className={`h-4 w-4 ${active ? 'text-violet-700' : 'text-[#81768d]'}`} aria-hidden="true" />{item.label}</span>
+                            <span className="mt-1 block pl-6 text-xs font-bold text-[#736983]">{item.shortLabel}</span>
+                        </button>
+                    })}
+                </nav>
+
+                <section id="testing-category-panel" aria-labelledby="category-heading" aria-live="polite" className="mt-7">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
                         <div>
-                            <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-700">Results by test suite</p>
-                            <h2 id="suite-results" className="mt-1 text-2xl font-black">The quick answer</h2>
+                            <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-700">{category.label} testing</p>
+                            <h2 id="category-heading" className="mt-1 text-2xl font-black sm:text-3xl">{category.summary}</h2>
                         </div>
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#756b82]"><Clock3 className="h-4 w-4" aria-hidden="true" /> Latest run: 25 Sep 2026</span>
+                        <p className="rounded-full border border-[#e8daed] bg-white px-4 py-2 text-xs font-bold text-[#645876]">Latest evidence · {category.lastEvidence}</p>
                     </div>
-                    <div className="overflow-x-auto rounded-[1.5rem] border border-[#e8daed] bg-white shadow-[0_18px_55px_-45px_rgba(80,47,105,0.35)]" tabIndex={0} role="region" aria-label="Test suite results; scroll horizontally for details">
-                        <table className="w-full min-w-[800px] border-collapse text-left text-sm">
+                    <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#70677c]">{category.scope}</p>
+
+                    <div className="mt-6 overflow-x-auto rounded-[1.5rem] border border-[#e8daed] bg-white shadow-[0_18px_55px_-45px_rgba(80,47,105,0.35)]" tabIndex={0} role="region" aria-label={`${category.label} test results; scroll horizontally for details`}>
+                        <table className="w-full min-w-[830px] border-collapse text-left text-sm">
                             <thead className="bg-[#f8f1fb] text-xs font-black uppercase tracking-wider text-[#685b7c]">
-                                <tr><th scope="col" className="w-36 px-5 py-4">Status</th><th scope="col" className="w-56 px-5 py-4">Test suite / topic</th><th scope="col" className="px-5 py-4">Result</th><th scope="col" className="w-36 px-5 py-4">Last run</th></tr>
+                                <tr>
+                                    <th scope="col" className="w-36 px-5 py-4">Status</th>
+                                    <th scope="col" className="w-56 px-5 py-4">Test topic</th>
+                                    <th scope="col" className="px-5 py-4">What happened</th>
+                                    <th scope="col" className="w-52 px-5 py-4">Evidence</th>
+                                </tr>
                             </thead>
                             <tbody>
-                                {suiteRows.map((row) => <tr key={row.topic} className="border-t border-[#f0e8f3] align-top">
+                                {category.rows.map((row) => <tr key={row.topic} className="border-t border-[#f0e8f3] align-top">
                                     <td className="px-5 py-4"><ResultBadge result={row.result} /></td>
-                                    <th scope="row" className="px-5 py-4 font-black"><span className="block text-xs font-bold text-[#81768d]">{row.suite}</span><span className="mt-1 block text-base">{row.topic}{row.topic === 'Basic OP' ? '*' : ''}</span></th>
-                                    <td className="px-5 py-4 font-semibold leading-relaxed text-[#5c536c]">{row.detail}</td>
-                                    <td className="px-5 py-4 text-xs font-bold text-[#756b82]">{row.run}<br /><a href={`${GITHUB_REPO_URL}/commit/${row.revision}`} target="_blank" rel="noreferrer" className="mt-1 inline-block text-violet-700 hover:underline">Source {row.revision}</a></td>
+                                    <th scope="row" className="px-5 py-4 font-black">{row.topic}</th>
+                                    <td className="px-5 py-4 font-semibold leading-relaxed text-[#5c536c]">{row.description}</td>
+                                    <td className="px-5 py-4 text-xs font-bold leading-relaxed text-[#756b82]">
+                                        {row.evidenceHref
+                                            ? <a href={row.evidenceHref} target="_blank" rel="noreferrer" className="text-violet-700 underline-offset-2 hover:underline">{row.evidence} ↗</a>
+                                            : row.evidence}
+                                    </td>
                                 </tr>)}
                             </tbody>
                         </table>
                     </div>
-                    <p className="mt-2 text-xs font-semibold text-[#756b82]">* A failed Basic OP module may stop before testing its intended feature. See the topic table below.</p>
-                    <p className="mt-2 text-xs font-semibold text-[#756b82] sm:hidden">Swipe the table sideways for results and test dates →</p>
-                </section>
-
-                <section aria-labelledby="topic-results" className="mt-12">
-                    <div className="mb-4">
-                        <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-700">OpenID Foundation · Conformance Suite 5.3.1</p>
-                        <h2 id="topic-results" className="mt-1 text-2xl font-black">What each result means</h2>
-                        <p className="mt-2 text-sm font-semibold text-[#70677c]">The Basic OP run used strict PKCE on 25 Sep 2026. A failed module may have stopped before the feature it intended to test.</p>
+                    <p className="mt-2 text-xs font-semibold text-[#756b82] sm:hidden">Swipe sideways for descriptions and evidence →</p>
+                    <p className="mt-3 rounded-2xl border border-[#e9dff0] bg-[#fbf7ff] px-4 py-3 text-sm font-semibold leading-relaxed text-[#665978]">{category.note}</p>
+                    <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3 text-sm font-black text-violet-700">
+                        {category.links.map((link) => <a key={link.href} href={link.href} className="inline-flex items-center gap-1.5 hover:text-violet-900">{link.label} <ArrowRight className="h-4 w-4" /></a>)}
                     </div>
-                    <div className="overflow-x-auto rounded-[1.5rem] border border-[#e8daed] bg-white" tabIndex={0} role="region" aria-label="OpenID test topics; scroll horizontally for explanations">
-                        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                            <thead className="bg-[#f8f1fb] text-xs font-black uppercase tracking-wider text-[#685b7c]">
-                                <tr><th scope="col" className="w-36 px-5 py-4">Status</th><th scope="col" className="w-64 px-5 py-4">Topic</th><th scope="col" className="px-5 py-4">Why</th></tr>
-                            </thead>
-                            <tbody>
-                                {topicRows.map((row) => <tr key={row.topic} className="border-t border-[#f0e8f3] align-top">
-                                    <td className="px-5 py-3.5"><ResultBadge result={row.result} /></td>
-                                    <th scope="row" className="px-5 py-3.5 font-black">{row.topic}</th>
-                                    <td className="px-5 py-3.5 font-semibold leading-relaxed text-[#5c536c]">{row.detail}</td>
-                                </tr>)}
-                            </tbody>
-                        </table>
-                    </div>
-                    <p className="mt-3 rounded-2xl border border-[#e9dff0] bg-[#fbf7ff] px-4 py-3 text-sm font-semibold leading-relaxed text-[#665978]">
-                        <strong>Reading the table:</strong> “Blocked” means the intended downstream check never ran; “No verdict” means the suite did not finish that module; “Not tested” means there has been no official run for that configuration or environment. None of these means passed.
-                    </p>
                 </section>
-
-                <div className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-sm font-black text-violet-700">
-                    <a href={conformanceGuide} className="inline-flex items-center gap-1.5 hover:text-violet-900">Read the compatibility status <ArrowRight className="h-4 w-4" /></a>
-                    <a href={testingGuide} className="inline-flex items-center gap-1.5 hover:text-violet-900">How we run the OpenID suite <ArrowRight className="h-4 w-4" /></a>
-                </div>
             </main>
             <Footer />
         </div>
