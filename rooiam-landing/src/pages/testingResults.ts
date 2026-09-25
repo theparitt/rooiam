@@ -42,8 +42,9 @@ export const testingCategories: TestingCategory[] = [
         label: 'OpenID',
         shortLabel: 'Partial coverage',
         summary: 'Config OP passed; Basic OP did not. No certification.',
-        scope: 'Official Conformance Suite 5.3.1 on isolated candidates; the source regression is listed separately below.',
+        scope: 'Official Conformance Suite 5.3.1 on isolated candidates; a later production discovery inspection is listed separately below.',
         lastTestedOn: '2026-09-25',
+        lastTestedAt: '2026-09-25T05:06:06Z',
         rows: [
             { topic: 'Config OP · discovery & JWKS', result: 'passed', description: 'All 35 metadata and signing-key checks passed.', evidence: '24 Sep · Suite 5.3.1 · source 81068f4', evidenceHref: `${GITHUB_REPO_URL}/commit/81068f4` },
             { topic: 'Basic OP · complete profile*', result: 'not-passed', description: '17 failed, 3 review, 3 skipped, 12 no verdict; none passed.', evidence: '25 Sep · Suite 5.3.1 · strict PKCE · source 860fcb0', evidenceHref: `${GITHUB_REPO_URL}/commit/860fcb0` },
@@ -53,10 +54,11 @@ export const testingCategories: TestingCategory[] = [
             { topic: 'Error & redirect handling', result: 'review', description: 'Three screenshot-based modules await human review; this is not a pass.', evidence: '25 Sep · Basic OP run' },
             { topic: 'Optional address/phone scopes', result: 'skipped', description: 'Three modules were skipped because these optional scopes were not advertised.', evidence: '25 Sep · Basic OP run' },
             { topic: 'Basic OP with optional PKCE', result: 'not-tested', description: 'The official suite has not been rerun with confidential_optional.', evidence: 'No official run' },
+            { topic: 'Production discovery inspection', result: 'no-verdict', description: 'The live 0.4 API still advertises HS256 and publishes no public JWKS keys. This is a read-only configuration check, not a suite run.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/.well-known/openid-configuration' },
             { topic: 'Live production conformance', result: 'not-tested', description: 'The official runs used isolated candidates, not api.rooiam.com.', evidence: 'No official production run' },
             { topic: 'Rooiam OIDC regression', result: 'passed', description: '11/11 local tests, including client authentication and the strict-default PKCE policy.', evidence: '25 Sep · source 752bf3e', evidenceHref: `${GITHUB_REPO_URL}/commit/752bf3e` },
         ],
-        note: '* A failed Basic OP module can stop before reaching the feature it was meant to test. Config OP passed on an earlier candidate revision; neither result establishes certification or the status of the live server.',
+        note: '* A failed Basic OP module can stop before reaching the feature it was meant to test. Config OP passed on an earlier candidate revision. Production discovery was inspected separately; no official live conformance run or certification is claimed.',
         links: [
             { label: 'Compatibility status', href: `${DOCS_BASE_URL}/reference/compatibility-and-conformance` },
             { label: 'OpenID testing guide', href: `${DOCS_BASE_URL}/production/openid-conformance-checks` },
@@ -116,12 +118,11 @@ export const testingCategories: TestingCategory[] = [
         label: 'Operations',
         shortLabel: 'Local checks',
         summary: 'Isolated reliability checks passed; production rollout is open.',
-        scope: 'Evidence below names the tested setup. Loopback probes and synthetic devices are not production capacity or a service-level guarantee.',
+        scope: 'Evidence below names the tested setup. The latest live smoke checked the existing 0.4 image; loopback probes and synthetic devices are not production capacity or a service-level guarantee.',
         lastTestedOn: '2026-09-25',
-        // The latest recorded operations check is the successful GitHub
-        // verification run linked below, completed at this UTC timestamp.
-        lastTestedAt: '2026-09-24T17:35:30Z',
+        lastTestedAt: '2026-09-25T05:06:06Z',
         rows: [
+            { topic: 'Live API & integrity proxy smoke', result: 'passed', description: 'The running 0.4 API reported healthy database/Redis. The decoder rejected missing or wrong secrets (401), wrong package (403), and an invalid token (400). No real-phone journey was included.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/health' },
             { topic: '1,000 QR login flows', result: 'passed', description: 'An isolated synthetic-device run completed 1,000 sequential flows with replay rejection.', evidence: '23 Sep · isolated 0.2 candidate' },
             { topic: 'Device failure paths', result: 'passed', description: 'Invalid Google token and verifier-unavailable cases issued no browser session.', evidence: '23 Sep · synthetic devices' },
             { topic: 'PostgreSQL 16 backup/restore', result: 'passed', description: 'A checksum-verified archive restored inside a separate network-isolated container.', evidence: '24 Sep · local 0.8 check' },
