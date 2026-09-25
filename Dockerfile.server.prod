@@ -4,6 +4,9 @@ WORKDIR /build
 
 ARG ROOIAM_BUILD_REVISION=unknown
 ARG ROOIAM_BUILD_BRANCH=unknown
+ARG ROOIAM_BUILD_REF=unknown
+ARG ROOIAM_BUILD_VERSION=unreleased
+ARG ROOIAM_BUILD_TIME_UTC=unknown
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config ca-certificates \
@@ -18,12 +21,22 @@ COPY rooiam-server /build
 ENV SQLX_OFFLINE=true
 RUN ROOIAM_BUILD_REVISION="$ROOIAM_BUILD_REVISION" \
     ROOIAM_BUILD_BRANCH="$ROOIAM_BUILD_BRANCH" \
+    ROOIAM_BUILD_REF="$ROOIAM_BUILD_REF" \
+    ROOIAM_BUILD_VERSION="$ROOIAM_BUILD_VERSION" \
+    ROOIAM_BUILD_TIME_UTC="$ROOIAM_BUILD_TIME_UTC" \
     cargo build --release --locked
 
 FROM debian:bookworm-slim
 
 ARG ROOIAM_BUILD_REVISION=unknown
+ARG ROOIAM_BUILD_REF=unknown
+ARG ROOIAM_BUILD_VERSION=unreleased
+ARG ROOIAM_BUILD_TIME_UTC=unknown
 LABEL org.opencontainers.image.revision="${ROOIAM_BUILD_REVISION}"
+LABEL org.opencontainers.image.ref.name="${ROOIAM_BUILD_REF}"
+LABEL org.opencontainers.image.version="${ROOIAM_BUILD_VERSION}"
+LABEL org.opencontainers.image.created="${ROOIAM_BUILD_TIME_UTC}"
+LABEL org.opencontainers.image.source="https://github.com/theparitt/rooiam"
 
 WORKDIR /app
 

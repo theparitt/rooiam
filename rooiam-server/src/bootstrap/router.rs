@@ -21,6 +21,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const BUILD_TIME_UTC: Option<&str> = option_env!("ROOIAM_BUILD_TIME_UTC");
 const GIT_SHA: Option<&str> = option_env!("ROOIAM_GIT_SHA");
 const GIT_BRANCH: Option<&str> = option_env!("ROOIAM_GIT_BRANCH");
+const SOURCE_REF: Option<&str> = option_env!("ROOIAM_SOURCE_REF");
+const RELEASE_VERSION: Option<&str> = option_env!("ROOIAM_RELEASE_VERSION");
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -56,6 +58,8 @@ struct BuildInfo {
     built_at_utc: &'static str,
     git_sha: &'static str,
     git_branch: &'static str,
+    source_ref: &'static str,
+    release_version: &'static str,
 }
 
 #[derive(Serialize)]
@@ -120,6 +124,8 @@ fn build_info() -> BuildInfo {
         built_at_utc: BUILD_TIME_UTC.unwrap_or("unknown"),
         git_sha: GIT_SHA.unwrap_or("unknown"),
         git_branch: GIT_BRANCH.unwrap_or("unknown"),
+        source_ref: SOURCE_REF.unwrap_or("unknown"),
+        release_version: RELEASE_VERSION.unwrap_or("unreleased"),
     }
 }
 

@@ -37,6 +37,27 @@ The verifier checks the SHA-256, starts a **network-isolated disposable** Postgr
 4. Run the relevant API/OIDC/phone-login smoke tests with a disposable account and workspace. Check logs, `/metrics` (only with its configured bearer token or private network), error rate, PostgreSQL connections and disk space. Start with the [API and SDK smoke checklist](./22_api_and_sdk_smoke_checklist.md). For the planned 0.5–0.7 combined release, keep the phase-specific checks in order in the private operator handoff.
 5. If a check fails, stop new traffic and diagnose. Reverting the container image can be safe after an additive migration **only when the prior binary is verified against the migrated schema**. Do not blindly restore an old database snapshot over newer live writes. A database restore after users have written new data requires an explicit outage and data-loss decision.
 
+### Confirm which image is actually running
+
+`docker pull ghcr.io/theparitt/rooiam-server:latest` only downloads an image. It does not change an existing container. If your Compose file uses `image: ${ROOIAM_SERVER_IMAGE}`, that environment value still decides which image `docker compose up -d` runs. A local tag such as `rooiam-server:phone-recovery-fd4070e` stays selected until you deliberately update it.
+
+GitHub-published server images now carry an immutable `sha-<40-character Git SHA>` tag and OCI labels for source revision, Git ref, release version and UTC build time. `latest` is a moving convenience tag; a manually published `main` build says `release_version: "unreleased"`. A `v*` Git tag supplies the release version. The top-level `/health.version` is the server crate version, **not** the product release. `/health.build` and `/server-info.build` identify the deployed source and build:
+
+```json
+{
+  "version": "0.1.0",
+  "build": {
+    "built_at_utc": "2026-09-25T06:00:00Z",
+    "git_sha": "<40-character Git commit>",
+    "git_branch": "main",
+    "source_ref": "refs/heads/main",
+    "release_version": "unreleased"
+  }
+}
+```
+
+Before a planned upgrade, pull the chosen immutable `sha-...` image and inspect its `org.opencontainers.image.revision`, `.ref.name`, `.version` and `.created` labels. Verify that the revision is the reviewed source commit. Set `ROOIAM_SERVER_IMAGE` in the protected Compose `.env` to that exact tag, then run `docker compose up -d --no-deps --force-recreate server` from the deployment directory. Compare the **running** container image with `/health.build.git_sha` and the intended commit; `/ready` must also return 200. Do not assume the new image is active merely because `docker pull` or `docker compose up -d` completed. Use the backup, migration and matched-portal checks above before switching a production authentication server.
+
 `/ready` is the dependency gate; `/health` is the detailed diagnostic and build identity; `/metrics` provides uptime, dependency and database-pool gauges. Set `ROOIAM_METRICS_TOKEN` in the protected Compose environment or restrict metrics to a private listener; do not expose unprotected metrics publicly. Alert on repeated 503 readiness, PostgreSQL/Redis errors, failed backups, failed restore verification, low free disk and growing database-pool pressure. A green `/ready` does not prove SMTP, MinIO or Google Play Integrity; test those flows separately.
 
 For a repeatable **dependency-probe** baseline on a staging host, run `python3 test/operator-readiness-capacity.py --url http://127.0.0.1:5170/ready --requests 500 --concurrency 8` and record the host, PostgreSQL/Redis versions, latency and failures. This measures only readiness, so it cannot establish concurrent-login capacity or a production SLA. Test real login flows separately in a scheduled window.
