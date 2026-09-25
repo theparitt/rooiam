@@ -1,0 +1,57 @@
+name: Bug report
+description: Tell us about a problem with Rooiam.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Search existing issues first. This form is public: remove passwords, tokens, session links, personal data, and private URLs from logs and screenshots.
+
+        For a security vulnerability, **do not use this form**. Follow our [private reporting instructions](https://github.com/theparitt/rooiam/blob/main/SECURITY.md) instead.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Hosted sign-in or workspace console
+        - OIDC / OAuth
+        - Android SDK or reference app
+        - TypeScript SDK or example
+        - Self-hosting / deployment
+        - Documentation or testing results
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior you saw and what you expected instead.
+      placeholder: "When I ..., Rooiam ...; I expected ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest steps that reproduce the problem.
+      placeholder: "1. Open ...\n2. Select ...\n3. See ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or revision
+      description: Include the image tag, commit, SDK version, or release number if known.
+      placeholder: "e.g. server git SHA, Android versionCode, or 'unknown'"
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser and OS, Android version/device, or self-hosted setup as relevant.
+      placeholder: "e.g. Chrome on Windows, Android 13, or Docker on Ubuntu"
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots (optional)
+      description: Redact credentials, tokens, email sign-in links, personal data, and private hostnames before attaching anything.

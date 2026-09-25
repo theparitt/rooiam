@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Activity, ArrowRight, Check, ChevronRight, CircleAlert, Code2, HelpCircle, Minus, Search, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import { BUG_REPORT_URL } from '../lib/site'
 import { testingCategories, testingCategoryGroups, type Result, type TestingCategory } from './testingResults'
 
 const resultStyle: Record<Result, { label: string; className: string; icon: typeof Check }> = {
@@ -148,6 +149,15 @@ export default function TestingPage() {
                     <p className="mt-3 rounded-2xl border border-[#e9dff0] bg-[#fbf7ff] px-4 py-3 text-sm font-semibold leading-relaxed text-[#665978]">{category.note}</p>
                     <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3 text-sm font-black text-violet-700">
                         {category.links.map((link) => <a key={link.href} href={link.href} className="inline-flex items-center gap-1.5 hover:text-violet-900">{link.label} <ArrowRight className="h-4 w-4" /></a>)}
+                    </div>
+                    <div className="mt-8 rounded-2xl border border-[#e8daed] bg-white px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+                        <div>
+                            <p className="text-sm font-black">Found a bug or an outdated result?</p>
+                            <p className="mt-1 text-sm font-semibold text-[#70677c]">Tell us what happened and how to reproduce it.</p>
+                        </div>
+                        <a href={BUG_REPORT_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-black text-violet-700 hover:text-violet-900 sm:mt-0">
+                            Report a bug <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </a>
                     </div>
                     </section>
                 </div>
