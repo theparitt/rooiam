@@ -14,6 +14,7 @@ This section collects lookup-style docs for the current source and planned compa
 - [API Key Cookbook](./02_api_key_cookbook.md)
 - [Hosted Widget Integration Guide](./03_hosted_widget_integration_guide.md)
 - [Downstream Hosted Widget Callback Flow](./11_downstream_hosted_widget_callback_flow.md)
+- [Backend/BFF User-Token Integration](./20_bff_user_token_integration.md)
 - [Real Examples In Production Mode](./10_real_examples_in_production_mode.md)
 - [Integration Snippets](./09_integration_snippets.md)
 

@@ -2,6 +2,8 @@
 
 CandyCloud is a downstream demo app with a React frontend and an Express backend. It shows hosted login followed by an OIDC code exchange and an app-owned session. It also includes intentional demo shortcuts; it is not a complete production application authorization layer.
 
+**Building your own backend?** Start with the [BFF user-token integration guide](./20_bff_user_token_integration.md). In particular, CandyCloud's `candycloud_session` cookie authenticates CandyCloud's own API; its backend uses the stored OIDC `access_token` as Bearer auth on Rooiam's `/v1/identity/token/*` routes. Rooiam's `/v1/identity/me/*` routes require Rooiam's own `rooiam_sid` cookie and are not interchangeable.
+
 ## Source layout
 
 | Path | Role |

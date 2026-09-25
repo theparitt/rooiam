@@ -2,6 +2,8 @@
 
 This page gives copy/paste examples for common Rooiam integrations.
 
+For end-user login into a backend-backed app, use the [complete BFF user-token guide](./20_bff_user_token_integration.md) and [Example 4](../../rooiam-examples/example-4-reference-app/README.md). The short authorization redirect below is only an illustration: its placeholder `state` is not a valid login implementation. Your backend must create and verify one-time state, use S256 PKCE, exchange the code, and issue its own session. Subsequent user self-service calls use the OIDC access token on `/v1/identity/token/*`, not your app cookie on `/v1/identity/me/*`.
+
 ## 1. Minimal Hosted Widget Embed
 
 ```html

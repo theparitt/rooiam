@@ -2,6 +2,8 @@
 
 This describes the current CandyCloud example. Its source is [candycloud-web](../../candycloud-web/README.md) and [candycloud-server](../../candycloud-server/README.md). CandyCloud demonstrates an app-owned OIDC session, with deliberate demo features described below.
 
+For a step-by-step backend implementation, credential table, Bearer-route map, and troubleshooting, read [Backend/BFF user-token integration](./20_bff_user_token_integration.md).
+
 ## Services and sessions
 
 | Service | Responsibility |

@@ -1,5 +1,7 @@
 # Example 4: application-owned OIDC session
 
+For a backend integration that also calls Rooiam's user APIs after login, read the [BFF user-token guide](../../docs/reference/20_bff_user_token_integration.md). This example creates an app-owned session; Rooiam's `/v1/identity/token/*` self-service routes require the server-held OIDC access token, not the app session cookie.
+
 This is the Phase D reference relying-party application. It demonstrates the boundary a downstream SaaS should use:
 
 ```text

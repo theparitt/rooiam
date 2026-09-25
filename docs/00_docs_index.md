@@ -62,6 +62,7 @@ If a page is not linked from here, it may still exist, but it is not part of the
 
 ### I want to integrate an app or backend
 
+- [Backend/BFF user-token integration](./reference/20_bff_user_token_integration.md)
 - [Reference Guide](./reference/00_index.md)
 - [Integration API Contract](./reference/01_integration_api_contract.md)
 - [Hosted Widget Integration Guide](./reference/03_hosted_widget_integration_guide.md)
