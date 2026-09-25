@@ -167,6 +167,7 @@ mod tests {
                 private_key_pem: None,
                 public_key_pem: None,
                 key_id: "test".into(),
+                pkce_policy: crate::bootstrap::config::OidcPkcePolicy::Strict,
             },
             webauthn: WebauthnConfig {
                 rp_id: "localhost".into(),

@@ -80,6 +80,333 @@ fn authorize_rejects_legacy_resume_parameter() {
     assert!(web::Query::<AuthorizeRequest>::from_query("response_type=code&client_id=test&redirect_uri=https%3A%2F%2Fapp.test%2Fcallback&return_to=https%3A%2F%2Fattacker.test").is_err());
 }
 
+#[test]
+fn oidc_pkce_policy_accepts_only_explicit_values() {
+    assert_eq!(
+        OidcPkcePolicy::parse("strict"),
+        Some(OidcPkcePolicy::Strict)
+    );
+    assert_eq!(
+        OidcPkcePolicy::parse("confidential_optional"),
+        Some(OidcPkcePolicy::ConfidentialOptional)
+    );
+    assert_eq!(OidcPkcePolicy::parse("off"), None);
+    assert_eq!(OidcPkcePolicy::parse(""), None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires disposable DATABASE_URL and ROOIAM_OIDC_TEST_REDIS_URL"]
+async fn confidential_optional_pkce_never_exempts_public_or_secretless_clients(pool: sqlx::PgPool) {
+    for (key, value) in [
+        ("issuer_url", "https://iam.example.test"),
+        ("app_url", "https://portal.example.test"),
+        ("admin_url", "https://admin.example.test"),
+    ] {
+        sqlx::query("INSERT INTO system_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value")
+            .bind(key).bind(value).execute(&pool).await.unwrap();
+    }
+    let callback = "https://app.example.test/callback";
+    let (web_secret, web_hash) =
+        crate::shared::oauth_client::generate_confidential_client_secret().unwrap();
+    for (client_id, app_type, secret_hash) in [
+        ("web-confidential", "web", Some(web_hash.as_str())),
+        ("web-secretless", "web", None),
+        ("web-empty-secret", "web", Some("")),
+        ("spa-public", "spa", None),
+    ] {
+        let id: Uuid = sqlx::query_scalar("INSERT INTO oauth_clients(client_id,client_secret_hash,app_name,app_type) VALUES($1,$2,'PKCE policy test',$3) RETURNING id")
+            .bind(client_id).bind(secret_hash).bind(app_type).fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO oauth_client_redirect_uris(oauth_client_id,redirect_uri) VALUES($1,$2)",
+        )
+        .bind(id)
+        .bind(callback)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let redis = redis::Client::open(std::env::var("ROOIAM_OIDC_TEST_REDIS_URL").unwrap())
+        .unwrap()
+        .get_connection_manager()
+        .await
+        .unwrap();
+    for (policy, client_id, challenge, method, expected_error) in [
+        (
+            OidcPkcePolicy::Strict,
+            "web-confidential",
+            false,
+            false,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-confidential",
+            false,
+            false,
+            "login_required",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-secretless",
+            false,
+            false,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-empty-secret",
+            false,
+            false,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "spa-public",
+            false,
+            false,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-confidential",
+            true,
+            false,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-confidential",
+            false,
+            true,
+            "invalid_request",
+        ),
+        (
+            OidcPkcePolicy::ConfidentialOptional,
+            "web-confidential",
+            true,
+            true,
+            "login_required",
+        ),
+    ] {
+        let mut config = test_config("https://iam.example.test");
+        config.oidc.pkce_policy = policy;
+        let state = web::Data::new(AppState {
+            db: pool.clone(),
+            redis: redis.clone(),
+            config: Arc::new(config),
+            started_at: std::time::Instant::now(),
+        });
+        let app = actix_test::init_service(
+            App::new()
+                .app_data(state)
+                .route("/authorize", web::get().to(authorize)),
+        )
+        .await;
+        let mut url = Url::parse("http://local.test/authorize").unwrap();
+        url.query_pairs_mut()
+            .append_pair("response_type", "code")
+            .append_pair("client_id", client_id)
+            .append_pair("redirect_uri", callback)
+            .append_pair("scope", "openid")
+            .append_pair("state", "policy-state");
+        if challenge {
+            url.query_pairs_mut()
+                .append_pair("code_challenge", &"x".repeat(43));
+        }
+        if method {
+            url.query_pairs_mut()
+                .append_pair("code_challenge_method", "S256");
+        }
+        let uri = format!("{}?{}", url.path(), url.query().unwrap());
+        let response =
+            actix_test::call_service(&app, actix_test::TestRequest::get().uri(&uri).to_request())
+                .await;
+        assert_eq!(response.status(), StatusCode::FOUND);
+        let location = response
+            .headers()
+            .get("Location")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let callback_url = Url::parse(location).unwrap();
+        let error = callback_url
+            .query_pairs()
+            .find(|(key, _)| key == "error")
+            .unwrap()
+            .1;
+        assert_eq!(
+            error, expected_error,
+            "policy={policy:?} client={client_id}"
+        );
+        assert!(callback_url
+            .query_pairs()
+            .any(|(key, value)| key == "state" && value == "policy-state"));
+    }
+
+    // An explicitly empty challenge must not be treated as an omitted challenge.
+    let mut config = test_config("https://iam.example.test");
+    config.oidc.pkce_policy = OidcPkcePolicy::ConfidentialOptional;
+    let state = web::Data::new(AppState {
+        db: pool.clone(),
+        redis: redis.clone(),
+        config: Arc::new(config),
+        started_at: std::time::Instant::now(),
+    });
+    let app = actix_test::init_service(
+        App::new()
+            .app_data(state)
+            .route("/authorize", web::get().to(authorize)),
+    )
+    .await;
+    let mut url = Url::parse("http://local.test/authorize").unwrap();
+    url.query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", "web-confidential")
+        .append_pair("redirect_uri", callback)
+        .append_pair("scope", "openid")
+        .append_pair("state", "empty-challenge")
+        .append_pair("code_challenge", "");
+    let uri = format!("{}?{}", url.path(), url.query().unwrap());
+    let response =
+        actix_test::call_service(&app, actix_test::TestRequest::get().uri(&uri).to_request()).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let location = response
+        .headers()
+        .get("Location")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(location.contains("error=invalid_request"));
+
+    // A secret-bearing web client can complete the no-PKCE code exchange only
+    // under the explicit compatibility policy. Code reuse and a stray verifier
+    // are still rejected.
+    let user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let session_id = Uuid::new_v4();
+    SessionRepository::new(pool.clone())
+        .create_session(
+            session_id,
+            user,
+            &hex::encode(Sha256::digest(b"policy-secret")),
+            chrono::Utc::now() + chrono::Duration::minutes(5),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let mut config = test_config("https://iam.example.test");
+    config.oidc.pkce_policy = OidcPkcePolicy::ConfidentialOptional;
+    let state = web::Data::new(AppState {
+        db: pool.clone(),
+        redis,
+        config: Arc::new(config),
+        started_at: std::time::Instant::now(),
+    });
+    let app = actix_test::init_service(
+        App::new()
+            .app_data(state)
+            .route("/authorize", web::get().to(authorize))
+            .route("/token", web::post().to(token)),
+    )
+    .await;
+    let mut uri = Url::parse("http://local.test/authorize").unwrap();
+    uri.query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", "web-confidential")
+        .append_pair("redirect_uri", callback)
+        .append_pair("scope", "openid")
+        .append_pair("state", "exchange-state");
+    let uri = format!("{}?{}", uri.path(), uri.query().unwrap());
+    let cookie = actix_web::cookie::Cookie::new(
+        ROOIAM_SESSION_COOKIE,
+        format!("{session_id}.policy-secret"),
+    );
+    let issue_code = || {
+        actix_test::TestRequest::get()
+            .uri(&uri)
+            .cookie(cookie.clone())
+            .to_request()
+    };
+    let response = actix_test::call_service(&app, issue_code()).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let location = response
+        .headers()
+        .get("Location")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let code = Url::parse(location)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let client_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM oauth_clients WHERE client_id='web-confidential'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (challenge, method): (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT code_challenge,code_challenge_method FROM oauth_authorization_codes WHERE oauth_client_id=$1",
+    )
+    .bind(client_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(challenge.is_none() && method.is_none());
+    let basic =
+        base64::engine::general_purpose::STANDARD.encode(format!("web-confidential:{web_secret}"));
+    let token_request = |code: &str, verifier: Option<&str>| {
+        let mut body = url::form_urlencoded::Serializer::new(String::new());
+        body.append_pair("grant_type", "authorization_code")
+            .append_pair("code", code)
+            .append_pair("redirect_uri", callback);
+        if let Some(verifier) = verifier {
+            body.append_pair("code_verifier", verifier);
+        }
+        actix_test::TestRequest::post()
+            .uri("/token")
+            .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
+            .insert_header(("Authorization", format!("Basic {basic}")))
+            .set_payload(body.finish())
+            .to_request()
+    };
+    let response = actix_test::call_service(&app, token_request(&code, None)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = actix_test::read_body_json(response).await;
+    assert!(body["id_token"].is_string());
+    let response = actix_test::call_service(&app, token_request(&code, None)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = actix_test::call_service(&app, issue_code()).await;
+    let location = response
+        .headers()
+        .get("Location")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let code = Url::parse(location)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let response = actix_test::call_service(&app, token_request(&code, Some("unexpected"))).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let response = actix_test::call_service(&app, token_request(&code, None)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
 #[sqlx::test(migrations = "./migrations")]
 #[ignore = "requires disposable DATABASE_URL and ROOIAM_OIDC_TEST_REDIS_URL"]
 async fn token_endpoint_authenticates_basic_and_post_without_mixing_methods(pool: sqlx::PgPool) {
@@ -593,6 +920,7 @@ fn test_config(issuer_url: &str) -> AppConfig {
             private_key_pem: None,
             public_key_pem: None,
             key_id: "test".into(),
+            pkce_policy: OidcPkcePolicy::Strict,
         },
         webauthn: WebauthnConfig {
             rp_id: "localhost".into(),

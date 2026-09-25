@@ -97,6 +97,9 @@ Microsoft:
 - `ROOIAM_OIDC_PRIVATE_KEY_PATH`
 - `ROOIAM_OIDC_PUBLIC_KEY_PATH`
 - `ROOIAM_OIDC_KEY_ID`
+- `ROOIAM_OIDC_PKCE_POLICY` — `strict` by default; `confidential_optional` is an explicit interoperability option for confidential web clients with a client secret. Public clients still require S256. This option alone does not make Rooiam pass OpenID Basic OP.
+
+For a normal deployment, leave the variable unset or put `ROOIAM_OIDC_PKCE_POLICY=strict` in the server `.env`. An isolated interoperability test can use `ROOIAM_OIDC_PKCE_POLICY=confidential_optional`; record that setting alongside every test result. The optional policy removes PKCE's extra protection for those confidential clients, so use it only when an integration requires it and review that client's state/nonce handling. Never attribute a result from the optional policy to the strict default.
 
 ## Rate Limits
 

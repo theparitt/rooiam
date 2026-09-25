@@ -427,33 +427,41 @@ pub async fn authorize(
             return Err(AppError::Validation("Invalid redirect_uri".into()));
         }
 
-        // All client types must use PKCE (S256). Public clients (spa/native) have no
-        // client_secret, so PKCE is their only protection. Confidential clients (web) should
-        // also use PKCE to prevent authorization code interception (RFC 7636, OAuth 2.1).
-        {
-            let challenge = query
-                .code_challenge
+        let challenge = query
+            .code_challenge
+            .as_deref()
+            .filter(|value| !value.trim().is_empty());
+        let may_omit_pkce = matches!(
+            state.config.oidc.pkce_policy,
+            crate::bootstrap::config::OidcPkcePolicy::ConfidentialOptional
+        ) && client.app_type == "web"
+            && client
+                .client_secret_hash
                 .as_deref()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| {
-                    AppError::Validation(
-                        "PKCE is required. Include code_challenge and code_challenge_method=S256."
-                            .into(),
-                    )
-                })?;
-            let method = query.code_challenge_method.as_deref().unwrap_or("plain");
-
-            if method != "S256" {
+                .is_some_and(|hash| !hash.trim().is_empty());
+        match challenge {
+            Some(challenge) => {
+                if query.code_challenge_method.as_deref() != Some("S256") {
+                    return Err(AppError::Validation(
+                        "Only code_challenge_method=S256 is supported.".into(),
+                    ));
+                }
+                if challenge.len() < 43 || challenge.len() > 128 {
+                    return Err(AppError::Validation(
+                        "Invalid PKCE code_challenge length.".into(),
+                    ));
+                }
+            }
+            None if query.code_challenge.is_some()
+                || query.code_challenge_method.is_some()
+                || !may_omit_pkce =>
+            {
                 return Err(AppError::Validation(
-                    "Only code_challenge_method=S256 is supported.".into(),
+                    "PKCE is required. Include code_challenge and code_challenge_method=S256."
+                        .into(),
                 ));
             }
-
-            if challenge.len() < 43 || challenge.len() > 128 {
-                return Err(AppError::Validation(
-                    "Invalid PKCE code_challenge length.".into(),
-                ));
-            }
+            None => {}
         }
 
         // The hosted widget owns sign-in; the downstream callback owns the

@@ -130,6 +130,7 @@ Normal setups should change `ROOIAM_SERVER_URL`. Explicit `ROOIAM_GOOGLE_REDIREC
 | `ROOIAM_OIDC_PRIVATE_KEY_PATH` | RSA private key path | advanced deployments |
 | `ROOIAM_OIDC_PUBLIC_KEY_PATH` | RSA public key path | advanced deployments |
 | `ROOIAM_OIDC_KEY_ID` | JWKS key ID | published in token headers |
+| `ROOIAM_OIDC_PKCE_POLICY` | authorization-code PKCE policy | `strict` (default, S256 for every client) or `confidential_optional` (secret-bearing web clients may omit PKCE; SPA/native clients still require S256) |
 
 ## WebAuthn / Passkeys
 

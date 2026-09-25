@@ -286,6 +286,14 @@ impl OIDCService {
             return Err(AppError::Validation("Authorization code expired".into()));
         }
 
+        // A verifier must never turn a code issued without a challenge into a
+        // PKCE-protected exchange (PKCE downgrade protection).
+        if code_record.code_challenge_method.is_none()
+            && (code_record.code_challenge.is_some() || code_verifier.is_some())
+        {
+            return Err(AppError::Validation("Invalid PKCE code_verifier".into()));
+        }
+
         // PKCE verification
         if let Some(challenge_method) = code_record.code_challenge_method {
             if challenge_method == "S256" {

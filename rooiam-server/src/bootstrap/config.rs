@@ -199,6 +199,34 @@ pub struct OidcConfig {
     pub private_key_pem: Option<String>,
     pub public_key_pem: Option<String>,
     pub key_id: String,
+    pub pkce_policy: OidcPkcePolicy,
+}
+
+/// Controls whether a confidential OIDC web client may omit PKCE.
+/// Public clients always require S256, and a supplied challenge always requires S256.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OidcPkcePolicy {
+    Strict,
+    ConfidentialOptional,
+}
+
+impl OidcPkcePolicy {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "strict" => Some(Self::Strict),
+            "confidential_optional" => Some(Self::ConfidentialOptional),
+            _ => None,
+        }
+    }
+
+    fn from_env() -> Self {
+        match env::var("ROOIAM_OIDC_PKCE_POLICY") {
+            Ok(value) => Self::parse(&value).unwrap_or_else(|| {
+                panic!("ROOIAM_OIDC_PKCE_POLICY must be strict or confidential_optional")
+            }),
+            Err(_) => Self::Strict,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -365,8 +393,18 @@ impl AppConfig {
             "MinIO secret key (falls back to MINIO_ROOT_PASSWORD)",
         );
 
-        // ── OIDC Signing ───────────────────────────────────────────────────────
-        section("OIDC Signing");
+        // ── OIDC ───────────────────────────────────────────────────────────────
+        section("OIDC");
+        check_optional_val(
+            "ROOIAM_OIDC_PKCE_POLICY",
+            "strict (default) or confidential_optional (web clients with a secret only)",
+        );
+        if matches!(
+            OidcPkcePolicy::from_env(),
+            OidcPkcePolicy::ConfidentialOptional
+        ) {
+            println!("  [ WARN    ]  Confidential web clients may omit PKCE; public clients still require S256");
+        }
         let has_rsa = std::env::var("ROOIAM_OIDC_PRIVATE_KEY_PEM")
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false)
@@ -697,6 +735,7 @@ impl AppConfig {
                 public_key_pem: load_pem("ROOIAM_OIDC_PUBLIC_KEY_PEM", "ROOIAM_OIDC_PUBLIC_KEY_PATH"),
                 key_id: env::var("ROOIAM_OIDC_KEY_ID")
                     .unwrap_or_else(|_| "rooiam-rs256-1".to_string()),
+                pkce_policy: OidcPkcePolicy::from_env(),
             },
             device_attestation: DeviceAttestationConfig {
                 apple_app_id_prefix: env::var("ROOIAM_APPLE_APP_ID_PREFIX")
@@ -1252,6 +1291,7 @@ fn allowed_rooiam_env_vars(mode: &ServerMode) -> HashSet<&'static str> {
         "ROOIAM_OIDC_SIGNING_SECRET",
         "ROOIAM_JWT_SECRET",
         "ROOIAM_OIDC_KEY_ID",
+        "ROOIAM_OIDC_PKCE_POLICY",
         "ROOIAM_WEBAUTHN_RP_ID",
         "ROOIAM_WEBAUTHN_RP_NAME",
         "ROOIAM_WEBAUTHN_ORIGIN",
