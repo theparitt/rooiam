@@ -71,9 +71,10 @@ export const testingCategories: TestingCategory[] = [
         shortLabel: 'One-phone beta',
         summary: 'Phone sign-in, approval and recovery passed on one Redmi.',
         scope: 'Controlled Android beta: Redmi Note 9, Android 12/API 31, Rooiam Reference from Play Internal testing.',
-        lastTestedOn: '2026-09-24',
+        lastTestedOn: '2026-09-25',
+        lastTestedAt: '2026-09-25T05:07:15Z',
         rows: [
-            { topic: 'QR browser sign-in', result: 'passed', description: 'The user scanned, matched and approved a QR; the browser entered the workspace.', evidence: '24 Sep · Play-installed Redmi' },
+            { topic: 'QR browser sign-in', result: 'passed', description: 'After the 0.4 server restart, the user scanned and approved a production QR on the same Redmi; Incognito entered the workspace.', evidence: '25 Sep · assisted production run · fd4070e' },
             { topic: 'Play Integrity verification', result: 'passed', description: 'A real Google verdict verified the enrolled reference package under strict server policy.', evidence: '24 Sep · com.rooiam.reference' },
             { topic: 'Play Protect fresh install', result: 'passed', description: 'With scanning enabled, the operator reported a Play install and scan without warning.', evidence: '24 Sep · operator-reported' },
             { topic: 'Approval after app restart', result: 'passed', description: 'A pending phone review returned after force-stop/relaunch, then explicit approval completed sign-in.', evidence: '23 Sep · assisted Redmi run' },
