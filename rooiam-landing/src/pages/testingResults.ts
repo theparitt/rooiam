@@ -1,7 +1,10 @@
 import { DOCS_BASE_URL, GITHUB_REPO_URL } from '../lib/site'
 
-// Keep each result tied to the tested environment and date. A source build,
-// assisted phone run, or local suite must not be presented as certification.
+// Keep each result tied to its tested environment and actual run time. When
+// updating test evidence, set lastTestedAt to the run's ISO 8601 timestamp
+// (with a UTC offset); never use the page build, edit, or deploy time. Older
+// evidence recorded only a date, so keep that date without inventing a clock
+// time. A source build, assisted phone run, or local suite is not certification.
 export type Result = 'passed' | 'not-passed' | 'blocked' | 'no-verdict' | 'review' | 'skipped' | 'not-tested'
 
 export type TestingRow = {
@@ -19,7 +22,8 @@ export type TestingCategory = {
     shortLabel: string
     summary: string
     scope: string
-    lastEvidence: string
+    lastTestedOn: string // YYYY-MM-DD in the evidence record's calendar date
+    lastTestedAt?: string // actual test completion time, ISO 8601 with offset
     rows: TestingRow[]
     note: string
     links: { label: string; href: string }[]
@@ -39,7 +43,7 @@ export const testingCategories: TestingCategory[] = [
         shortLabel: 'Partial coverage',
         summary: 'Config OP passed; Basic OP did not. No certification.',
         scope: 'Official Conformance Suite 5.3.1 on isolated candidates; the source regression is listed separately below.',
-        lastEvidence: '25 Sep 2026',
+        lastTestedOn: '2026-09-25',
         rows: [
             { topic: 'Config OP · discovery & JWKS', result: 'passed', description: 'All 35 metadata and signing-key checks passed.', evidence: '24 Sep · Suite 5.3.1 · source 81068f4', evidenceHref: `${GITHUB_REPO_URL}/commit/81068f4` },
             { topic: 'Basic OP · complete profile*', result: 'not-passed', description: '17 failed, 3 review, 3 skipped, 12 no verdict; none passed.', evidence: '25 Sep · Suite 5.3.1 · strict PKCE · source 860fcb0', evidenceHref: `${GITHUB_REPO_URL}/commit/860fcb0` },
@@ -65,7 +69,7 @@ export const testingCategories: TestingCategory[] = [
         shortLabel: 'One-phone beta',
         summary: 'Phone sign-in, approval and recovery passed on one Redmi.',
         scope: 'Controlled Android beta: Redmi Note 9, Android 12/API 31, Rooiam Reference from Play Internal testing.',
-        lastEvidence: '24 Sep 2026',
+        lastTestedOn: '2026-09-24',
         rows: [
             { topic: 'QR browser sign-in', result: 'passed', description: 'The user scanned, matched and approved a QR; the browser entered the workspace.', evidence: '24 Sep · Play-installed Redmi' },
             { topic: 'Play Integrity verification', result: 'passed', description: 'A real Google verdict verified the enrolled reference package under strict server policy.', evidence: '24 Sep · com.rooiam.reference' },
@@ -89,7 +93,7 @@ export const testingCategories: TestingCategory[] = [
         shortLabel: 'Source checked',
         summary: 'SDK source checks passed; independent adoption is open.',
         scope: 'Local/CI source checks. SDK package versions are independent of Rooiam product milestones.',
-        lastEvidence: '25 Sep 2026',
+        lastTestedOn: '2026-09-25',
         rows: [
             { topic: 'Browser TypeScript SDK', result: 'passed', description: '49 tests passed; 7 were skipped. A separate project installed and imported its packed artifact.', evidence: '24–25 Sep · @rooiam/sdk-browser 0.1.0' },
             { topic: 'Server TypeScript SDK', result: 'passed', description: '26 tests passed; 5 were skipped. Its packed artifact passed a separate consumer check.', evidence: '24–25 Sep · @rooiam/sdk-server 0.1.0' },
@@ -113,7 +117,10 @@ export const testingCategories: TestingCategory[] = [
         shortLabel: 'Local checks',
         summary: 'Isolated reliability checks passed; production rollout is open.',
         scope: 'Evidence below names the tested setup. Loopback probes and synthetic devices are not production capacity or a service-level guarantee.',
-        lastEvidence: '25 Sep 2026',
+        lastTestedOn: '2026-09-25',
+        // The latest recorded operations check is the successful GitHub
+        // verification run linked below, completed at this UTC timestamp.
+        lastTestedAt: '2026-09-24T17:35:30Z',
         rows: [
             { topic: '1,000 QR login flows', result: 'passed', description: 'An isolated synthetic-device run completed 1,000 sequential flows with replay rejection.', evidence: '23 Sep · isolated 0.2 candidate' },
             { topic: 'Device failure paths', result: 'passed', description: 'Invalid Google token and verifier-unavailable cases issued no browser session.', evidence: '23 Sep · synthetic devices' },

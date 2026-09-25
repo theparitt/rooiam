@@ -34,3 +34,10 @@ and compare the actual exchange/session/proxy boundary in `candycloud-server/src
 Rooiam's `rooiam_sid`; a BFF uses its server-held OIDC access token on the
 explicit `/v1/identity/token/*` Bearer routes. Do not substitute an ID token,
 workspace API key, browser cookie route, or a browser-visible token for that flow.
+
+When changing public testing results in `rooiam-landing/src/pages/testingResults.ts`,
+record the actual test completion time in `lastTestedAt` as ISO 8601 with a UTC
+offset and update `lastTestedOn` to the evidence date. The Testing page shows
+precise times in each viewer's time zone. Never use a commit, page edit, build,
+or deploy timestamp as a substitute for a test run; leave historical date-only
+results explicitly marked as having no recorded time.

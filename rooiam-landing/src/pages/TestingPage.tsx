@@ -30,11 +30,40 @@ function ResultBadge({ result }: { result: Result }) {
     </span>
 }
 
+function lastTestedLabel(item: TestingCategory): string {
+    if (item.lastTestedAt) {
+        return new Intl.DateTimeFormat('en-GB', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+        }).format(new Date(item.lastTestedAt))
+    }
+    const date = new Date(`${item.lastTestedOn}T00:00:00Z`)
+    const day = new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+    }).format(date)
+    return `${day} · time not recorded`
+}
+
+function latestTestCategory(): TestingCategory {
+    return testingCategories.reduce((latest, item) => {
+        if (item.lastTestedOn !== latest.lastTestedOn) {
+            return item.lastTestedOn > latest.lastTestedOn ? item : latest
+        }
+        // On the same recorded date, a date-only result may be later than a
+        // precisely timed one. Prefer the unknown time instead of overstating
+        // precision for the page-wide status.
+        if (!item.lastTestedAt) return item
+        if (!latest.lastTestedAt) return latest
+        return item.lastTestedAt > latest.lastTestedAt ? item : latest
+    })
+}
+
 export default function TestingPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const [categoryQuery, setCategoryQuery] = useState('')
     const activeId = searchParams.get('category')
     const category = testingCategories.find((item) => item.id === activeId) ?? testingCategories[0]
+    const latestTest = latestTestCategory()
     const query = categoryQuery.trim().toLowerCase()
     const visibleCategories = testingCategories.filter((item) =>
         !query || [item.label, item.shortLabel, item.summary, ...item.rows.map((row) => row.topic)]
@@ -58,12 +87,13 @@ export default function TestingPage() {
                     <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.16em] text-violet-700">
                         <span>Testing status</span>
                         <span className="h-1 w-1 rounded-full bg-violet-300" aria-hidden="true" />
-                        <time dateTime="2026-09-25">Updated 25 September 2026</time>
+                        <time dateTime={latestTest.lastTestedAt ?? latestTest.lastTestedOn}>Last tested {lastTestedLabel(latestTest)}</time>
                     </div>
                     <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-5xl">What we tested.</h1>
                     <p className="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-[#635b72] sm:text-lg">
                         Choose a category to see each topic, its result, and the environment that was actually checked.
                     </p>
+                    <p className="mt-2 text-xs font-semibold text-[#81768d]">Recorded times display in your device’s time zone. Older reports may only have a date.</p>
                 </header>
 
                 <div className="mt-9 lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start lg:gap-7">
@@ -117,7 +147,7 @@ export default function TestingPage() {
                             <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-700">{category.label} testing</p>
                             <h2 id="category-heading" className="mt-1 text-2xl font-black sm:text-3xl">{category.summary}</h2>
                         </div>
-                        <p className="rounded-full border border-[#e8daed] bg-white px-4 py-2 text-xs font-bold text-[#645876]">Latest evidence · {category.lastEvidence}</p>
+                        <time dateTime={category.lastTestedAt ?? category.lastTestedOn} className="rounded-full border border-[#e8daed] bg-white px-4 py-2 text-xs font-bold text-[#645876]">Last tested · {lastTestedLabel(category)}</time>
                     </div>
                     <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#70677c]">{category.scope}</p>
 
