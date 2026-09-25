@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Activity, ArrowRight, Check, CircleAlert, Code2, HelpCircle, Minus, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
+import { Activity, ArrowRight, Check, ChevronRight, CircleAlert, Code2, HelpCircle, Minus, Search, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
-import { testingCategories, type Result, type TestingCategory } from './testingResults'
+import { testingCategories, testingCategoryGroups, type Result, type TestingCategory } from './testingResults'
 
 const resultStyle: Record<Result, { label: string; className: string; icon: typeof Check }> = {
     passed: { label: 'Passed', className: 'bg-[#e2f7ec] text-[#196c4a]', icon: Check },
@@ -31,8 +31,17 @@ function ResultBadge({ result }: { result: Result }) {
 
 export default function TestingPage() {
     const [searchParams, setSearchParams] = useSearchParams()
+    const [categoryQuery, setCategoryQuery] = useState('')
     const activeId = searchParams.get('category')
     const category = testingCategories.find((item) => item.id === activeId) ?? testingCategories[0]
+    const query = categoryQuery.trim().toLowerCase()
+    const visibleCategories = testingCategories.filter((item) =>
+        !query || [item.label, item.shortLabel, item.summary, ...item.rows.map((row) => row.topic)]
+            .some((value) => value.toLowerCase().includes(query)))
+
+    function selectCategory(id: TestingCategory['id']) {
+        setSearchParams(id === 'openid' ? {} : { category: id })
+    }
 
     useEffect(() => {
         const previousTitle = document.title
@@ -56,27 +65,52 @@ export default function TestingPage() {
                     </p>
                 </header>
 
-                <nav aria-label="Testing categories" className="mt-9 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {testingCategories.map((item) => {
-                        const Icon = categoryIcons[item.id]
-                        const active = category.id === item.id
-                        return <button
-                            key={item.id}
-                            type="button"
-                            aria-pressed={active}
-                            aria-controls="testing-category-panel"
-                            onClick={() => setSearchParams(item.id === 'openid' ? {} : { category: item.id })}
-                            className={`min-w-0 rounded-[1.25rem] border px-3 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:px-4 ${active
-                                ? 'border-[#bca0ec] bg-[#f4ebff] shadow-[0_12px_35px_-25px_rgba(80,47,105,0.45)]'
-                                : 'border-[#e8daed] bg-white hover:border-[#cbb5e9] hover:bg-[#fcf8ff]'}`}
-                        >
-                            <span className="flex items-center gap-2 text-sm font-black"><Icon className={`h-4 w-4 ${active ? 'text-violet-700' : 'text-[#81768d]'}`} aria-hidden="true" />{item.label}</span>
-                            <span className="mt-1 block pl-6 text-xs font-bold text-[#736983]">{item.shortLabel}</span>
-                        </button>
-                    })}
-                </nav>
+                <div className="mt-9 lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start lg:gap-7">
+                    <aside className="hidden rounded-[1.5rem] border border-[#e8daed] bg-white p-3 lg:sticky lg:top-28 lg:block" aria-label="Browse testing categories">
+                        <div className="px-2 pb-3 pt-1">
+                            <p className="text-xs font-black uppercase tracking-[0.15em] text-violet-700">Browse tests</p>
+                            <p className="mt-1 text-xs font-semibold text-[#81768d]">{testingCategories.length} categories</p>
+                        </div>
+                        <label htmlFor="testing-category-search" className="sr-only">Search testing categories or topics</label>
+                        <div className="relative mb-3">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a7e97]" aria-hidden="true" />
+                            <input id="testing-category-search" type="search" value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Find a test…"
+                                className="w-full rounded-xl border border-[#e8daed] bg-[#fffcff] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#29243b] outline-none placeholder:text-[#958b9e] focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                        </div>
+                        <nav aria-label="Testing categories" className="max-h-[calc(100vh-15rem)] space-y-4 overflow-y-auto px-1 pb-1">
+                            {testingCategoryGroups.map((group) => {
+                                const items = visibleCategories.filter((item) => item.group === group.id)
+                                if (items.length === 0) return null
+                                return <div key={group.id}>
+                                    <p className="px-2 pb-1.5 text-[10px] font-black uppercase tracking-[0.13em] text-[#8b7e97]">{group.label}</p>
+                                    <div className="space-y-1">
+                                        {items.map((item) => {
+                                            const Icon = categoryIcons[item.id]
+                                            const active = category.id === item.id
+                                            return <button key={item.id} type="button" aria-pressed={active} aria-controls="testing-category-panel" onClick={() => selectCategory(item.id)}
+                                                className={`w-full rounded-xl px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${active ? 'bg-[#f4ebff] text-violet-900' : 'text-[#4e455b] hover:bg-[#fcf8ff]'}`}>
+                                                <span className="flex items-center gap-2 text-sm font-black"><Icon className={`h-4 w-4 shrink-0 ${active ? 'text-violet-700' : 'text-[#8a7e97]'}`} aria-hidden="true" /><span className="min-w-0 flex-1">{item.label}</span>{active && <ChevronRight className="h-4 w-4 shrink-0 text-violet-600" aria-hidden="true" />}</span>
+                                                <span className="mt-0.5 block pl-6 text-xs font-semibold text-[#81768d]">{item.shortLabel}</span>
+                                            </button>
+                                        })}
+                                    </div>
+                                </div>
+                            })}
+                            {visibleCategories.length === 0 && <p className="px-2 py-4 text-sm font-semibold text-[#756b82]">No matching categories or topics.</p>}
+                        </nav>
+                    </aside>
 
-                <section id="testing-category-panel" aria-labelledby="category-heading" aria-live="polite" className="mt-7">
+                    <div className="lg:hidden">
+                        <label htmlFor="testing-category-select" className="mb-2 block text-xs font-black uppercase tracking-[0.15em] text-violet-700">Browse testing categories</label>
+                        <select id="testing-category-select" value={category.id} onChange={(event) => selectCategory(event.target.value as TestingCategory['id'])}
+                            className="w-full rounded-2xl border border-[#cbb5e9] bg-white px-4 py-3.5 text-base font-black text-[#29243b] outline-none focus:ring-2 focus:ring-violet-400">
+                            {testingCategoryGroups.map((group) => <optgroup key={group.id} label={group.label}>
+                                {testingCategories.filter((item) => item.group === group.id).map((item) => <option key={item.id} value={item.id}>{item.label} · {item.shortLabel}</option>)}
+                            </optgroup>)}
+                        </select>
+                    </div>
+
+                    <section id="testing-category-panel" aria-labelledby="category-heading" aria-live="polite" className="mt-7 min-w-0 lg:mt-0">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                         <div>
                             <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-700">{category.label} testing</p>
@@ -87,21 +121,21 @@ export default function TestingPage() {
                     <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#70677c]">{category.scope}</p>
 
                     <div className="mt-6 overflow-x-auto rounded-[1.5rem] border border-[#e8daed] bg-white shadow-[0_18px_55px_-45px_rgba(80,47,105,0.35)]" tabIndex={0} role="region" aria-label={`${category.label} test results; scroll horizontally for details`}>
-                        <table className="w-full min-w-[830px] border-collapse text-left text-sm">
+                        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
                             <thead className="bg-[#f8f1fb] text-xs font-black uppercase tracking-wider text-[#685b7c]">
                                 <tr>
-                                    <th scope="col" className="w-36 px-5 py-4">Status</th>
-                                    <th scope="col" className="w-56 px-5 py-4">Test topic</th>
+                                    <th scope="col" className="w-32 px-4 py-4">Status</th>
+                                    <th scope="col" className="w-44 px-4 py-4">Test topic</th>
                                     <th scope="col" className="px-5 py-4">What happened</th>
-                                    <th scope="col" className="w-52 px-5 py-4">Evidence</th>
+                                    <th scope="col" className="w-40 px-4 py-4">Evidence</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {category.rows.map((row) => <tr key={row.topic} className="border-t border-[#f0e8f3] align-top">
-                                    <td className="px-5 py-4"><ResultBadge result={row.result} /></td>
-                                    <th scope="row" className="px-5 py-4 font-black">{row.topic}</th>
+                                    <td className="px-4 py-4"><ResultBadge result={row.result} /></td>
+                                    <th scope="row" className="px-4 py-4 font-black">{row.topic}</th>
                                     <td className="px-5 py-4 font-semibold leading-relaxed text-[#5c536c]">{row.description}</td>
-                                    <td className="px-5 py-4 text-xs font-bold leading-relaxed text-[#756b82]">
+                                    <td className="px-4 py-4 text-xs font-bold leading-relaxed text-[#756b82]">
                                         {row.evidenceHref
                                             ? <a href={row.evidenceHref} target="_blank" rel="noreferrer" className="text-violet-700 underline-offset-2 hover:underline">{row.evidence} ↗</a>
                                             : row.evidence}
@@ -115,7 +149,8 @@ export default function TestingPage() {
                     <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3 text-sm font-black text-violet-700">
                         {category.links.map((link) => <a key={link.href} href={link.href} className="inline-flex items-center gap-1.5 hover:text-violet-900">{link.label} <ArrowRight className="h-4 w-4" /></a>)}
                     </div>
-                </section>
+                    </section>
+                </div>
             </main>
             <Footer />
         </div>

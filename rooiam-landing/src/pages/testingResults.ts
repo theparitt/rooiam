@@ -14,6 +14,7 @@ export type TestingRow = {
 
 export type TestingCategory = {
     id: 'openid' | 'android' | 'sdk' | 'operations'
+    group: 'standards' | 'platforms' | 'operations'
     label: string
     shortLabel: string
     summary: string
@@ -24,12 +25,19 @@ export type TestingCategory = {
     links: { label: string; href: string }[]
 }
 
+export const testingCategoryGroups = [
+    { id: 'standards', label: 'Standards & conformance' },
+    { id: 'platforms', label: 'Apps & developer tools' },
+    { id: 'operations', label: 'Reliability & operations' },
+] as const
+
 export const testingCategories: TestingCategory[] = [
     {
         id: 'openid',
+        group: 'standards',
         label: 'OpenID',
         shortLabel: 'Partial coverage',
-        summary: 'Config OP passed. Basic OP did not. Rooiam is not OpenID-certified.',
+        summary: 'Config OP passed; Basic OP did not. No certification.',
         scope: 'Official Conformance Suite 5.3.1 on isolated candidates; the source regression is listed separately below.',
         lastEvidence: '25 Sep 2026',
         rows: [
@@ -52,9 +60,10 @@ export const testingCategories: TestingCategory[] = [
     },
     {
         id: 'android',
+        group: 'platforms',
         label: 'Android',
         shortLabel: 'One-phone beta',
-        summary: 'The Play-installed reference app completed sign-in, approval and recovery on one Redmi.',
+        summary: 'Phone sign-in, approval and recovery passed on one Redmi.',
         scope: 'Controlled Android beta: Redmi Note 9, Android 12/API 31, Rooiam Reference from Play Internal testing.',
         lastEvidence: '24 Sep 2026',
         rows: [
@@ -75,9 +84,10 @@ export const testingCategories: TestingCategory[] = [
     },
     {
         id: 'sdk',
+        group: 'platforms',
         label: 'SDKs & examples',
         shortLabel: 'Source checked',
-        summary: 'Source packages and separate consumer examples build and run; independent adoption is still open.',
+        summary: 'SDK source checks passed; independent adoption is open.',
         scope: 'Local/CI source checks. SDK package versions are independent of Rooiam product milestones.',
         lastEvidence: '25 Sep 2026',
         rows: [
@@ -98,9 +108,10 @@ export const testingCategories: TestingCategory[] = [
     },
     {
         id: 'operations',
+        group: 'operations',
         label: 'Operations',
         shortLabel: 'Local checks',
-        summary: 'Failure, backup and readiness checks passed in isolated environments; the combined release rollout is pending.',
+        summary: 'Isolated reliability checks passed; production rollout is open.',
         scope: 'Evidence below names the tested setup. Loopback probes and synthetic devices are not production capacity or a service-level guarantee.',
         lastEvidence: '25 Sep 2026',
         rows: [
