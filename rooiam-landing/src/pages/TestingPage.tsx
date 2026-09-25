@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Activity, ArrowRight, Check, ChevronRight, CircleAlert, Code2, HelpCircle, Minus, Search, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
+import { Activity, ArrowRight, Check, ChevronRight, CircleAlert, Code2, HelpCircle, Minus, Monitor, Search, SearchX, ShieldCheck, Smartphone } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { BUG_REPORT_URL } from '../lib/site'
@@ -20,6 +20,7 @@ const categoryIcons: Record<TestingCategory['id'], typeof ShieldCheck> = {
     openid: ShieldCheck,
     android: Smartphone,
     sdk: Code2,
+    web: Monitor,
     operations: Activity,
 }
 
@@ -44,18 +45,12 @@ function lastTestedLabel(item: TestingCategory): string {
     return `${day} · time not recorded`
 }
 
-function latestTestCategory(): TestingCategory {
-    return testingCategories.reduce((latest, item) => {
-        if (item.lastTestedOn !== latest.lastTestedOn) {
-            return item.lastTestedOn > latest.lastTestedOn ? item : latest
-        }
-        // On the same recorded date, a date-only result may be later than a
-        // precisely timed one. Prefer the unknown time instead of overstating
-        // precision for the page-wide status.
-        if (!item.lastTestedAt) return item
-        if (!latest.lastTestedAt) return latest
-        return item.lastTestedAt > latest.lastTestedAt ? item : latest
-    })
+function latestTimedTestCategory(): TestingCategory {
+    // The headline reports the latest precisely timed check; date-only evidence
+    // stays visible in its category without claiming an invented clock time.
+    const timed = testingCategories.filter((item) => item.lastTestedAt)
+    if (timed.length === 0) return testingCategories[0]
+    return timed.reduce((latest, item) => item.lastTestedAt! > latest.lastTestedAt! ? item : latest)
 }
 
 export default function TestingPage() {
@@ -63,7 +58,7 @@ export default function TestingPage() {
     const [categoryQuery, setCategoryQuery] = useState('')
     const activeId = searchParams.get('category')
     const category = testingCategories.find((item) => item.id === activeId) ?? testingCategories[0]
-    const latestTest = latestTestCategory()
+    const latestTest = latestTimedTestCategory()
     const query = categoryQuery.trim().toLowerCase()
     const visibleCategories = testingCategories.filter((item) =>
         !query || [item.label, item.shortLabel, item.summary, ...item.rows.map((row) => row.topic)]
@@ -87,7 +82,7 @@ export default function TestingPage() {
                     <div className="flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.16em] text-violet-700">
                         <span>Testing status</span>
                         <span className="h-1 w-1 rounded-full bg-violet-300" aria-hidden="true" />
-                        <time dateTime={latestTest.lastTestedAt ?? latestTest.lastTestedOn}>Last tested {lastTestedLabel(latestTest)}</time>
+                        <time dateTime={latestTest.lastTestedAt}>Latest timed check {lastTestedLabel(latestTest)}</time>
                     </div>
                     <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-5xl">What we tested.</h1>
                     <p className="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-[#635b72] sm:text-lg">

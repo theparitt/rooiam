@@ -16,7 +16,7 @@ export type TestingRow = {
 }
 
 export type TestingCategory = {
-    id: 'openid' | 'android' | 'sdk' | 'operations'
+    id: 'openid' | 'android' | 'sdk' | 'web' | 'operations'
     group: 'standards' | 'platforms' | 'operations'
     label: string
     shortLabel: string
@@ -54,7 +54,7 @@ export const testingCategories: TestingCategory[] = [
             { topic: 'Error & redirect handling', result: 'review', description: 'Three screenshot-based modules await human review; this is not a pass.', evidence: '25 Sep · Basic OP run' },
             { topic: 'Optional address/phone scopes', result: 'skipped', description: 'Three modules were skipped because these optional scopes were not advertised.', evidence: '25 Sep · Basic OP run' },
             { topic: 'Basic OP with optional PKCE', result: 'not-tested', description: 'The official suite has not been rerun with confidential_optional.', evidence: 'No official run' },
-            { topic: 'Production discovery inspection', result: 'no-verdict', description: 'The live 0.4 API still advertises HS256 and publishes no public JWKS keys. This is a read-only configuration check, not a suite run.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/.well-known/openid-configuration' },
+            { topic: 'Production discovery inspection', result: 'no-verdict', description: 'The 0.4 API advertised HS256 and published no public JWKS keys when inspected. This historical configuration check was not a suite run or a verdict on the later deployment.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/.well-known/openid-configuration' },
             { topic: 'Live production conformance', result: 'not-tested', description: 'The official runs used isolated candidates, not api.rooiam.com.', evidence: 'No official production run' },
             { topic: 'Rooiam OIDC regression', result: 'passed', description: '11/11 local tests, including client authentication and the strict-default PKCE policy.', evidence: '25 Sep · source 752bf3e', evidenceHref: `${GITHUB_REPO_URL}/commit/752bf3e` },
         ],
@@ -114,29 +114,52 @@ export const testingCategories: TestingCategory[] = [
         ],
     },
     {
+        id: 'web',
+        group: 'platforms',
+        label: 'Web consoles',
+        shortLabel: 'Deployment smoke',
+        summary: 'Both live consoles show the server build; sign-in needs a separate check.',
+        scope: 'Production app.rooiam.com and admin.rooiam.com, checked without an authenticated user session. A deploy and page-load check does not prove a login journey.',
+        lastTestedOn: '2026-09-25',
+        lastTestedAt: '2026-09-25T08:26:27Z',
+        rows: [
+            { topic: 'Tenant portal build badge', result: 'passed', description: 'Production served the new JavaScript; desktop and mobile screenshots showed the server commit and locally formatted build time at bottom right without covering sign-in controls.', evidence: '25 Sep · app commit 57da0c4', evidenceHref: `${GITHUB_REPO_URL}/commit/57da0c4` },
+            { topic: 'Admin console build badge', result: 'passed', description: 'Production served the new JavaScript; desktop and mobile screenshots showed the same server build badge without covering sign-in controls.', evidence: '25 Sep · admin commit 02695da', evidenceHref: `${GITHUB_REPO_URL}/commit/02695da` },
+            { topic: 'Live build data & browser access', result: 'passed', description: 'Both origins could read /health through CORS. The API reported the running source commit 8c245cb6, and /ready found PostgreSQL and Redis healthy.', evidence: '25 Sep · production API', evidenceHref: 'https://api.rooiam.com/health' },
+            { topic: 'Admin lint script', result: 'blocked', description: 'The command could not run because the admin project has no ESLint configuration. TypeScript and the production build passed; this is not a source lint verdict.', evidence: '25 Sep · local admin command' },
+            { topic: 'Authenticated portal journeys', result: 'not-tested', description: 'Workspace, admin and phone sign-in flows were not rerun after these console deployments.', evidence: 'Separate acceptance run needed' },
+        ],
+        note: 'These checks cover published assets, visible build metadata and API reachability. They do not certify sign-in, admin permissions or the 0.5–1.0 release.',
+        links: [
+            { label: 'Tenant portal', href: 'https://app.rooiam.com/' },
+            { label: 'Admin console', href: 'https://admin.rooiam.com/' },
+        ],
+    },
+    {
         id: 'operations',
         group: 'operations',
         label: 'Operations',
-        shortLabel: 'Backup verified',
-        summary: 'A production database backup restored in isolation; the release upgrade remains open.',
-        scope: 'Evidence below names the tested setup. The live checks used the existing 0.4 image; readiness probes and synthetic devices are not authentication capacity or a service-level guarantee.',
+        shortLabel: 'Live health checked',
+        summary: 'The new backend is healthy; release acceptance and full recovery remain open.',
+        scope: 'Evidence below names the tested revision. Earlier 0.4 checks remain historical; readiness probes and synthetic devices are not authentication capacity or a service-level guarantee.',
         lastTestedOn: '2026-09-25',
-        lastTestedAt: '2026-09-25T06:43:27Z',
+        lastTestedAt: '2026-09-25T08:26:27Z',
         rows: [
-            { topic: 'Live API & integrity proxy smoke', result: 'passed', description: 'The running 0.4 API reported healthy database/Redis. The decoder rejected missing or wrong secrets (401), wrong package (403), and an invalid token (400). No real-phone journey was included.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/health' },
+            { topic: 'Production backend image & readiness', result: 'passed', description: 'The running image and /health identified source commit 8c245cb6 and its build time; /ready and database/Redis checks passed. Startup reported migrations OK with no restart.', evidence: '25 Sep · production 8c245cb', evidenceHref: 'https://api.rooiam.com/health' },
+            { topic: 'Earlier API & integrity proxy smoke', result: 'passed', description: 'The then-running 0.4 API reported healthy database/Redis. The decoder rejected missing or wrong secrets (401), wrong package (403), and an invalid token (400). This historical run did not include a real-phone journey.', evidence: '25 Sep · production fd4070e' },
             { topic: '1,000 QR login flows', result: 'passed', description: 'An isolated synthetic-device run completed 1,000 sequential flows with replay rejection.', evidence: '23 Sep · isolated 0.2 candidate' },
             { topic: 'Device failure paths', result: 'passed', description: 'Invalid Google token and verifier-unavailable cases issued no browser session.', evidence: '23 Sep · synthetic devices' },
             { topic: 'QR and phone-revocation regression', result: 'passed', description: 'An isolated two-identity simulation checked request limits, MFA, process restart, lost completion response, replay, revocation and log redaction. It did not use two physical phones.', evidence: '25 Sep · local test-mode matrix' },
             { topic: 'API-key approval regression', result: 'passed', description: 'Isolated checks covered policy modes, exact signed request, deny, cancel, replay, race, expiry, role changes and recent-sign-in revocation.', evidence: '25 Sep · local test-mode matrix' },
             { topic: 'PostgreSQL 16 backup/restore', result: 'passed', description: 'A checksum-verified archive restored inside a separate network-isolated container.', evidence: '24 Sep · local 0.8 check' },
             { topic: 'Production PostgreSQL 18 restore', result: 'passed', description: 'A fresh production dump passed checksum validation and fully restored to a disposable network-isolated PostgreSQL 18 container; 64 successful migrations were present.', evidence: '25 Sep · existing 0.4 database' },
-            { topic: 'Next migration preflight', result: 'passed', description: 'All 64 applied migration checksums matched the source lineage. Migration 65 applied to a restored PostgreSQL 18 copy, preserved the existing policy mapping and added its constraint. Candidate server startup is still open.', evidence: '25 Sep · isolated database copy' },
+            { topic: 'Migration 65 preflight', result: 'passed', description: 'All 64 prior checksums matched. Migration 65 applied to a restored PostgreSQL 18 copy and preserved the policy mapping; the later production server reported migrations OK at startup.', evidence: '25 Sep · isolated copy and live startup' },
             { topic: 'Readiness probe', result: 'passed', description: 'Production loopback /ready succeeded 200/200 times at concurrency 4; an earlier isolated run succeeded 500/500. Neither measured login throughput.', evidence: '25 Sep · production 0.4; 24 Sep · local' },
             { topic: 'GitHub verification & Android CI', result: 'passed', description: 'The verify and Android workflows passed on the tested source candidate.', evidence: '25 Sep · CI run 36034708001', evidenceHref: `${GITHUB_REPO_URL}/actions/runs/36034708001` },
             { topic: 'GitHub secret scan', result: 'passed', description: 'The repository secret-scanning workflow passed on the same tested candidate.', evidence: '25 Sep · CI run 36034707893', evidenceHref: `${GITHUB_REPO_URL}/actions/runs/36034707893` },
-            { topic: 'Combined 0.5–1.0 production rollout', result: 'not-tested', description: 'The matching server/portal upgrade and release-specific checks are still pending.', evidence: 'No release acceptance run' },
+            { topic: '0.5–1.0 production acceptance', result: 'not-tested', description: 'The server and portals are deployed, but authenticated release-specific journeys, full recovery and conformance were not rerun as one acceptance matrix.', evidence: 'No combined acceptance run' },
         ],
-        note: 'The restored PostgreSQL archive is a database-only backup stored on the production host; MinIO, configuration, off-host copies and the candidate migration still need separate checks. This category does not imply a 1.0 release or availability target.',
+        note: 'The restored PostgreSQL archive is a database-only backup stored on the production host; MinIO, configuration and off-host recovery still need separate checks. Healthy startup does not imply a 1.0 release or availability target.',
         links: [
             { label: 'Backup and upgrade guide', href: `${DOCS_BASE_URL}/production/backup-restore-and-upgrade` },
             { label: 'Compatibility status', href: `${DOCS_BASE_URL}/reference/compatibility-and-conformance` },
