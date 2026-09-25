@@ -420,7 +420,7 @@ impl AppConfig {
                 "ROOIAM_OIDC_PUBLIC_KEY_PATH",
                 "path to RSA public key PEM (RS256 verification)",
             );
-            check_optional_val("ROOIAM_OIDC_PRIVATE_KEY_PEM", "RSA private key PEM inline");
+            check_optional_secret("ROOIAM_OIDC_PRIVATE_KEY_PEM", "RSA private key PEM inline");
             check_optional_val("ROOIAM_OIDC_PUBLIC_KEY_PEM", "RSA public key PEM inline");
             check_optional_val(
                 "ROOIAM_OIDC_KEY_ID",
@@ -429,11 +429,11 @@ impl AppConfig {
         } else {
             println!("  [ WARN    ]  ROOIAM_OIDC_PRIVATE_KEY_PEM / _PATH not set");
             println!("               → using HS256 with ROOIAM_OIDC_SIGNING_SECRET (dev only)");
-            check_warn_val(
+            check_warn_secret(
                 "ROOIAM_OIDC_SIGNING_SECRET",
                 "not set — using a generated dev secret (not safe for production)",
             );
-            check_warn_val(
+            check_warn_secret(
                 "ROOIAM_JWT_SECRET",
                 "legacy alias for ROOIAM_OIDC_SIGNING_SECRET (ignored if signing secret is set)",
             );
@@ -1178,6 +1178,18 @@ fn check_warn_val(key: &str, reason: &str) {
     match std::env::var(key) {
         Ok(val) if !val.trim().is_empty() => {
             println!("  [ OK      ]  {} = {}", key, val.trim());
+        }
+        _ => {
+            println!("  [ WARN    ]  {} not set — {}", key, reason);
+        }
+    }
+}
+
+/// Optional-but-important secret — report presence without writing it to logs.
+fn check_warn_secret(key: &str, reason: &str) {
+    match std::env::var(key) {
+        Ok(val) if !val.trim().is_empty() => {
+            println!("  [ OK      ]  {} = ***", key);
         }
         _ => {
             println!("  [ WARN    ]  {} not set — {}", key, reason);
