@@ -121,7 +121,7 @@ export const testingCategories: TestingCategory[] = [
         summary: 'A production database backup restored in isolation; the release upgrade remains open.',
         scope: 'Evidence below names the tested setup. The live checks used the existing 0.4 image; readiness probes and synthetic devices are not authentication capacity or a service-level guarantee.',
         lastTestedOn: '2026-09-25',
-        lastTestedAt: '2026-09-25T05:37:36Z',
+        lastTestedAt: '2026-09-25T06:43:27Z',
         rows: [
             { topic: 'Live API & integrity proxy smoke', result: 'passed', description: 'The running 0.4 API reported healthy database/Redis. The decoder rejected missing or wrong secrets (401), wrong package (403), and an invalid token (400). No real-phone journey was included.', evidence: '25 Sep · production fd4070e', evidenceHref: 'https://api.rooiam.com/health' },
             { topic: '1,000 QR login flows', result: 'passed', description: 'An isolated synthetic-device run completed 1,000 sequential flows with replay rejection.', evidence: '23 Sep · isolated 0.2 candidate' },
@@ -130,6 +130,7 @@ export const testingCategories: TestingCategory[] = [
             { topic: 'API-key approval regression', result: 'passed', description: 'Isolated checks covered policy modes, exact signed request, deny, cancel, replay, race, expiry, role changes and recent-sign-in revocation.', evidence: '25 Sep · local test-mode matrix' },
             { topic: 'PostgreSQL 16 backup/restore', result: 'passed', description: 'A checksum-verified archive restored inside a separate network-isolated container.', evidence: '24 Sep · local 0.8 check' },
             { topic: 'Production PostgreSQL 18 restore', result: 'passed', description: 'A fresh production dump passed checksum validation and fully restored to a disposable network-isolated PostgreSQL 18 container; 64 successful migrations were present.', evidence: '25 Sep · existing 0.4 database' },
+            { topic: 'Next migration preflight', result: 'passed', description: 'All 64 applied migration checksums matched the source lineage. Migration 65 applied to a restored PostgreSQL 18 copy, preserved the existing policy mapping and added its constraint. Candidate server startup is still open.', evidence: '25 Sep · isolated database copy' },
             { topic: 'Readiness probe', result: 'passed', description: 'Production loopback /ready succeeded 200/200 times at concurrency 4; an earlier isolated run succeeded 500/500. Neither measured login throughput.', evidence: '25 Sep · production 0.4; 24 Sep · local' },
             { topic: 'GitHub verification & Android CI', result: 'passed', description: 'The verify and Android workflows passed on the tested source candidate.', evidence: '25 Sep · CI run 36034708001', evidenceHref: `${GITHUB_REPO_URL}/actions/runs/36034708001` },
             { topic: 'GitHub secret scan', result: 'passed', description: 'The repository secret-scanning workflow passed on the same tested candidate.', evidence: '25 Sep · CI run 36034707893', evidenceHref: `${GITHUB_REPO_URL}/actions/runs/36034707893` },

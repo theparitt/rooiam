@@ -39,7 +39,7 @@ The production flow passed an assisted revoke and re-enrollment test on the same
 
 ## Next — Predictable self-hosted operation
 
-**0.8 engineering candidate.** Operators can create a private PostgreSQL backup, prove it restores in an isolated container, and follow a concrete image upgrade and failure checklist. A local readiness-probe baseline is recorded separately from login capacity. These procedures still need verification on the production host before an operational reliability claim.
+**0.8 engineering candidate.** Operators can create a private PostgreSQL backup, prove it restores in an isolated container, and follow a concrete image upgrade and failure checklist. A production PostgreSQL 18 backup restored in isolation, and the next migration passed a copy-of-data preflight. A readiness probe is recorded separately from login capacity. Full-instance recovery and the combined server upgrade still need verification before an operational reliability claim.
 
 ## Looking ahead
 
