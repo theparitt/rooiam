@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ToastProvider } from './lib/toast'
-import DebugBadge from './components/ui/DebugBadge'
+import ServerBuildBadge from './components/ui/ServerBuildBadge'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <BrowserRouter>
             <ToastProvider>
                 <App />
-                <DebugBadge />
+                <ServerBuildBadge />
             </ToastProvider>
         </BrowserRouter>
     </React.StrictMode>,
