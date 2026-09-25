@@ -38,7 +38,8 @@ export default function Footer()
                             <h4 className="font-black text-gray-700 mb-4">Developers</h4>
                             <ul className="space-y-2.5">
                                 <li><a href={DOCS_HOME_URL} className="font-semibold text-gray-400 hover:text-gray-700 transition-colors">Docs</a></li>
-<li><a href={DOCS_DEVELOPERS_URL} className="font-semibold text-gray-400 hover:text-gray-700 transition-colors">API & Embed</a></li>
+                                <li><a href="/testing" className="font-semibold text-gray-400 hover:text-gray-700 transition-colors">Testing</a></li>
+                                <li><a href={DOCS_DEVELOPERS_URL} className="font-semibold text-gray-400 hover:text-gray-700 transition-colors">API & Embed</a></li>
                             </ul>
                         </div>
                         <div>

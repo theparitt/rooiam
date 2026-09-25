@@ -19,6 +19,7 @@ export default function Navbar()
                 <a href="/#features" className="hover:text-gray-800 transition-colors">Features</a>
                 <a href="/#how-it-works" className="hover:text-gray-800 transition-colors">Self-Host</a>
                 <a href="/news" className="hover:text-gray-800 transition-colors">News</a>
+                <a href="/testing" className="hover:text-gray-800 transition-colors">Testing</a>
                 <a href={DOCS_HOME_URL} className="hover:text-gray-800 transition-colors">Docs</a>
                 <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 hover:text-gray-800 transition-colors">
@@ -46,6 +47,7 @@ export default function Navbar()
                     <a href="/#features" className="font-bold text-gray-700" onClick={() => setOpen(false)}>Features</a>
                     <a href="/#how-it-works" className="font-bold text-gray-700" onClick={() => setOpen(false)}>Self-Host Guide</a>
                     <a href="/news" className="font-bold text-gray-700" onClick={() => setOpen(false)}>News</a>
+                    <a href="/testing" className="font-bold text-gray-700" onClick={() => setOpen(false)}>Testing</a>
                     <a href={DOCS_HOME_URL} className="font-bold text-gray-700" onClick={() => setOpen(false)}>Docs</a>
                     <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer"
                         className="flex items-center gap-1.5 font-bold text-gray-700" onClick={() => setOpen(false)}>
