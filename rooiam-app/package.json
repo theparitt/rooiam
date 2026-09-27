@@ -12,10 +12,10 @@
         "build:prod-online": "tsc && vite build --mode prod-online",
         "build:demo-online": "tsc && vite build --mode demo-online",
         "start": "vite preview",
-        "deploy": "npm run build:prod-online && wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
-        "deploy:demo": "npm run build:demo-online && wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
+        "deploy": "node ../scripts/check-pages-env.mjs prod-online VITE_API_URL && npm run build:prod-online && wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
+        "deploy:demo": "node ../scripts/check-pages-env.mjs demo-online VITE_API_URL && npm run build:demo-online && wrangler pages deploy dist --project-name rooiam-app-demo --branch main --commit-dirty=true",
         "pages:dev": "wrangler pages dev dist",
-        "pages:deploy": "wrangler pages deploy dist --project-name rooiam-app --branch main --commit-dirty=true",
+        "pages:deploy": "npm run deploy",
         "test:integration": "node scripts/test-integration-snippets.mjs"
     },
     "dependencies": {

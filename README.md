@@ -67,6 +67,28 @@ rooiam-examples/ Integration examples (widget / account / backend)
 
 → [Architecture guide](docs/architecture.md)
 
+## Deploy
+
+`rooiam-server` is the Docker service. From the repository root, build it with your production environment file:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.docker.public.prod build server
+```
+
+This command builds an image on the current Docker host. The operator then updates the running server on the production host and checks `/health`; building alone does not change the running API.
+
+The web sites are separate Cloudflare Pages projects. Run `npm run deploy` inside each directory; they do not need a Docker image:
+
+| Directory | Production site |
+|---|---|
+| `rooiam-app` | `app.rooiam.com` |
+| `rooiam-admin` | `admin.rooiam.com` |
+| `rooiam-docs` | `docs.rooiam.com` |
+| `rooiam-landing` | `rooiam.com` |
+| `rooiam-book` | `book.rooiam.com` |
+
+The App and Admin deploy commands require `VITE_API_URL` (for example, `https://api.rooiam.com/v1`) through the environment or a local `.env.prod-online` file. These files are intentionally not committed. Use each site's own deploy script so the correct mode and Pages project are selected.
+
 ## Docs
 
 - [Docs index](docs/00_docs_index.md)

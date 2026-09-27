@@ -71,9 +71,11 @@ Only `VITE_`-prefixed variables are exposed to the browser.
 | `npm run build` | typecheck + build, prod-online (default) |
 | `npm run build:prod-online` | build for the production domain |
 | `npm run build:demo-online` | build for the demo domain |
+| `npm run deploy` | check production API/docs URLs, build and deploy to `rooiam-admin` on Pages |
+| `npm run deploy:demo` | check demo API URL, build and deploy to `rooiam-admin-demo` on Pages |
 | `npm run preview` | serve the built `dist/` locally |
 | `npm run lint` | ESLint (TS/TSX), zero warnings allowed |
-| `npm run pages:deploy` | deploy `dist/` to Cloudflare Pages |
+| `npm run pages:deploy` | alias for `npm run deploy` |
 
 ### Changing the port
 

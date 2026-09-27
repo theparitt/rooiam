@@ -8,9 +8,9 @@
         "dev": "vite",
         "build": "tsc && vite build",
         "preview": "vite preview",
-        "deploy": "npm run build && wrangler pages deploy ./dist --project-name rooiam-landing",
+        "deploy": "node ../scripts/check-pages-env.mjs production VITE_APP_URL VITE_DOCS_URL VITE_DEMO_URL VITE_DEMO_APP_URL VITE_DEMO_ADMIN_URL && npm run build && wrangler pages deploy ./dist --project-name rooiam-landing --branch main --commit-dirty=true",
         "pages:dev": "wrangler pages dev ./dist",
-        "pages:deploy": "wrangler pages deploy ./dist --project-name rooiam-landing"
+        "pages:deploy": "npm run deploy"
     },
     "dependencies": {
         "lucide-react": "^0.446.0",
