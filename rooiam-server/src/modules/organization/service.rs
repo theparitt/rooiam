@@ -6,7 +6,16 @@ use crate::shared::error::AppError;
 use crate::shared::runtime_config::effective_app_url;
 use crate::shared::workspace_governance::load_platform_workspace_governance;
 use sqlx::PgPool;
+use std::str::FromStr;
 use uuid::Uuid;
+
+pub fn normalize_invite_email(raw: &str) -> Result<String, AppError> {
+    let email = raw.trim().to_ascii_lowercase();
+    if email.len() > 254 || lettre::Address::from_str(&email).is_err() {
+        return Err(AppError::Validation("Enter a valid invitation email address".into()));
+    }
+    Ok(email)
+}
 
 pub struct OrganizationService {
     repo: OrganizationRepository,
@@ -246,6 +255,9 @@ impl OrganizationService {
             ));
         }
 
+        let email = normalize_invite_email(email)?;
+        self.repo.reserve_invite_send(organization_id, &email).await?;
+
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         use rand::RngCore;
         use sha2::{Digest, Sha256};
@@ -264,7 +276,7 @@ impl OrganizationService {
         self.repo
             .create_invite(
                 organization_id,
-                email,
+                &email,
                 &token_hash,
                 inviter_user_id,
                 expires_at,
@@ -300,7 +312,7 @@ impl OrganizationService {
 
         if let Err(err) = send_action_email(
             &self.db,
-            email,
+            &email,
             &format!("You've been invited to join {}", org_name),
             &format!("You're invited to join {}", org_name),
             &format!("{} invited you to join {} on Rooiam. Click the button below to accept the invitation. This link expires in 48 hours.", inviter_name, org_name),
@@ -553,11 +565,7 @@ impl OrganizationService {
         let invite = self.repo.get_valid_invite(&hash).await?;
 
         // Security: verify the authenticated user's primary email matches the invite email.
-        let identity_repo = IdentityRepository::new(self.db.clone());
-        let user = identity_repo.get_user_by_id(user_id).await?;
-        let user_email = user.email.ok_or_else(|| {
-            AppError::Validation("Your account has no verified email address".into())
-        })?;
+        let user_email = self.verified_primary_email(user_id).await?;
         if !user_email.eq_ignore_ascii_case(&invite.email) {
             return Err(AppError::Forbidden(
                 "This invitation was sent to a different email address".into(),
@@ -591,5 +599,59 @@ impl OrganizationService {
             .await?;
 
         Ok(invite.organization_id)
+    }
+
+    pub async fn decline_invite(&self, user_id: Uuid, token: &str) -> Result<Uuid, AppError> {
+        use sha2::{Digest, Sha256};
+
+        let hash = hex::encode(Sha256::digest(token.as_bytes()));
+        let invite = self.repo.get_valid_invite(&hash).await?;
+        let user_email = self.verified_primary_email(user_id).await?;
+        if !user_email.eq_ignore_ascii_case(&invite.email) {
+            return Err(AppError::Forbidden(
+                "This invitation was sent to a different email address".into(),
+            ));
+        }
+        self.repo
+            .decline_invite(invite.id, invite.organization_id)
+            .await?;
+        Ok(invite.organization_id)
+    }
+
+    async fn verified_primary_email(&self, user_id: Uuid) -> Result<String, AppError> {
+        sqlx::query_scalar(
+            "SELECT email::text FROM user_emails WHERE user_id = $1 AND is_primary = true AND is_verified = true",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await?
+        .ok_or_else(|| AppError::Validation("Your account has no verified primary email address".into()))
+    }
+}
+
+#[cfg(test)]
+mod invitation_security_tests {
+    use super::*;
+    use sha2::Digest as _;
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn invitation_requires_verified_primary_email(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let inviter: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let invitee: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Verify', 'invite-email-verify') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO user_emails (user_id, email, is_primary, is_verified) VALUES ($1, 'target@example.com', true, false)")
+            .bind(invitee).execute(&pool).await.unwrap();
+        let token = "invite-test-token";
+        let hash = hex::encode(sha2::Sha256::digest(token.as_bytes()));
+        repo.create_invite(org, "target@example.com", &hash, inviter, chrono::Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        let service = OrganizationService::new(repo, pool.clone());
+        assert!(service.accept_invite(invitee, token).await.is_err());
+        sqlx::query("UPDATE user_emails SET is_verified = true, verified_at = NOW() WHERE user_id = $1")
+            .bind(invitee).execute(&pool).await.unwrap();
+        assert_eq!(service.accept_invite(invitee, token).await.unwrap(), org);
     }
 }

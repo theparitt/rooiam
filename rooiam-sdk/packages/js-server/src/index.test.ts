@@ -31,6 +31,7 @@ describe('RooiamUser bearer self-service', () => {
     expect(calls[0].url).toBe('https://api.example/v1/identity/token/sessions')
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer user_token')
     expect(calls[0].init.redirect).toBe('error')
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal)
   })
 
   it('revokes one session using an encoded ID and revokes other sessions', async () => {
@@ -224,6 +225,12 @@ describe('clients write surface', () => {
 })
 
 describe('invites + meta getters', () => {
+  it('lists terminal invitation outcomes with a status filter', async () => {
+    const { fetch, calls } = mockFetch(200, { items: [], total: 0, page: 1, page_size: 20 })
+    const result = await new RooiamServer(opts(fetch)).invites.list({ status: 'declined', page: 1 })
+    expect(result.total).toBe(0)
+    expect(new URL(calls[0].url).searchParams.get('status')).toBe('declined')
+  })
   it('invites.send() POSTs the email body', async () => {
     const { fetch, calls } = mockFetch(200, { ok: true, invite_id: 'invite-1', email: 'new@x.com', expires_at: '2026-10-01T00:00:00Z' })
     const result = await new RooiamServer(opts(fetch)).invites.send('new@x.com')

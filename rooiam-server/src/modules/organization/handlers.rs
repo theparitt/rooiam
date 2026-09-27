@@ -79,7 +79,7 @@ async fn resolve_workspace_api_owner_user_id(
     params(MemberListQuery),
     security(("workspace_api_key" = [])),
     responses(
-        (status = 200, description = "Paginated workspace members"),
+        (status = 200, description = "Paginated workspace members", body = WorkspaceMemberPage),
         (status = 401, description = "Missing or invalid workspace API key"),
         (status = 403, description = "API key lacks the members.read permission"),
     ),
@@ -91,8 +91,6 @@ pub async fn list_workspace_integration_members(
 ) -> Result<HttpResponse, AppError> {
     let ctx = resolve_workspace_api_key_context(&req, &state).await?;
     require_workspace_api_key_permission(&ctx, "members.read")?;
-    let repo = OrganizationRepository::new(state.db.clone());
-    let mut members = repo.get_organization_member_views(ctx.org_id).await?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search = query.q.as_deref().unwrap_or("").trim().to_lowercase();
@@ -111,59 +109,26 @@ pub async fn list_workspace_integration_members(
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
 
-    members.retain(|member| {
-        (status_filter == "all" || member.status.eq_ignore_ascii_case(&status_filter))
-            && (role_filter == "all"
-                || member
-                    .role_codes
-                    .iter()
-                    .any(|role| role.eq_ignore_ascii_case(&role_filter)))
-            && (search.is_empty()
-                || member
-                    .display_name
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&search)
-                || member
-                    .email
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&search)
-                || member
-                    .role_codes
-                    .iter()
-                    .any(|role| role.to_lowercase().contains(&search)))
-    });
-
-    match sort_by {
-        "display_name" => members.sort_by(|a, b| a.display_name.as_deref().unwrap_or("").to_lowercase().cmp(&b.display_name.as_deref().unwrap_or("").to_lowercase())),
-        "email" => members.sort_by(|a, b| a.email.as_deref().unwrap_or("").to_lowercase().cmp(&b.email.as_deref().unwrap_or("").to_lowercase())),
-        "status" => members.sort_by(|a, b| a.status.cmp(&b.status)),
-        "role" => members.sort_by(|a, b| a.role_codes.join(",").cmp(&b.role_codes.join(","))),
-        "created_at" => members.sort_by_key(|member| member.created_at),
-        "last_seen_at" => members.sort_by_key(|member| member.last_seen_at),
-        _ => return Err(AppError::Validation("sort_by must be one of display_name, email, status, role, created_at, or last_seen_at.".into())),
-    }
-    if sort_order == "desc" {
-        members.reverse();
-    }
-
-    let total = members.len() as i64;
-    let start = ((page - 1) * page_size) as usize;
-    let end = (start + page_size as usize).min(members.len());
-    let items = if start >= members.len() {
-        vec![]
-    } else {
-        members[start..end].to_vec()
-    };
-    Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
+    let (items, total) = OrganizationRepository::new(state.db.clone())
+        .search_organization_member_views(
+            ctx.org_id, &search, &role_filter, &status_filter,
+            sort_by, sort_order, page, page_size,
+        )
+        .await?;
+    Ok(HttpResponse::Ok().json(WorkspaceMemberPage {
         items,
         total,
         page,
         page_size,
     }))
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct WorkspaceMemberPage {
+    items: Vec<super::models::OrganizationMemberView>,
+    total: i64,
+    page: i64,
+    page_size: i64,
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -244,25 +209,46 @@ struct WorkspaceIntegrationWidgetPreviewConfigResponse {
     enabled_login_methods: Vec<String>,
 }
 
+#[derive(serde::Serialize, sqlx::FromRow, utoipa::ToSchema)]
+struct WorkspaceInviteHistoryEntry {
+    id: Uuid,
+    email: String,
+    inviter_display_name: Option<String>,
+    status: String,
+    accepted_user_id: Option<Uuid>,
+    responded_at: Option<chrono::DateTime<chrono::Utc>>,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct WorkspaceInvitePage {
+    items: Vec<WorkspaceInviteHistoryEntry>,
+    total: i64,
+    page: i64,
+    page_size: i64,
+}
+
 async fn load_workspace_integration_invite_detail(
     state: &web::Data<AppState>,
     org_id: Uuid,
     invite_id: Uuid,
-) -> Result<super::models::OrganizationInviteSummary, AppError> {
-    sqlx::query_as::<_, super::models::OrganizationInviteSummary>(
+) -> Result<WorkspaceInviteHistoryEntry, AppError> {
+    sqlx::query_as::<_, WorkspaceInviteHistoryEntry>(
         r#"
         SELECT
             oi.id,
             oi.email,
             u.display_name AS inviter_display_name,
+            CASE WHEN oi.status = 'pending' AND oi.expires_at <= NOW() THEN 'expired' ELSE oi.status END AS status,
+            oi.accepted_user_id,
+            oi.responded_at,
             oi.expires_at,
             oi.created_at
         FROM organization_invites oi
         LEFT JOIN users u ON u.id = oi.inviter_user_id
         WHERE oi.organization_id = $1
           AND oi.id = $2
-          AND oi.used_at IS NULL
-          AND oi.expires_at > NOW()
         LIMIT 1
         "#,
     )
@@ -281,7 +267,7 @@ async fn load_workspace_integration_invite_detail(
     params(("member_id" = Uuid, Path, description = "Member UUID")),
     security(("workspace_api_key" = [])),
     responses(
-        (status = 200, description = "Member detail"),
+        (status = 200, description = "Member detail", body = super::models::OrganizationMemberView),
         (status = 401, description = "Missing or invalid workspace API key"),
         (status = 403, description = "API key lacks the members.read permission"),
         (status = 404, description = "Member not found in this workspace"),
@@ -296,13 +282,10 @@ pub async fn get_workspace_integration_member_detail(
     require_workspace_api_key_permission(&ctx, "members.read")?;
     let member_id = path.into_inner();
 
-    let repo = OrganizationRepository::new(state.db.clone());
-    let member = repo
-        .get_organization_member_views(ctx.org_id)
+    let member = OrganizationRepository::new(state.db.clone())
+        .get_organization_member_view_by_id(ctx.org_id, member_id)
         .await?
-        .into_iter()
-        .find(|item| item.id == member_id)
-        .ok_or_else(|| AppError::Validation("Member not found in this workspace.".into()))?;
+        .ok_or_else(|| AppError::NotFound("Member not found in this workspace.".into()))?;
 
     Ok(HttpResponse::Ok().json(member))
 }
@@ -314,7 +297,7 @@ pub async fn get_workspace_integration_member_detail(
     params(("user_id" = Uuid, Path, description = "Stable RooIAM user UUID")),
     security(("workspace_api_key" = [])),
     responses(
-        (status = 200, description = "Workspace member with the requested user ID"),
+        (status = 200, description = "Workspace member with the requested user ID", body = super::models::OrganizationMemberView),
         (status = 401), (status = 403), (status = 404),
     ),
 )]
@@ -548,7 +531,7 @@ pub async fn revoke_workspace_integration_member_sessions(
     params(InviteListQuery),
     security(("workspace_api_key" = [])),
     responses(
-        (status = 200, description = "Paginated pending workspace invites"),
+        (status = 200, description = "Paginated workspace invitation history", body = WorkspaceInvitePage),
         (status = 401, description = "Missing or invalid workspace API key"),
         (status = 403, description = "API key lacks the invites.read permission"),
     ),
@@ -560,8 +543,6 @@ pub async fn list_workspace_integration_invites(
 ) -> Result<HttpResponse, AppError> {
     let ctx = resolve_workspace_api_key_context(&req, &state).await?;
     require_workspace_api_key_permission(&ctx, "invites.read")?;
-    let repo = OrganizationRepository::new(state.db.clone());
-    let mut invites = repo.list_pending_invites(ctx.org_id).await?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 1000);
     let search = query.q.as_deref().unwrap_or("").trim().to_lowercase();
@@ -570,43 +551,34 @@ pub async fn list_workspace_integration_invites(
             "Search query is too long (max 256 characters).".into(),
         ));
     }
+    let status_filter = query.status.as_deref().unwrap_or("all").trim().to_lowercase();
+    if !matches!(status_filter.as_str(), "all" | "pending" | "accepted" | "declined" | "revoked" | "expired") {
+        return Err(AppError::Validation("Invalid invitation status filter.".into()));
+    }
     let sort_by = query.sort_by.as_deref().unwrap_or("created_at");
     let sort_order = sort_order_or_error(query.sort_order.as_deref())?;
-
-    invites.retain(|invite| {
-        search.is_empty()
-            || invite.email.to_lowercase().contains(&search)
-            || invite
-                .inviter_display_name
-                .as_deref()
-                .unwrap_or("")
-                .to_lowercase()
-                .contains(&search)
-    });
-
-    match sort_by {
-        "email" => invites.sort_by(|a, b| a.email.to_lowercase().cmp(&b.email.to_lowercase())),
-        "created_at" => invites.sort_by_key(|invite| invite.created_at),
-        "expires_at" => invites.sort_by_key(|invite| invite.expires_at),
-        _ => {
-            return Err(AppError::Validation(
-                "sort_by must be one of email, created_at, or expires_at.".into(),
-            ))
-        }
-    }
-    if sort_order == "desc" {
-        invites.reverse();
-    }
-
-    let total = invites.len() as i64;
-    let start = ((page - 1) * page_size) as usize;
-    let end = (start + page_size as usize).min(invites.len());
-    let items = if start >= invites.len() {
-        vec![]
-    } else {
-        invites[start..end].to_vec()
+    let sort_column = match sort_by {
+        "email" => "lower(oi.email::text)",
+        "created_at" => "oi.created_at",
+        "expires_at" => "oi.expires_at",
+        _ => return Err(AppError::Validation("sort_by must be one of email, created_at, or expires_at.".into())),
     };
-    Ok(HttpResponse::Ok().json(PaginatedActivityResponse {
+    let status_expr = "CASE WHEN oi.status = 'pending' AND oi.expires_at <= NOW() THEN 'expired' ELSE oi.status END";
+    let filter = format!("oi.organization_id = $1 AND ($2 = '' OR lower(oi.email::text) LIKE '%' || $2 || '%' OR lower(coalesce(u.display_name, '')) LIKE '%' || $2 || '%') AND ($3 = 'all' OR {status_expr} = $3)");
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM organization_invites oi LEFT JOIN users u ON u.id = oi.inviter_user_id WHERE {filter}"
+    ))
+    .bind(ctx.org_id).bind(&search).bind(&status_filter)
+    .fetch_one(&state.db).await
+    .map_err(|e| AppError::Internal(format!("Failed to count workspace invites: {e}")))?;
+    let items = sqlx::query_as::<_, WorkspaceInviteHistoryEntry>(&format!(
+        "SELECT oi.id, oi.email::text AS email, u.display_name AS inviter_display_name, {status_expr} AS status, oi.accepted_user_id, oi.responded_at, oi.expires_at, oi.created_at FROM organization_invites oi LEFT JOIN users u ON u.id = oi.inviter_user_id WHERE {filter} ORDER BY {sort_column} {sort_order}, oi.id DESC LIMIT $4 OFFSET $5"
+    ))
+    .bind(ctx.org_id).bind(&search).bind(&status_filter)
+    .bind(page_size).bind((page - 1).saturating_mul(page_size))
+    .fetch_all(&state.db).await
+    .map_err(|e| AppError::Internal(format!("Failed to list workspace invites: {e}")))?;
+    Ok(HttpResponse::Ok().json(WorkspaceInvitePage {
         items,
         total,
         page,
@@ -621,7 +593,7 @@ pub async fn list_workspace_integration_invites(
     params(("invite_id" = Uuid, Path, description = "Invite UUID")),
     security(("workspace_api_key" = [])),
     responses(
-        (status = 200, description = "Invite detail"),
+        (status = 200, description = "Invite detail", body = WorkspaceInviteHistoryEntry),
         (status = 401, description = "Missing or invalid workspace API key"),
         (status = 403, description = "API key lacks the invites.read permission"),
         (status = 404, description = "Invite not found in this workspace"),
@@ -2169,6 +2141,9 @@ pub async fn send_workspace_integration_invite(
     ensure_demo_workspace_allowed(&state, ctx.org_id).await?;
 
     let owner_user_id = resolve_workspace_api_owner_user_id(ctx.org_id, &state).await?;
+    let email = super::service::normalize_invite_email(&body.email)?;
+    let repo = OrganizationRepository::new(state.db.clone());
+    repo.reserve_invite_send(ctx.org_id, &email).await?;
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use rand::RngCore;
     let mut raw_bytes = [0u8; 32];
@@ -2179,10 +2154,9 @@ pub async fn send_workspace_integration_invite(
     let token_hash = hex::encode(hasher.finalize());
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
 
-    let repo = OrganizationRepository::new(state.db.clone());
     let invite = repo.create_invite(
         ctx.org_id,
-        &body.email,
+        &email,
         &token_hash,
         owner_user_id,
         expires_at,
@@ -2199,7 +2173,7 @@ pub async fn send_workspace_integration_invite(
     );
     if let Err(err) = crate::infra::email::send_action_email(
         &state.db,
-        &body.email,
+        &email,
         &format!("You've been invited to join {}", ctx.org_name),
         &format!("You're invited to join {}", ctx.org_name),
         &format!("A workspace API integration invited you to join {} on Rooiam. Click the button below to accept the invitation. This link expires in 48 hours.", ctx.org_name),
@@ -2208,7 +2182,7 @@ pub async fn send_workspace_integration_invite(
     )
     .await
     {
-        tracing::warn!("Invite email to {} failed (invite still created): {}", body.email, err);
+        tracing::warn!("Invite email to {} failed (invite still created): {}", email, err);
     }
 
     AuditService::new(state.db.clone()).log(AuditEvent {
@@ -2219,7 +2193,7 @@ pub async fn send_workspace_integration_invite(
         target_id: None,
         ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
         user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
-        metadata: serde_json::json!({ "invited_email": body.email, "key_prefix": ctx.key_prefix }),
+        metadata: serde_json::json!({ "invited_email": email, "key_prefix": ctx.key_prefix }),
     }).await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -2508,6 +2482,7 @@ pub struct InviteListQuery {
     pub page: Option<i64>,
     pub page_size: Option<i64>,
     pub q: Option<String>,
+    pub status: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
 }
@@ -4865,6 +4840,37 @@ async fn accept_invite(
         "organization_id": org_id,
         "org_slug": org_slug,
     })))
+}
+
+/// Decline an invitation addressed to the authenticated account.
+async fn decline_invite(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<AcceptInviteRequest>,
+) -> Result<HttpResponse, AppError> {
+    let session = extract_session(&req)?;
+    let service = OrganizationService::new(
+        OrganizationRepository::new(state.db.clone()),
+        state.db.clone(),
+    );
+    let org_id = service.decline_invite(session.user_id, &body.token).await?;
+    AuditService::new(state.db.clone())
+        .log(AuditEvent {
+            actor_user_id: Some(session.user_id),
+            organization_id: Some(org_id),
+            action: "workspace.invite.declined".into(),
+            target_type: "invite".into(),
+            target_id: None,
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req
+                .headers()
+                .get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from),
+            metadata: serde_json::json!({}),
+        })
+        .await;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "ok": true })))
 }
 
 // ── Org-scoped OAuth clients ─────────────────────────────────────────────────
@@ -7263,6 +7269,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("/switch", web::post().to(switch_org))
             .route("/{org_id}/members", web::get().to(list_org_members))
             .route("/{org_id}/invites", web::post().to(send_invite))
-            .route("/invites/accept", web::post().to(accept_invite)),
+            .route("/invites/accept", web::post().to(accept_invite))
+            .route("/invites/decline", web::post().to(decline_invite)),
     );
 }

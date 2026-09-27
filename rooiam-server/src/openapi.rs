@@ -262,5 +262,13 @@ mod sdk_contract_tests {
             server["paths"]["/v1/oidc/token"]["post"]["responses"]["200"],
             sdk["paths"]["/v1/oidc/token"]["post"]["responses"]["200"]
         );
+        for path in [
+            "/v1/orgs/integrations/members",
+            "/v1/orgs/integrations/members/by-user/{user_id}",
+            "/v1/orgs/integrations/invites",
+            "/v1/orgs/integrations/invites/{invite_id}",
+        ] {
+            assert_eq!(server["paths"][path], sdk["paths"][path], "SDK contract drift at {path}");
+        }
     }
 }
