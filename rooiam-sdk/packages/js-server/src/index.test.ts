@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { RooiamServer, RooiamError } from './index.js'
+import { RooiamServer, RooiamUser, RooiamError } from './index.js'
 
 // A mock fetch that records the request and returns a canned response.
 function mockFetch(
@@ -23,6 +23,34 @@ const opts = (fetch: typeof fetch) => ({
   fetch,
 })
 
+describe('RooiamUser bearer self-service', () => {
+  it('uses a user access token on the bearer self-session route', async () => {
+    const { fetch, calls } = mockFetch(200, [])
+    const user = new RooiamUser({ apiBase: 'https://api.example/v1/', accessToken: 'user_token', fetch })
+    expect(await user.sessions.list()).toEqual([])
+    expect(calls[0].url).toBe('https://api.example/v1/identity/token/sessions')
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer user_token')
+    expect(calls[0].init.redirect).toBe('error')
+  })
+
+  it('revokes one session using an encoded ID and revokes other sessions', async () => {
+    const { fetch, calls } = mockFetch(200, { ok: true, revoked_count: 2 })
+    const user = new RooiamUser({ apiBase: 'https://api.example/v1', accessToken: 'user_token', fetch })
+    await user.sessions.revoke('session/one')
+    await user.sessions.revokeOthers()
+    expect(calls[0].url).toBe('https://api.example/v1/identity/token/sessions/session%2Fone')
+    expect(calls[0].init.method).toBe('DELETE')
+    expect(calls[1].url).toBe('https://api.example/v1/identity/token/sessions/revoke-all')
+    expect(calls[1].init.method).toBe('POST')
+  })
+
+  it('preserves auth failures and never falls back to a workspace key', async () => {
+    const { fetch } = mockFetch(401, { error: { message: 'Session expired' } })
+    const user = new RooiamUser({ apiBase: 'https://api.example/v1', accessToken: 'expired', fetch })
+    await expect(user.sessions.list()).rejects.toMatchObject({ status: 401, message: 'Session expired' })
+  })
+})
+
 describe('RooiamServer construction', () => {
   it('requires apiBase', () => {
     expect(() => new RooiamServer({ apiBase: '', apiKey: 'k' } as any)).toThrow(/apiBase/)
@@ -44,6 +72,8 @@ describe('auth + request shape', () => {
     await new RooiamServer(opts(fetch)).workspace()
     const headers = calls[0].init.headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer wsk_test_key')
+    expect(calls[0].init.redirect).toBe('error')
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal)
   })
 
   it('builds the workspace URL', async () => {
@@ -189,8 +219,9 @@ describe('clients write surface', () => {
 
 describe('invites + meta getters', () => {
   it('invites.send() POSTs the email body', async () => {
-    const { fetch, calls } = mockFetch(200, {})
-    await new RooiamServer(opts(fetch)).invites.send('new@x.com')
+    const { fetch, calls } = mockFetch(200, { ok: true, invite_id: 'invite-1', email: 'new@x.com', expires_at: '2026-10-01T00:00:00Z' })
+    const result = await new RooiamServer(opts(fetch)).invites.send('new@x.com')
+    expect(result.invite_id).toBe('invite-1')
     expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/invites')
     expect(calls[0].init.method).toBe('POST')
     expect(JSON.parse(calls[0].init.body as string)).toEqual({ email: 'new@x.com' })

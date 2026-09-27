@@ -2154,7 +2154,7 @@ pub async fn send_workspace_integration_invite(
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
 
     let repo = OrganizationRepository::new(state.db.clone());
-    repo.create_invite(
+    let invite = repo.create_invite(
         ctx.org_id,
         &body.email,
         &token_hash,
@@ -2199,6 +2199,9 @@ pub async fn send_workspace_integration_invite(
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "ok": true,
         "message": "Invitation sent successfully",
+        "invite_id": invite.id,
+        "email": invite.email,
+        "expires_at": invite.expires_at,
     })))
 }
 
