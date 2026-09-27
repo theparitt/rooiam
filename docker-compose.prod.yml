@@ -64,6 +64,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server.prod
+      args:
+        ROOIAM_BUILD_REVISION: ${ROOIAM_BUILD_REVISION:-unknown}
+        ROOIAM_BUILD_BRANCH: ${ROOIAM_BUILD_BRANCH:-unknown}
+        ROOIAM_BUILD_REF: ${ROOIAM_BUILD_REF:-unknown}
+        ROOIAM_BUILD_VERSION: ${ROOIAM_BUILD_VERSION:-unreleased}
+        ROOIAM_BUILD_TIME_UTC: ${ROOIAM_BUILD_TIME_UTC:-unknown}
     restart: unless-stopped
     depends_on:
       postgres:

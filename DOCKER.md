@@ -65,10 +65,20 @@ docker compose -f docker-compose.demo.yml --env-file .env.docker.public.demo dow
 
 Production Compose has a build section; use `up -d --build` with `docker-compose.prod.yml` and its matching env file. Demo Compose has only an image tag, so `compose build` does not rebuild it.
 
+For a production build whose `/health` response identifies the exact source commit, pass the Git revision into the Compose build. The timestamp is recorded automatically when the binary compiles; `ROOIAM_BUILD_TIME_UTC` can also be supplied explicitly by CI. For example:
+
+```bash
+ROOIAM_BUILD_REVISION="$(git rev-parse HEAD)" \
+  docker compose -f docker-compose.prod.yml --env-file .env.docker.public.prod build server
+```
+
+`GET /health` returns `version` (the server crate version), `build.git_sha`, `build.built_at_utc` (UTC), and `timestamp` (the current server time). A Compose build without `ROOIAM_BUILD_REVISION` still records the build time, but reports `build.git_sha: "unknown"`; do not use that value to claim a particular source commit. The GHCR publish workflow supplies the full revision and timestamp automatically.
+
 ## Verify it worked
 
 ```bash
-# git_sha should match your latest commit; checks should be true
+# For a build with a supplied revision, git_sha should match that commit;
+# database and Redis checks should be true.
 curl -s http://localhost:5180/health | python3 -m json.tool   # demo (5170 for prod)
 ```
 

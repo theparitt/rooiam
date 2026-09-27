@@ -19,6 +19,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ROOIAM_BUILD_VERSION");
     println!("cargo:rerun-if-env-changed=ROOIAM_BUILD_TIME_UTC");
 
+    // Docker's default build arguments used to pass the literal "unknown".
+    // Treat it as absent so an ordinary Compose build still records when the
+    // binary was actually compiled.
     let built_at = build_value("ROOIAM_BUILD_TIME_UTC")
         .or_else(|| command_output("date", &["-u", "+%Y-%m-%dT%H:%M:%SZ"]))
         .unwrap_or_else(|| "unknown".to_string());
@@ -47,7 +50,7 @@ fn build_value(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
 }
 
 fn command_output(program: &str, args: &[&str]) -> Option<String> {
