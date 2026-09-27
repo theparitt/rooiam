@@ -535,6 +535,42 @@ impl OrganizationRepository {
         Ok(members)
     }
 
+    pub async fn get_organization_member_view_by_user(
+        &self,
+        organization_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<OrganizationMemberView>, AppError> {
+        sqlx::query_as::<_, OrganizationMemberView>(
+            r#"
+            SELECT
+                om.id, om.organization_id, om.user_id, om.status, om.created_at,
+                u.display_name, u.avatar_url, ue.email,
+                COALESCE(array_remove(array_agg(DISTINCT r.name), NULL), ARRAY[]::text[]) AS role_names,
+                COALESCE(array_remove(array_agg(DISTINCT r.code), NULL), ARRAY[]::text[]) AS role_codes,
+                COALESCE(
+                    GREATEST(
+                        (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                        (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                    ),
+                    (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                    (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                ) AS last_seen_at
+            FROM organization_members om
+            JOIN users u ON u.id = om.user_id
+            LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
+            LEFT JOIN member_roles mr ON mr.member_id = om.id
+            LEFT JOIN roles r ON r.id = mr.role_id
+            WHERE om.organization_id = $1 AND om.user_id = $2
+            GROUP BY om.id, om.organization_id, om.user_id, om.status, om.created_at, u.display_name, u.avatar_url, ue.email
+            "#,
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::Internal(format!("Failed to load workspace member: {error}")))
+    }
+
     pub async fn get_organization_activity(
         &self,
         organization_id: Uuid,

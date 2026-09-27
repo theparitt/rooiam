@@ -355,6 +355,9 @@ export class RooiamServer {
     get: (memberId: string): Promise<GetResp<'/v1/orgs/integrations/members/{member_id}'>> =>
       this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}`),
 
+    byUserId: (userId: string) =>
+      this.request(`/orgs/integrations/members/by-user/${encodeURIComponent(userId)}`),
+
     activity: (memberId: string, query: ActivityQuery = {}) =>
       this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/activity`, {
         query: query as Query,

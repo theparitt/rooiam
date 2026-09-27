@@ -308,6 +308,32 @@ pub async fn get_workspace_integration_member_detail(
 }
 
 #[utoipa::path(
+    get,
+    path = "/v1/orgs/integrations/members/by-user/{user_id}",
+    tag = "integrations",
+    params(("user_id" = Uuid, Path, description = "Stable RooIAM user UUID")),
+    security(("workspace_api_key" = [])),
+    responses(
+        (status = 200, description = "Workspace member with the requested user ID"),
+        (status = 401), (status = 403), (status = 404),
+    ),
+)]
+pub async fn get_workspace_integration_member_by_user(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    let ctx = resolve_workspace_api_key_context(&req, &state).await?;
+    require_workspace_api_key_permission(&ctx, "members.read")?;
+    let user_id = path.into_inner();
+    let member = OrganizationRepository::new(state.db.clone())
+        .get_organization_member_view_by_user(ctx.org_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User is not a member of this workspace.".into()))?;
+    Ok(HttpResponse::Ok().json(member))
+}
+
+#[utoipa::path(
     patch,
     path = "/v1/orgs/integrations/members/{member_id}/profile",
     tag = "integrations",
@@ -7003,6 +7029,10 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.route(
         "/integrations/members/{member_id}",
         web::get().to(get_workspace_integration_member_detail),
+    );
+    cfg.route(
+        "/integrations/members/by-user/{user_id}",
+        web::get().to(get_workspace_integration_member_by_user),
     );
     cfg.route(
         "/integrations/members/{member_id}/activity",

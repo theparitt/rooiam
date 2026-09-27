@@ -109,6 +109,12 @@ describe('members', () => {
     expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/members/m%201%2Fx')
   })
 
+  it('byUserId() looks up a stable user subject within the key workspace', async () => {
+    const { fetch, calls } = mockFetch(200, { user_id: 'u1' })
+    await new RooiamServer(opts(fetch)).members.byUserId('u 1/x')
+    expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/members/by-user/u%201%2Fx')
+  })
+
   it('setRole() sends a PATCH with the role_code body', async () => {
     const { fetch, calls } = mockFetch(200, {})
     await new RooiamServer(opts(fetch)).members.setRole('m1', 'admin')

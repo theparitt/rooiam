@@ -40,6 +40,7 @@ use utoipa::{Modify, OpenApi};
         // members
         crate::modules::organization::handlers::list_workspace_integration_members,
         crate::modules::organization::handlers::get_workspace_integration_member_detail,
+        crate::modules::organization::handlers::get_workspace_integration_member_by_user,
         crate::modules::organization::handlers::list_workspace_integration_member_activity,
         crate::modules::organization::handlers::list_workspace_integration_member_sessions,
         crate::modules::organization::handlers::revoke_workspace_integration_member_sessions,
