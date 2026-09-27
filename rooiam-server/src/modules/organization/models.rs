@@ -67,7 +67,7 @@ pub struct OrganizationMember {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct OrganizationMemberView {
     pub id: Uuid,
     pub organization_id: Uuid,

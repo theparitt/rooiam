@@ -17,7 +17,8 @@ This repo currently contains:
 - [packages/js-server](./packages/js-server)
   - server-side SDK
   - backend integration with RooIAM workspace APIs
-  - API-key based trusted service calls
+  - workspace API-key calls through `RooiamServer`
+  - BFF-only user self-session calls through `RooiamUser` with a server-held OIDC access token
 - [spec/openapi.json](./spec/openapi.json)
   - OpenAPI source used to generate SDK types
 
@@ -106,10 +107,33 @@ Purpose:
 
 Use it when your server needs to:
 
-- read or manage workspace integration state
-- perform trusted API operations
-- automate identity-related backend workflows
-- exchange RooIAM identity into an app-owned session on behalf of your product
+- list or search workspace members and invitations, including their outcomes
+- invite, revoke, or inspect workspace members through a workspace API key
+- manage the signed-in user's own RooIAM sessions with that user's server-held OIDC access token
+
+```ts
+import { RooiamServer, RooiamUser } from '@rooiam/sdk-server'
+
+const workspace = new RooiamServer({
+  apiBase: 'https://api.rooiam.com/v1',
+  apiKey: process.env.ROOIAM_WORKSPACE_API_KEY!,
+})
+const sent = await workspace.invites.send('staff@example.com')
+const outcome = await workspace.invites.get(sent.invite_id)
+const activeMember = await workspace.members.byUserId('<stable RooIAM user UUID>')
+
+// Create only inside your BFF after validating your own opaque app session.
+const self = new RooiamUser({
+  apiBase: 'https://api.rooiam.com/v1',
+  accessToken: appSession.rooiamAccessToken,
+})
+const sessions = await self.sessions.list()
+```
+
+The SDK does not grant application roles or create the app session. Match
+provider users by stable `user_id`, require active workspace membership, and
+keep product permissions in the downstream application. Never use the
+workspace key for a user's self-service session routes.
 
 ## Repository Layout
 

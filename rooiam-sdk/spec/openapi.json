@@ -2403,6 +2403,14 @@
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "sort_by",
             "in": "query",
             "required": false,
@@ -2421,7 +2429,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated pending workspace invites"
+            "description": "Paginated workspace invitation history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInvitePage"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid workspace API key"
@@ -2492,7 +2507,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Invite detail"
+            "description": "Invite detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInviteHistoryEntry"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid workspace API key"
@@ -2623,13 +2645,66 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated workspace members"
+            "description": "Paginated workspace members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMemberPage"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid workspace API key"
           },
           "403": {
             "description": "API key lacks the members.read permission"
+          }
+        },
+        "security": [
+          {
+            "workspace_api_key": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/integrations/members/by-user/{user_id}": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "operationId": "get_workspace_integration_member_by_user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Stable RooIAM user UUID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace member with the requested user ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
           }
         },
         "security": [
@@ -2659,7 +2734,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Member detail"
+            "description": "Member detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberView"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid workspace API key"
@@ -3938,6 +4020,76 @@
         },
         "additionalProperties": false
       },
+      "OrganizationMemberView": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "user_id",
+          "status",
+          "created_at",
+          "role_names",
+          "role_codes"
+        ],
+        "properties": {
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "role_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "PhoneDecision": {
         "type": "object",
         "required": [
@@ -5028,6 +5180,114 @@
           },
           "workspace_slug": {
             "type": "string"
+          }
+        }
+      },
+      "WorkspaceInviteHistoryEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "status",
+          "expires_at",
+          "created_at"
+        ],
+        "properties": {
+          "accepted_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "inviter_display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "responded_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkspaceInvitePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceInviteHistoryEntry"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "WorkspaceMemberPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMemberView"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       }

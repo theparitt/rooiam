@@ -46,7 +46,13 @@ Useful query params:
 - `page_size`
 - `sort_by`
 - `sort_order`
-- `search`
+- `q` (display name, email, or role)
+- `role` and `status`
+
+The list is searched and paginated in PostgreSQL. `GET
+/v1/orgs/integrations/members/by-user/{user_id}` looks up one member by
+their stable RooIAM user ID within the key's workspace. Check the returned
+`status` before using membership as an admission signal.
 
 ## Invite A Member
 
@@ -56,10 +62,26 @@ curl https://auth.example.com/v1/orgs/integrations/invites \
   -H "Authorization: Bearer $ROOIAM_WORKSPACE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "dev@example.com",
-    "role": "member"
+    "email": "dev@example.com"
   }'
 ```
+
+The response includes `invite_id`, `email`, and `expires_at`. RooIAM sends a
+membership invitation, not an application-specific staff role. A recipient
+must explicitly accept or decline it. To check the outcome, call
+`GET /v1/orgs/integrations/invites?status=all` or
+`GET /v1/orgs/integrations/invites/{invite_id}`. Status is `pending`,
+`accepted`, `declined`, `revoked`, or `expired`; `accepted_user_id` identifies
+the accepting account. Re-sending after a terminal outcome creates a new
+invitation record. Only `pending` invitations can be revoked.
+The send endpoint and tenant portal share a workspace limit of 100 invitations
+per UTC day and a 10-minute cooldown for the same recipient. A limit returns
+HTTP 429.
+
+For application sign-in and a user's own sessions, use the OIDC BFF flow and
+its server-held user access token described in the
+[BFF guide](./20_bff_user_token_integration.md). A workspace API key cannot
+act as that user.
 
 ## List Workspace Apps
 

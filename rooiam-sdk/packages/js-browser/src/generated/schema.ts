@@ -1087,6 +1087,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orgs/integrations/members/by-user/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_workspace_integration_member_by_user"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/integrations/members/{member_id}": {
         parameters: {
             query?: never;
@@ -1514,6 +1530,24 @@ export interface components {
             token: string;
             token_type_hint?: string | null;
         };
+        OrganizationMemberView: {
+            avatar_url?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            display_name?: string | null;
+            email?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_seen_at?: string | null;
+            /** Format: uuid */
+            organization_id: string;
+            role_codes: string[];
+            role_names: string[];
+            status: string;
+            /** Format: uuid */
+            user_id: string;
+        };
         PhoneDecision: {
             approval_signature?: string | null;
             device_token: string;
@@ -1751,6 +1785,39 @@ export interface components {
             workspace_id: string;
             workspace_name: string;
             workspace_slug: string;
+        };
+        WorkspaceInviteHistoryEntry: {
+            /** Format: uuid */
+            accepted_user_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            email: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            inviter_display_name?: string | null;
+            /** Format: date-time */
+            responded_at?: string | null;
+            status: string;
+        };
+        WorkspaceInvitePage: {
+            items: components["schemas"]["WorkspaceInviteHistoryEntry"][];
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        WorkspaceMemberPage: {
+            items: components["schemas"]["OrganizationMemberView"][];
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
         };
     };
     responses: never;
@@ -4077,6 +4144,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 q?: string;
+                status?: string;
                 sort_by?: string;
                 sort_order?: string;
             };
@@ -4086,12 +4154,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated pending workspace invites */
+            /** @description Paginated workspace invitation history */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkspaceInvitePage"];
+                };
             };
             /** @description Missing or invalid workspace API key */
             401: {
@@ -4169,7 +4239,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkspaceInviteHistoryEntry"];
+                };
             };
             /** @description Missing or invalid workspace API key */
             401: {
@@ -4265,7 +4337,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMemberPage"];
+                };
             };
             /** @description Missing or invalid workspace API key */
             401: {
@@ -4276,6 +4350,47 @@ export interface operations {
             };
             /** @description API key lacks the members.read permission */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_workspace_integration_member_by_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable RooIAM user UUID */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace member with the requested user ID */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberView"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4300,7 +4415,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberView"];
+                };
             };
             /** @description Missing or invalid workspace API key */
             401: {

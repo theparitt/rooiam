@@ -61,6 +61,117 @@ mod tenant_boundary_tests {
         assert_eq!(total, 0);
         assert!(items.is_empty());
     }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn member_directory_searches_beyond_first_200_and_keeps_workspace_scope(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Main', 'member-directory-main') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let foreign: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Other', 'member-directory-other') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("WITH new_users AS (INSERT INTO users (display_name) SELECT 'Person ' || lpad(n::text, 3, '0') FROM generate_series(1, 205) n RETURNING id) INSERT INTO organization_members (organization_id, user_id) SELECT $1, id FROM new_users")
+            .bind(org).execute(&pool).await.unwrap();
+        let outsider: Uuid = sqlx::query_scalar("INSERT INTO users (display_name) VALUES ('Person 999') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO organization_members (organization_id, user_id) VALUES ($1, $2)")
+            .bind(foreign).bind(outsider).execute(&pool).await.unwrap();
+
+        let (items, total) = repo.search_organization_member_views(org, "", "all", "all", "display_name", "asc", 3, 100).await.unwrap();
+        assert_eq!(total, 205);
+        assert_eq!(items.len(), 5);
+        let (items, total) = repo.search_organization_member_views(org, "Person 205", "all", "all", "created_at", "desc", 1, 20).await.unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].display_name.as_deref(), Some("Person 205"));
+        let (items, total) = repo.search_organization_member_views(org, "Person 999", "all", "all", "created_at", "desc", 1, 20).await.unwrap();
+        assert_eq!(total, 0);
+        assert!(items.is_empty());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn invitation_outcomes_are_single_use_and_keep_history(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let inviter: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let invitee: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Main', 'invite-history-main') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let foreign: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Other', 'invite-history-other') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let first = repo.create_invite(org, "invitee@example.com", "hash-1", inviter, chrono::Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        assert!(repo.revoke_invite(first.id, foreign).await.is_err());
+        repo.mark_invite_used(first.id, invitee, org).await.unwrap();
+        assert!(repo.mark_invite_used(first.id, invitee, org).await.is_err());
+        let first_status: String = sqlx::query_scalar("SELECT status FROM organization_invites WHERE id = $1")
+            .bind(first.id).fetch_one(&pool).await.unwrap();
+        assert_eq!(first_status, "accepted");
+
+        let second = repo.create_invite(org, "invitee@example.com", "hash-2", inviter, chrono::Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        assert_ne!(first.id, second.id);
+        repo.decline_invite(second.id, org).await.unwrap();
+        assert!(repo.mark_invite_used(second.id, invitee, org).await.is_err());
+        let third = repo.create_invite(org, "invitee@example.com", "hash-3", inviter, chrono::Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        repo.revoke_invite(third.id, org).await.unwrap();
+        let outcomes: Vec<String> = sqlx::query_scalar("SELECT status FROM organization_invites WHERE organization_id = $1 ORDER BY created_at, id")
+            .bind(org).fetch_all(&pool).await.unwrap();
+        assert_eq!(outcomes.len(), 3);
+        assert!(outcomes.contains(&"accepted".to_string()));
+        assert!(outcomes.contains(&"declined".to_string()));
+        assert!(outcomes.contains(&"revoked".to_string()));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn invitation_send_cooldown_is_scoped_to_recipient_and_workspace(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let first: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('First', 'invite-limit-first') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let second: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Second', 'invite-limit-second') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        repo.reserve_invite_send(first, "member@example.com").await.unwrap();
+        assert!(matches!(repo.reserve_invite_send(first, "member@example.com").await, Err(AppError::RateLimited)));
+        repo.reserve_invite_send(first, "other@example.com").await.unwrap();
+        repo.reserve_invite_send(second, "member@example.com").await.unwrap();
+        let count: i32 = sqlx::query_scalar("SELECT sends FROM organization_invite_daily_limits WHERE organization_id = $1")
+            .bind(first).fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 2);
+        let existing_user: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        sqlx::query("INSERT INTO user_emails (user_id, email, is_primary, is_verified) VALUES ($1, 'existing@example.com', true, true)")
+            .bind(existing_user).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO organization_members (organization_id, user_id) VALUES ($1, $2)")
+            .bind(first).bind(existing_user).execute(&pool).await.unwrap();
+        assert!(matches!(repo.reserve_invite_send(first, "existing@example.com").await, Err(AppError::Conflict(_))));
+        for n in 0..98 {
+            repo.reserve_invite_send(first, &format!("recipient-{n}@example.com")).await.unwrap();
+        }
+        assert!(matches!(repo.reserve_invite_send(first, "over-limit@example.com").await, Err(AppError::RateLimited)));
+        let count: i32 = sqlx::query_scalar("SELECT sends FROM organization_invite_daily_limits WHERE organization_id = $1")
+            .bind(first).fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 100);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn concurrent_accept_and_decline_have_one_terminal_outcome(pool: PgPool) {
+        let repo = OrganizationRepository::new(pool.clone());
+        let inviter: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let invitee: Uuid = sqlx::query_scalar("INSERT INTO users DEFAULT VALUES RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let org: Uuid = sqlx::query_scalar("INSERT INTO organizations (name, slug) VALUES ('Race', 'invite-race') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let invite = repo.create_invite(org, "race@example.com", "race-hash", inviter, chrono::Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        let (accepted, declined) = tokio::join!(
+            repo.mark_invite_used(invite.id, invitee, org),
+            repo.decline_invite(invite.id, org),
+        );
+        assert_ne!(accepted.is_ok(), declined.is_ok());
+        let status: String = sqlx::query_scalar("SELECT status FROM organization_invites WHERE id = $1")
+            .bind(invite.id).fetch_one(&pool).await.unwrap();
+        assert!(status == "accepted" || status == "declined");
+        let member_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM organization_members WHERE organization_id = $1 AND user_id = $2")
+            .bind(org).bind(invitee).fetch_one(&pool).await.unwrap();
+        assert_eq!(member_count, if status == "accepted" { 1 } else { 0 });
+    }
 }
 
 impl OrganizationRepository {
@@ -535,6 +646,123 @@ impl OrganizationRepository {
         Ok(members)
     }
 
+    pub async fn get_organization_member_view_by_user(
+        &self,
+        organization_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<OrganizationMemberView>, AppError> {
+        sqlx::query_as::<_, OrganizationMemberView>(
+            r#"
+            SELECT
+                om.id, om.organization_id, om.user_id, om.status, om.created_at,
+                u.display_name, u.avatar_url, ue.email,
+                COALESCE(array_remove(array_agg(DISTINCT r.name), NULL), ARRAY[]::text[]) AS role_names,
+                COALESCE(array_remove(array_agg(DISTINCT r.code), NULL), ARRAY[]::text[]) AS role_codes,
+                COALESCE(
+                    GREATEST(
+                        (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                        (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                    ),
+                    (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                    (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                ) AS last_seen_at
+            FROM organization_members om
+            JOIN users u ON u.id = om.user_id
+            LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
+            LEFT JOIN member_roles mr ON mr.member_id = om.id
+            LEFT JOIN roles r ON r.id = mr.role_id
+            WHERE om.organization_id = $1 AND om.user_id = $2
+            GROUP BY om.id, om.organization_id, om.user_id, om.status, om.created_at, u.display_name, u.avatar_url, ue.email
+            "#,
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::Internal(format!("Failed to load workspace member: {error}")))
+    }
+
+    pub async fn get_organization_member_view_by_id(
+        &self,
+        organization_id: Uuid,
+        member_id: Uuid,
+    ) -> Result<Option<OrganizationMemberView>, AppError> {
+        let user_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT user_id FROM organization_members WHERE organization_id = $1 AND id = $2",
+        )
+        .bind(organization_id)
+        .bind(member_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        match user_id {
+            Some(user_id) => self.get_organization_member_view_by_user(organization_id, user_id).await,
+            None => Ok(None),
+        }
+    }
+
+    pub async fn search_organization_member_views(
+        &self,
+        organization_id: Uuid,
+        search: &str,
+        role: &str,
+        status: &str,
+        sort_by: &str,
+        sort_order: &str,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(Vec<OrganizationMemberView>, i64), AppError> {
+        let search = search.trim().to_lowercase();
+        let sort_column = match sort_by {
+            "display_name" => "lower(u.display_name)",
+            "email" => "lower(ue.email::text)",
+            "status" => "om.status",
+            "role" => "role_codes",
+            "created_at" => "om.created_at",
+            "last_seen_at" => "last_seen_at",
+            _ => return Err(AppError::Validation("Invalid member sort field.".into())),
+        };
+        let direction = match sort_order {
+            "asc" => "ASC",
+            "desc" => "DESC",
+            _ => return Err(AppError::Validation("Invalid member sort order.".into())),
+        };
+        let filter = "om.organization_id = $1 AND ($2 = '' OR lower(coalesce(u.display_name, '')) LIKE '%' || $2 || '%' OR lower(coalesce(ue.email::text, '')) LIKE '%' || $2 || '%' OR EXISTS (SELECT 1 FROM member_roles mrq JOIN roles rq ON rq.id = mrq.role_id WHERE mrq.member_id = om.id AND lower(rq.code) LIKE '%' || $2 || '%')) AND ($3 = 'all' OR EXISTS (SELECT 1 FROM member_roles mrf JOIN roles rf ON rf.id = mrf.role_id WHERE mrf.member_id = om.id AND lower(rf.code) = $3)) AND ($4 = 'all' OR lower(om.status) = $4)";
+        let total: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM organization_members om JOIN users u ON u.id = om.user_id LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true WHERE {filter}"
+        ))
+        .bind(organization_id).bind(&search).bind(role).bind(status)
+        .fetch_one(&self.pool).await?;
+        let members = sqlx::query_as::<_, OrganizationMemberView>(&format!(
+            r#"
+            SELECT om.id, om.organization_id, om.user_id, om.status, om.created_at,
+                   u.display_name, u.avatar_url, ue.email,
+                   COALESCE(array_remove(array_agg(DISTINCT r.name), NULL), ARRAY[]::text[]) AS role_names,
+                   COALESCE(array_remove(array_agg(DISTINCT r.code), NULL), ARRAY[]::text[]) AS role_codes,
+                   COALESCE(
+                       GREATEST(
+                           (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                           (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                       ),
+                       (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = om.user_id),
+                       (SELECT MAX(al.created_at) FROM audit_logs al WHERE al.actor_user_id = om.user_id)
+                   ) AS last_seen_at
+            FROM organization_members om
+            JOIN users u ON u.id = om.user_id
+            LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
+            LEFT JOIN member_roles mr ON mr.member_id = om.id
+            LEFT JOIN roles r ON r.id = mr.role_id
+            WHERE {filter}
+            GROUP BY om.id, om.organization_id, om.user_id, om.status, om.created_at, u.display_name, u.avatar_url, ue.email
+            ORDER BY {sort_column} {direction} NULLS LAST, om.id DESC
+            LIMIT $5 OFFSET $6
+            "#
+        ))
+        .bind(organization_id).bind(&search).bind(role).bind(status)
+        .bind(page_size).bind((page - 1).saturating_mul(page_size))
+        .fetch_all(&self.pool).await?;
+        Ok((members, total))
+    }
+
     pub async fn get_organization_activity(
         &self,
         organization_id: Uuid,
@@ -797,11 +1025,19 @@ impl OrganizationRepository {
         inviter_user_id: Uuid,
         expires_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<OrganizationInvite, AppError> {
+        // Preserve the old expired row before issuing a fresh invitation.
+        sqlx::query(
+            "UPDATE organization_invites SET status = 'expired', responded_at = expires_at WHERE organization_id = $1 AND email = $2 AND status = 'pending' AND expires_at <= NOW()",
+        )
+        .bind(organization_id)
+        .bind(email)
+        .execute(&self.pool)
+        .await?;
         let invite = sqlx::query_as::<_, OrganizationInvite>(
             r#"
             INSERT INTO organization_invites (organization_id, email, token_hash, inviter_user_id, expires_at)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (organization_id, email) 
+            ON CONFLICT (organization_id, email) WHERE status = 'pending'
             DO UPDATE SET token_hash = EXCLUDED.token_hash, inviter_user_id = EXCLUDED.inviter_user_id, expires_at = EXCLUDED.expires_at, used_at = NULL, created_at = NOW()
             RETURNING id, organization_id, email, token_hash, inviter_user_id, expires_at, used_at, created_at
             "#
@@ -818,12 +1054,47 @@ impl OrganizationRepository {
         Ok(invite)
     }
 
+    pub async fn reserve_invite_send(
+        &self,
+        organization_id: Uuid,
+        email: &str,
+    ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await?;
+        let already_member: Option<Uuid> = sqlx::query_scalar(
+            "SELECT om.id FROM organization_members om JOIN user_emails ue ON ue.user_id = om.user_id WHERE om.organization_id = $1 AND ue.email = $2 AND om.status = 'active' LIMIT 1",
+        )
+        .bind(organization_id).bind(email)
+        .fetch_optional(&mut *tx).await?;
+        if already_member.is_some() {
+            return Err(AppError::Conflict("This account is already a workspace member".into()));
+        }
+        let recipient_reserved: Option<String> = sqlx::query_scalar(
+            "INSERT INTO organization_invite_recipient_cooldowns (organization_id, email, next_allowed_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes') ON CONFLICT (organization_id, email) DO UPDATE SET next_allowed_at = EXCLUDED.next_allowed_at WHERE organization_invite_recipient_cooldowns.next_allowed_at <= NOW() RETURNING email::text",
+        )
+        .bind(organization_id).bind(email)
+        .fetch_optional(&mut *tx).await?;
+        if recipient_reserved.is_none() {
+            return Err(AppError::RateLimited);
+        }
+        let daily_reserved: Option<i32> = sqlx::query_scalar(
+            "INSERT INTO organization_invite_daily_limits (organization_id, day, sends) VALUES ($1, (NOW() AT TIME ZONE 'UTC')::date, 1) ON CONFLICT (organization_id, day) DO UPDATE SET sends = organization_invite_daily_limits.sends + 1 WHERE organization_invite_daily_limits.sends < 100 RETURNING sends",
+        )
+        .bind(organization_id)
+        .fetch_optional(&mut *tx).await?;
+        if daily_reserved.is_none() {
+            return Err(AppError::RateLimited);
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn get_valid_invite(&self, token_hash: &str) -> Result<OrganizationInvite, AppError> {
         let invite = sqlx::query_as::<_, OrganizationInvite>(
             r#"
             SELECT id, organization_id, email, token_hash, inviter_user_id, expires_at, used_at, created_at
             FROM organization_invites
             WHERE token_hash = $1
+              AND status = 'pending'
               AND used_at IS NULL
               AND expires_at > NOW()
             "#
@@ -855,6 +1126,7 @@ impl OrganizationRepository {
             LEFT JOIN users u ON u.id = oi.inviter_user_id
             LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = true
             WHERE oi.organization_id = $1
+              AND oi.status = 'pending'
               AND oi.used_at IS NULL
               AND oi.expires_at > NOW()
             ORDER BY oi.created_at DESC
@@ -874,10 +1146,13 @@ impl OrganizationRepository {
     ) -> Result<OrganizationInvite, AppError> {
         let invite = sqlx::query_as::<_, OrganizationInvite>(
             r#"
-            DELETE FROM organization_invites
+            UPDATE organization_invites
+            SET status = 'revoked', responded_at = NOW()
             WHERE id = $1
               AND organization_id = $2
+              AND status = 'pending'
               AND used_at IS NULL
+              AND expires_at > NOW()
             RETURNING id, organization_id, email, token_hash, inviter_user_id, expires_at, used_at, created_at
             "#
         )
@@ -898,11 +1173,19 @@ impl OrganizationRepository {
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
 
-        // 1. Mark invite used
-        sqlx::query("UPDATE organization_invites SET used_at = NOW() WHERE id = $1")
+        // Claim once inside the same transaction as the member grant. A
+        // concurrent decline, revoke, or acceptance cannot activate this row.
+        let claimed = sqlx::query(
+            "UPDATE organization_invites SET used_at = NOW(), status = 'accepted', responded_at = NOW(), accepted_user_id = $2 WHERE id = $1 AND organization_id = $3 AND status = 'pending' AND expires_at > NOW() RETURNING id",
+        )
             .bind(invite_id)
-            .execute(&mut *tx)
+            .bind(user_id)
+            .bind(organization_id)
+            .fetch_optional(&mut *tx)
             .await?;
+        if claimed.is_none() {
+            return Err(AppError::Validation("Invitation is no longer available".into()));
+        }
 
         // 2. Insert member (ignore conflict if already a member, but set status active)
         let member_rec = sqlx::query(
@@ -932,6 +1215,24 @@ impl OrganizationRepository {
 
         tx.commit().await?;
 
+        Ok(())
+    }
+
+    pub async fn decline_invite(
+        &self,
+        invite_id: Uuid,
+        organization_id: Uuid,
+    ) -> Result<(), AppError> {
+        let changed = sqlx::query(
+            "UPDATE organization_invites SET status = 'declined', responded_at = NOW() WHERE id = $1 AND organization_id = $2 AND status = 'pending' AND expires_at > NOW() RETURNING id",
+        )
+        .bind(invite_id)
+        .bind(organization_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if changed.is_none() {
+            return Err(AppError::Validation("Invitation is no longer available".into()));
+        }
         Ok(())
     }
 

@@ -17,6 +17,79 @@ export interface RooiamServerOptions {
   fetch?: typeof fetch
 }
 
+/** Server-held OIDC access token for one signed-in user. Never send this to a browser. */
+export interface RooiamUserOptions {
+  /** API base including /v1. */
+  apiBase: string
+  accessToken: string
+  fetch?: typeof fetch
+}
+
+export interface RooiamUserSession {
+  id: string
+  current_org_id: string | null
+  login_app_name: string | null
+  login_workspace_slug: string | null
+  user_agent: string | null
+  ip: string | null
+  created_at: string
+  last_seen_at: string | null
+  expires_at: string
+  is_current: boolean
+}
+
+/**
+ * BFF-only self-service client. The caller must load this user's access token
+ * from its own server-side session. A workspace API key cannot impersonate a
+ * user, and RooIAM's /identity/me cookie routes are not used here.
+ */
+export class RooiamUser {
+  private readonly apiBase: string
+  private readonly accessToken: string
+  private readonly fetchImpl: typeof fetch
+
+  constructor(opts: RooiamUserOptions) {
+    if (!opts.apiBase) throw new Error('RooiamUser: apiBase is required (include /v1)')
+    if (!opts.accessToken) throw new Error('RooiamUser: accessToken is required')
+    this.apiBase = opts.apiBase.replace(/\/+$/, '')
+    this.accessToken = opts.accessToken
+    this.fetchImpl = opts.fetch ?? globalThis.fetch
+    if (!this.fetchImpl) throw new Error('RooiamUser: no fetch available; pass opts.fetch')
+  }
+
+  private async request<T>(path: string, method = 'GET'): Promise<T> {
+    const response = await this.fetchImpl(`${this.apiBase}/identity/token${path}`, {
+      method,
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    })
+    const raw = await response.text()
+    let body: unknown
+    try {
+      body = raw ? JSON.parse(raw) : {}
+    } catch {
+      body = raw
+    }
+    if (!response.ok) {
+      const message =
+        (body as { error?: { message?: string }; message?: string })?.error?.message ||
+        (body as { message?: string })?.message ||
+        `Rooiam request failed: ${response.status}`
+      throw new RooiamError(message, response.status, body)
+    }
+    return body as T
+  }
+
+  readonly sessions = {
+    list: (): Promise<RooiamUserSession[]> => this.request('/sessions'),
+    revoke: (sessionId: string): Promise<{ ok: boolean; message: string }> =>
+      this.request(`/sessions/${encodeURIComponent(sessionId)}`, 'DELETE'),
+    revokeOthers: (): Promise<{ ok: boolean; revoked_count: number }> =>
+      this.request('/sessions/revoke-all', 'POST'),
+  }
+}
+
 /** Error thrown for any non-2xx response, carrying the HTTP status + parsed body. */
 export class RooiamError extends Error {
   readonly status: number
@@ -69,8 +142,57 @@ export interface InviteListQuery {
   page?: number
   page_size?: number
   q?: string
+  status?: 'all' | 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
   sort_by?: string
   sort_order?: 'asc' | 'desc'
+}
+
+export interface Page<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface WorkspaceMember {
+  id: string
+  organization_id: string
+  user_id: string
+  status: string
+  created_at: string
+  display_name: string | null
+  avatar_url: string | null
+  email: string | null
+  role_names: string[]
+  role_codes: string[]
+  last_seen_at: string | null
+}
+
+export interface WorkspaceInvite {
+  id: string
+  email: string
+  inviter_display_name: string | null
+  status: 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
+  accepted_user_id: string | null
+  responded_at: string | null
+  expires_at: string
+  created_at: string
+}
+
+export interface WorkspaceMemberSession {
+  id: string
+  user_agent: string | null
+  ip: string | null
+  last_seen_at: string | null
+  created_at: string
+}
+
+export interface SentInvite {
+  ok: boolean
+  message: string
+  invite_id: string
+  email: string
+  expires_at: string
 }
 
 // ---- request body shapes (mirror the server DTOs) ----
@@ -152,6 +274,8 @@ export class RooiamServer {
     }
     const res = await this.fetchImpl(url.toString(), {
       ...init,
+      redirect: 'error',
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
@@ -247,15 +371,15 @@ export class RooiamServer {
   }
 
   readonly invites = {
-    list: (query: InviteListQuery = {}): Promise<GetResp<'/v1/orgs/integrations/invites'>> =>
-      this.request('/orgs/integrations/invites', { query: query as Query }),
+    list: (query: InviteListQuery = {}): Promise<Page<WorkspaceInvite>> =>
+      this.request<Page<WorkspaceInvite>>('/orgs/integrations/invites', { query: query as Query }),
 
-    get: (inviteId: string): Promise<GetResp<'/v1/orgs/integrations/invites/{invite_id}'>> =>
-      this.request(`/orgs/integrations/invites/${encodeURIComponent(inviteId)}`),
+    get: (inviteId: string): Promise<WorkspaceInvite> =>
+      this.request<WorkspaceInvite>(`/orgs/integrations/invites/${encodeURIComponent(inviteId)}`),
 
     /** POST /orgs/integrations/invites — invite an email to the workspace. */
-    send: (email: string) =>
-      this.request('/orgs/integrations/invites', {
+    send: (email: string): Promise<SentInvite> =>
+      this.request<SentInvite>('/orgs/integrations/invites', {
         method: 'POST',
         body: JSON.stringify({ email }),
       }),
@@ -267,19 +391,22 @@ export class RooiamServer {
   }
 
   readonly members = {
-    list: (query: MemberListQuery = {}): Promise<GetResp<'/v1/orgs/integrations/members'>> =>
-      this.request('/orgs/integrations/members', { query: query as Query }),
+    list: (query: MemberListQuery = {}): Promise<Page<WorkspaceMember>> =>
+      this.request<Page<WorkspaceMember>>('/orgs/integrations/members', { query: query as Query }),
 
-    get: (memberId: string): Promise<GetResp<'/v1/orgs/integrations/members/{member_id}'>> =>
-      this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}`),
+    get: (memberId: string): Promise<WorkspaceMember> =>
+      this.request<WorkspaceMember>(`/orgs/integrations/members/${encodeURIComponent(memberId)}`),
+
+    byUserId: (userId: string): Promise<WorkspaceMember> =>
+      this.request<WorkspaceMember>(`/orgs/integrations/members/by-user/${encodeURIComponent(userId)}`),
 
     activity: (memberId: string, query: ActivityQuery = {}) =>
       this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/activity`, {
         query: query as Query,
       }),
 
-    sessions: (memberId: string) =>
-      this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`),
+    sessions: (memberId: string): Promise<WorkspaceMemberSession[]> =>
+      this.request<WorkspaceMemberSession[]>(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`),
 
     revokeSessions: (memberId: string) =>
       this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`, {
