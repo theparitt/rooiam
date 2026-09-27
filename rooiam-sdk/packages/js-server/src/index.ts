@@ -195,6 +195,17 @@ export interface SentInvite {
   expires_at: string
 }
 
+export interface WorkspaceMemberSessionRevocation {
+  ok: boolean
+  member_id: string
+  revoked_count: number
+}
+
+export interface WorkspaceMemberMutation {
+  ok: boolean
+  message: string
+}
+
 // ---- request body shapes (mirror the server DTOs) ----
 export interface BrandingUpdate {
   name?: string
@@ -408,13 +419,15 @@ export class RooiamServer {
     sessions: (memberId: string): Promise<WorkspaceMemberSession[]> =>
       this.request<WorkspaceMemberSession[]>(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`),
 
-    revokeSessions: (memberId: string) =>
-      this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`, {
+    /** Revoke this member's sessions in the API key's workspace. Does not remove membership. */
+    revokeSessions: (memberId: string): Promise<WorkspaceMemberSessionRevocation> =>
+      this.request<WorkspaceMemberSessionRevocation>(`/orgs/integrations/members/${encodeURIComponent(memberId)}/sessions`, {
         method: 'DELETE',
       }),
 
-    setRole: (memberId: string, role_code: string) =>
-      this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}/role`, {
+    /** Replace the member's RooIAM workspace role; downstream app roles remain app-owned. */
+    setRole: (memberId: string, role_code: string): Promise<WorkspaceMemberMutation> =>
+      this.request<WorkspaceMemberMutation>(`/orgs/integrations/members/${encodeURIComponent(memberId)}/role`, {
         method: 'PATCH',
         body: JSON.stringify({ role_code }),
       }),
@@ -428,8 +441,9 @@ export class RooiamServer {
         body: JSON.stringify(profile),
       }),
 
-    remove: (memberId: string) =>
-      this.request(`/orgs/integrations/members/${encodeURIComponent(memberId)}`, {
+    /** Remove membership and revoke this member's sessions in the API key's workspace. */
+    remove: (memberId: string): Promise<WorkspaceMemberMutation> =>
+      this.request<WorkspaceMemberMutation>(`/orgs/integrations/members/${encodeURIComponent(memberId)}`, {
         method: 'DELETE',
       }),
   }

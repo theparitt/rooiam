@@ -108,7 +108,8 @@ Purpose:
 Use it when your server needs to:
 
 - list or search workspace members and invitations, including their outcomes
-- invite, revoke, or inspect workspace members through a workspace API key
+- invite people, change a member's RooIAM workspace role, remove membership, or inspect a member through a workspace API key
+- list or revoke a member's sessions in that workspace
 - manage the signed-in user's own RooIAM sessions with that user's server-held OIDC access token
 
 ```ts
@@ -121,6 +122,9 @@ const workspace = new RooiamServer({
 const sent = await workspace.invites.send('staff@example.com')
 const outcome = await workspace.invites.get(sent.invite_id)
 const activeMember = await workspace.members.byUserId('<stable RooIAM user UUID>')
+await workspace.members.setRole(activeMember.id, 'member')
+await workspace.members.revokeSessions(activeMember.id)
+await workspace.members.remove(activeMember.id) // also revokes that workspace's sessions
 
 // Create only inside your BFF after validating your own opaque app session.
 const self = new RooiamUser({
@@ -134,6 +138,11 @@ The SDK does not grant application roles or create the app session. Match
 provider users by stable `user_id`, require active workspace membership, and
 keep product permissions in the downstream application. Never use the
 workspace key for a user's self-service session routes.
+These member and session methods are general RooIAM APIs for any integrating
+application; they contain no Howllo workspace mapping or product-specific role
+rules. Removing a RooIAM member also revokes their RooIAM sessions for that
+workspace. An integrating application must separately revoke its own sessions
+and application roles for that member.
 
 ## Repository Layout
 

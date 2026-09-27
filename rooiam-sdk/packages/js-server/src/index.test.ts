@@ -125,10 +125,20 @@ describe('members', () => {
   })
 
   it('revokeSessions() sends a DELETE', async () => {
-    const { fetch, calls } = mockFetch(200, {})
-    await new RooiamServer(opts(fetch)).members.revokeSessions('m1')
+    const { fetch, calls } = mockFetch(200, { ok: true, member_id: 'm1', revoked_count: 2 })
+    const result = await new RooiamServer(opts(fetch)).members.revokeSessions('m1')
     expect(calls[0].init.method).toBe('DELETE')
     expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/members/m1/sessions')
+    expect(result.revoked_count).toBe(2)
+  })
+
+  it('remove() withdraws a workspace member using the API-key scope', async () => {
+    const { fetch, calls } = mockFetch(200, { ok: true, message: 'Member removed from workspace.' })
+    const result = await new RooiamServer(opts(fetch)).members.remove('m 1/x')
+    expect(calls[0].init.method).toBe('DELETE')
+    expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/members/m%201%2Fx')
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer wsk_test_key')
+    expect(result.ok).toBe(true)
   })
 
   it('updateProfile() sends a PATCH with the profile body', async () => {
