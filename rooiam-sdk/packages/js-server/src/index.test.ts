@@ -86,6 +86,15 @@ describe('auth + request shape', () => {
 })
 
 describe('members', () => {
+  it('enroll() sends the workspace key and a user token to the token-bound endpoint', async () => {
+    const { fetch, calls } = mockFetch(200, { member_id: 'm1', subject: 'u1', status: 'active', created: true })
+    const result = await new RooiamServer(opts(fetch)).members.enroll('user-token', 'web-client')
+    expect(new URL(calls[0].url).pathname).toBe('/v1/orgs/integrations/members/enroll')
+    expect(calls[0].init.method).toBe('POST')
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ access_token: 'user-token', client_id: 'web-client' })
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer wsk_test_key')
+    expect(result.subject).toBe('u1')
+  })
   it('list() passes query params', async () => {
     const { fetch, calls } = mockFetch(200, { items: [], total: 0 })
     await new RooiamServer(opts(fetch)).members.list({ page: 2, page_size: 50, role: 'admin' })

@@ -22,6 +22,7 @@ use utoipa::{Modify, OpenApi};
     modifiers(&SecurityAddon),
     paths(
         crate::modules::organization::integration::get_workspace_integration_info,
+        crate::modules::organization::integration::enroll_workspace_integration_member,
         // branding
         crate::modules::organization::integration::get_workspace_integration_branding,
         crate::modules::organization::handlers::update_workspace_integration_branding,

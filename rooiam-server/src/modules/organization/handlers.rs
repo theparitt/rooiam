@@ -18,6 +18,7 @@ use crate::modules::organization::integration::{
     get_workspace_integration_auth_config, get_workspace_integration_branding,
     get_workspace_integration_client_detail, get_workspace_integration_client_secret_metadata,
     get_workspace_integration_info, list_workspace_integration_clients,
+    enroll_workspace_integration_member,
     normalize_workspace_api_key_permission_preset, require_workspace_api_key_permission,
     resolve_workspace_api_key_context, workspace_api_key_permissions_for_preset,
     WORKSPACE_KEY_PRESET_WORKSPACE_OWNER,
@@ -7031,6 +7032,10 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     cfg.route(
         "/integrations/members",
         web::get().to(list_workspace_integration_members),
+    );
+    cfg.route(
+        "/integrations/members/enroll",
+        web::post().to(enroll_workspace_integration_member),
     );
     cfg.route(
         "/integrations/members/{member_id}",

@@ -1103,6 +1103,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orgs/integrations/members/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll the holder of a valid OAuth token as an ordinary workspace member.
+         *     The API key cannot choose a user or role, and suspended members stay suspended.
+         */
+        post: operations["enroll_workspace_integration_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/integrations/members/{member_id}": {
         parameters: {
             query?: never;
@@ -1809,6 +1829,10 @@ export interface components {
             page_size: number;
             /** Format: int64 */
             total: number;
+        };
+        WorkspaceMemberEnrollment: {
+            access_token: string;
+            client_id: string;
         };
         WorkspaceMemberPage: {
             items: components["schemas"]["OrganizationMemberView"][];
@@ -4391,6 +4415,40 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    enroll_workspace_integration_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceMemberEnrollment"];
+            };
+        };
+        responses: {
+            /** @description The signed-in user is an active member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

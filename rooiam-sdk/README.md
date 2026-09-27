@@ -110,6 +110,7 @@ Use it when your server needs to:
 - list or search workspace members and invitations, including their outcomes
 - invite people, change a member's RooIAM workspace role, remove membership, or inspect a member through a workspace API key
 - list or revoke a member's sessions in that workspace
+- enroll a signed-in OAuth user as an ordinary member when your app allows self-registration
 - manage the signed-in user's own RooIAM sessions with that user's server-held OIDC access token
 
 ```ts
@@ -121,7 +122,11 @@ const workspace = new RooiamServer({
 })
 const sent = await workspace.invites.send('staff@example.com')
 const outcome = await workspace.invites.get(sent.invite_id)
-const activeMember = await workspace.members.byUserId('<stable RooIAM user UUID>')
+// Only for a customer-facing flow that explicitly allows self-registration.
+// The key needs members.enroll. RooIAM verifies this token, its live session,
+// and that the OAuth client belongs to the key's workspace.
+const enrolled = await workspace.members.enroll(appSession.rooiamAccessToken, '<workspace OAuth client ID>')
+const activeMember = await workspace.members.byUserId(enrolled.subject)
 await workspace.members.setRole(activeMember.id, 'member')
 await workspace.members.revokeSessions(activeMember.id)
 await workspace.members.remove(activeMember.id) // also revokes that workspace's sessions

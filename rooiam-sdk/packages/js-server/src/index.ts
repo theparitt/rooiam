@@ -168,6 +168,13 @@ export interface WorkspaceMember {
   last_seen_at: string | null
 }
 
+export interface WorkspaceMemberEnrollment {
+  member_id: string
+  subject: string
+  status: 'active'
+  created: boolean
+}
+
 export interface WorkspaceInvite {
   id: string
   email: string
@@ -402,6 +409,12 @@ export class RooiamServer {
   }
 
   readonly members = {
+    /** Enroll the holder of a valid, workspace-bound OAuth token as a basic member. */
+    enroll: (accessToken: string, clientId: string): Promise<WorkspaceMemberEnrollment> =>
+      this.request<WorkspaceMemberEnrollment>('/orgs/integrations/members/enroll', {
+        method: 'POST',
+        body: JSON.stringify({ access_token: accessToken, client_id: clientId }),
+      }),
     list: (query: MemberListQuery = {}): Promise<Page<WorkspaceMember>> =>
       this.request<Page<WorkspaceMember>>('/orgs/integrations/members', { query: query as Query }),
 

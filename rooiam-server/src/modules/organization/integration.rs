@@ -13,6 +13,9 @@ use crate::modules::organization::handlers::{
 };
 use crate::shared::error::AppError;
 use crate::shared::request_ip::client_ip_string_from_http_request;
+use crate::modules::oidc::service::OIDCService;
+use crate::modules::session::repository::SessionRepository;
+use crate::shared::runtime_config::load_runtime_app_config;
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub struct WorkspaceIntegrationInfoResponse {
@@ -88,6 +91,7 @@ pub fn workspace_api_key_permissions_for_preset(preset: &str) -> Vec<String> {
             "clients.rotate_secret",
             "clients.delete",
             "members.read",
+            "members.enroll",
             "members.profile_update",
             "members.role_update",
             "members.remove",
@@ -138,6 +142,14 @@ mod permission_tests {
         assert!(workspace_api_key_has_permission(&ctx, "workspace.read"));
         assert!(!workspace_api_key_has_permission(&ctx, "members.remove"));
         assert!(!workspace_api_key_has_permission(&ctx, "clients.delete"));
+    }
+
+    #[test]
+    fn self_enrollment_is_an_owner_key_permission_only() {
+        assert!(workspace_api_key_permissions_for_preset(WORKSPACE_KEY_PRESET_WORKSPACE_OWNER)
+            .iter().any(|permission| permission == "members.enroll"));
+        assert!(!workspace_api_key_permissions_for_preset(WORKSPACE_KEY_PRESET_WORKSPACE_ADMIN)
+            .iter().any(|permission| permission == "members.enroll"));
     }
 }
 
@@ -328,6 +340,97 @@ pub async fn get_workspace_integration_info(
         permission_preset: row.permission_preset,
         allowed_permissions: row.allowed_permissions,
     }))
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+pub struct WorkspaceMemberEnrollment {
+    access_token: String,
+    client_id: String,
+}
+
+/// Enroll the holder of a valid OAuth token as an ordinary workspace member.
+/// The API key cannot choose a user or role, and suspended members stay suspended.
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/integrations/members/enroll",
+    tag = "integrations",
+    security(("workspace_api_key" = [])),
+    request_body = WorkspaceMemberEnrollment,
+    responses((status = 200, description = "The signed-in user is an active member"), (status = 401), (status = 403)),
+)]
+pub async fn enroll_workspace_integration_member(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<WorkspaceMemberEnrollment>,
+) -> Result<HttpResponse, AppError> {
+    let ctx = resolve_workspace_api_key_context(&req, &state).await?;
+    require_workspace_api_key_permission(&ctx, "members.enroll")?;
+    if body.access_token.len() > 8192 || body.access_token.is_empty()
+        || body.client_id.len() > 256 || body.client_id.is_empty()
+    {
+        return Err(AppError::Validation("Invalid enrollment credentials.".into()));
+    }
+    let config = load_runtime_app_config(state.get_ref()).await?;
+    let oidc = OIDCService::new(state.db.clone(), std::sync::Arc::new(config));
+    let claims = oidc.validate_access_token(&body.access_token).await?;
+    if claims.aud != body.client_id {
+        return Err(AppError::Unauthorized);
+    }
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+    let session_id = Uuid::parse_str(&claims.sid).map_err(|_| AppError::Unauthorized)?;
+    let (session, _) = SessionRepository::new(state.db.clone())
+        .get_valid_session(session_id).await?;
+    if session.user_id != user_id {
+        return Err(AppError::Unauthorized);
+    }
+    let client_valid: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM oauth_clients WHERE client_id=$1 AND org_id=$2 AND status='active')",
+    )
+    .bind(&body.client_id)
+    .bind(ctx.org_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to verify enrollment client: {e}")))?;
+    if !client_valid {
+        return Err(AppError::Forbidden("OAuth client is outside this workspace.".into()));
+    }
+
+    let mut tx = state.db.begin().await?;
+    let inserted: Option<Uuid> = sqlx::query_scalar(
+        "INSERT INTO organization_members (organization_id,user_id,status) VALUES ($1,$2,'active') ON CONFLICT (organization_id,user_id) DO NOTHING RETURNING id",
+    )
+    .bind(ctx.org_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let member_id = if let Some(id) = inserted {
+        sqlx::query("INSERT INTO member_roles (member_id,role_id) SELECT $1,id FROM roles WHERE code='member' AND is_system=TRUE LIMIT 1 ON CONFLICT DO NOTHING")
+            .bind(id).execute(&mut *tx).await?;
+        id
+    } else {
+        let existing: (Uuid, String) = sqlx::query_as(
+            "SELECT id,status FROM organization_members WHERE organization_id=$1 AND user_id=$2",
+        )
+        .bind(ctx.org_id).bind(user_id).fetch_one(&mut *tx).await?;
+        if existing.1 != "active" {
+            return Err(AppError::Forbidden("Workspace membership is suspended.".into()));
+        }
+        existing.0
+    };
+    tx.commit().await?;
+    if inserted.is_some() {
+        AuditService::new(state.db.clone()).log(AuditEvent {
+            actor_user_id: Some(user_id), organization_id: Some(ctx.org_id),
+            action: "workspace.member.self_enrolled".into(), target_type: "organization_member".into(),
+            target_id: Some(member_id.to_string()),
+            ip: client_ip_string_from_http_request(&req, state.config.as_ref()),
+            user_agent: req.headers().get("user-agent").and_then(|h| h.to_str().ok()).map(String::from),
+            metadata: serde_json::json!({"client_id": body.client_id}),
+        }).await;
+    }
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "member_id": member_id, "subject": user_id, "status": "active", "created": inserted.is_some()
+    })))
 }
 
 #[utoipa::path(
