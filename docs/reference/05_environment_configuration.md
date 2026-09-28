@@ -75,7 +75,19 @@ This starts the API on `5170`, Mailhog on `8025`, and the MinIO console on `9001
 
 Create an appropriately named public env file with your HTTPS URLs, real credentials, secure cookies, and SMTP configuration. Configure a reverse proxy and deploy the frontends separately. Google/Microsoft credentials are optional if those methods are disabled.
 
-The supplied production Compose file does not forward every setting in the [server variable catalog](./08_env_var_catalog.md). In particular, add explicit environment/volume mappings for RSA signing keys, WebAuthn configuration, cookie-domain settings, or other optional server features when needed. Merely adding them to the env file is insufficient.
+For passkeys on the hosted `app`, `admin`, and API login pages, set one RP ID shared by those hosts and list the exact HTTPS origins. For the RooIAM public deployment:
+
+```dotenv
+ROOIAM_WEBAUTHN_RP_ID=rooiam.com
+ROOIAM_WEBAUTHN_RP_NAME=RooIAM
+ROOIAM_WEBAUTHN_ORIGIN=https://app.rooiam.com
+ROOIAM_WEBAUTHN_EXTRA_ORIGINS=https://admin.rooiam.com,https://api.rooiam.com
+ROOIAM_WEBAUTHN_ALLOW_ANY_PORT=false
+```
+
+The production Compose file forwards these variables only when set. For another domain, replace every host above with your own. A passkey created for a different RP ID cannot be reused after changing it; register a new passkey before removing the old one.
+
+The supplied production Compose file does not forward every setting in the [server variable catalog](./08_env_var_catalog.md). In particular, add explicit environment/volume mappings for RSA signing keys, cookie-domain settings, or other optional server features when needed. Merely adding them to the env file is insufficient.
 
 ## Images and updates
 
