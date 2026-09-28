@@ -32,7 +32,7 @@ type LoginBootstrapResponse = {
     app?: {
         client_id: string
         app_name: string
-        redirect_uri: string
+        redirect_uri?: string
         widget_login_context: string | null
     } | null
 }
@@ -326,16 +326,16 @@ export default function MagicLinkPage()
                 // Do not accept redirect_uri from the page URL or fall back to a portal login
                 // when a requested application is missing or belongs to another workspace.
                 if (clientId) {
-                    if (!data.app || data.app.client_id !== clientId || !/^https?:\/\//.test(data.app.redirect_uri)
+                    if (!data.app || data.app.client_id !== clientId || (!isEmbedded && !/^https?:\/\//.test(data.app.redirect_uri || ''))
                         || (workspaceId && data.workspace?.id !== workspaceId)
                         || (workspaceSlug && data.workspace?.slug !== workspaceSlug)) {
                         throw new Error('This application has no valid registered callback for this workspace.')
                     }
-                    setAppRedirectUri(data.app.redirect_uri)
+                    setAppRedirectUri(isEmbedded ? '' : data.app.redirect_uri || '')
                     if (!isEmbedded) {
                         const me = await fetch(`${API}/identity/me`, { credentials: 'include' })
                         if (cancelled) return
-                        if (me.ok) { window.location.replace(resolveAuthRedirect(data.app.redirect_uri)); return }
+                        if (me.ok) { window.location.replace(resolveAuthRedirect(data.app.redirect_uri || '')); return }
                     }
                 }
 
@@ -423,11 +423,18 @@ export default function MagicLinkPage()
         setError('')
         try
         {
+            if (isEmbedded && !widgetLoginContext) {
+                throw new Error('Login session not ready. Refresh and try again.')
+            }
             const res = await fetch(`${API}/auth/magic-link/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ email, surface: loginSurface }),
+                body: JSON.stringify({
+                    email,
+                    surface: loginSurface,
+                    ...(isEmbedded ? { widget_login_context: widgetLoginContext, widget_embed_origin: window.location.origin } : {}),
+                }),
             })
             const data = await res.json().catch(() => ({}))
             if (!res.ok)
@@ -437,6 +444,7 @@ export default function MagicLinkPage()
                 }
                 throw new Error(data?.error?.message || data?.message || 'Unable to send the magic link right now.')
             }
+            if (data.widget_login_context) setWidgetLoginContext(data.widget_login_context)
             setSent(true)
         } catch (err)
         {
@@ -463,14 +471,13 @@ export default function MagicLinkPage()
 
         let endpoint: string
         if (authMethods.demo_mode) {
-            const qs = new URLSearchParams({
-                provider,
-                redirect_uri: redirectUri,
-                surface: loginSurface,
-            })
+            const qs = new URLSearchParams({ provider, surface: loginSurface })
             if (email.trim()) qs.set('email', email.trim())
             if (isEmbedded && widgetLoginContext) {
                 qs.set('widget_login_context', widgetLoginContext)
+                qs.set('widget_embed_origin', window.location.origin)
+            } else {
+                qs.set('redirect_uri', redirectUri)
             }
             endpoint = `${API}/oauth/demo?${qs.toString()}`
         } else {
@@ -511,7 +518,7 @@ export default function MagicLinkPage()
                 throw new Error(data?.error?.message || 'Invalid MFA code.')
             }
 
-            window.location.href = resolveAuthRedirect(data.redirect_uri || mfaRedirectUri || redirectUri)
+            window.location.href = resolveAuthRedirect(isEmbedded ? data.redirect_uri : data.redirect_uri || mfaRedirectUri || redirectUri)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Invalid MFA code.')
         } finally {
@@ -530,13 +537,18 @@ export default function MagicLinkPage()
             if (!email.trim()) {
                 throw new Error('Enter your email first to use your passkey.')
             }
+            if (isEmbedded && !widgetLoginContext) {
+                throw new Error('Login session not ready. Refresh and try again.')
+            }
 
             if (authMethods.demo_mode && isSeededDemoEmail(email)) {
                 const demoRes = await fetch(`${API}/webauthn/login/demo`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ email, redirect_uri: redirectUri, surface: loginSurface }),
+                    body: JSON.stringify({ email, surface: loginSurface, ...(isEmbedded
+                        ? { widget_login_context: widgetLoginContext, widget_embed_origin: window.location.origin }
+                        : { redirect_uri: redirectUri }) }),
                 })
 
                 const demoData = await demoRes.json().catch(() => ({}))
@@ -548,17 +560,17 @@ export default function MagicLinkPage()
                 }
 
                 if (demoData.mfa_enrollment_required && demoData.challenge_id) {
-                    window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(demoData.challenge_id)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+                    window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(demoData.challenge_id)}${isEmbedded ? '' : `&redirect_uri=${encodeURIComponent(redirectUri)}`}`
                     return
                 }
 
                 if (demoData.mfa_required) {
                     setMfaChallengeId(demoData.challenge_id)
-                    setMfaRedirectUri(redirectUri)
+                    setMfaRedirectUri(isEmbedded ? '' : redirectUri)
                     return
                 }
 
-                window.location.href = resolveAuthRedirect(demoData.redirect_uri || redirectUri)
+                window.location.href = resolveAuthRedirect(isEmbedded ? demoData.redirect_uri : demoData.redirect_uri || redirectUri)
                 return
             }
 
@@ -578,13 +590,16 @@ export default function MagicLinkPage()
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ email, redirect_uri: redirectUri, surface: loginSurface }),
+                body: JSON.stringify({ email, surface: loginSurface, ...(isEmbedded
+                    ? { widget_login_context: widgetLoginContext, widget_embed_origin: window.location.origin }
+                    : { redirect_uri: redirectUri }) }),
             })
 
             const startData = await startRes.json().catch(() => ({}))
             if (!startRes.ok) {
                 throw new Error(startData?.error?.message || 'Failed to start passkey sign-in.')
             }
+            if (startData.widget_login_context) setWidgetLoginContext(startData.widget_login_context)
 
             failureStage = 'browser'
             const publicKey = parseRequestOptionsFromJSON(startData.request_options.publicKey)
@@ -610,17 +625,17 @@ export default function MagicLinkPage()
             }
 
             if (finishData.mfa_enrollment_required && finishData.challenge_id) {
-                window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(finishData.challenge_id)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+                window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(finishData.challenge_id)}${isEmbedded ? '' : `&redirect_uri=${encodeURIComponent(redirectUri)}`}`
                 return
             }
 
             if (finishData.mfa_required) {
                 setMfaChallengeId(finishData.challenge_id)
-                setMfaRedirectUri(redirectUri)
+                setMfaRedirectUri(isEmbedded ? '' : redirectUri)
                 return
             }
 
-            window.location.href = resolveAuthRedirect(finishData.redirect_uri || redirectUri)
+            window.location.href = resolveAuthRedirect(isEmbedded ? finishData.redirect_uri : finishData.redirect_uri || redirectUri)
         } catch (err) {
             if (failureStage === 'browser') {
                 void fetch(`${API}/webauthn/login/report-failure`, {
@@ -645,7 +660,7 @@ export default function MagicLinkPage()
         if (method === 'passkey') return authMethods.passkey_enabled
         if (method === 'google') return authMethods.google_enabled
         if (method === 'microsoft') return authMethods.microsoft_enabled
-        if (method === 'device') return Boolean(authMethods.device_login_enabled && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext))
+        if (method === 'device') return Boolean(authMethods.device_login_enabled && (isEmbedded ? widgetLoginContext : !clientId || appRedirectUri))
         return false
     })
 
@@ -941,7 +956,7 @@ export default function MagicLinkPage()
                                         passkey: authMethods.passkey_enabled,
                                         google: authMethods.google_enabled,
                                         microsoft: authMethods.microsoft_enabled,
-                                        device: Boolean(authMethods.device_login_enabled && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext)),
+                                        device: Boolean(authMethods.device_login_enabled && (isEmbedded ? widgetLoginContext : !clientId || appRedirectUri)),
                                     }}
                                     methodOrder={methodOrder}
                                     interactive={true}
@@ -967,7 +982,7 @@ export default function MagicLinkPage()
                             </>
                         )}
                     </div>
-                    {phoneSelected && authMethods.device_login_enabled && !mfaChallengeId && !sent && (!clientId || appRedirectUri) && (!isEmbedded || widgetLoginContext) && (
+                    {phoneSelected && authMethods.device_login_enabled && !mfaChallengeId && !sent && (isEmbedded ? widgetLoginContext : !clientId || appRedirectUri) && (
                         <DeviceLogin input={{
                             redirect_uri: isEmbedded ? undefined : (clientId
                                 ? redirectUri
@@ -977,11 +992,15 @@ export default function MagicLinkPage()
                             surface: 'tenant',
                         }} onComplete={(result) => {
                             if (result.mfa_enrollment_required && result.challenge_id) {
-                                window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(result.challenge_id)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+                                window.location.href = `/verify?mfa_enrollment_challenge=${encodeURIComponent(result.challenge_id)}`
                             } else if (result.mfa_required && result.challenge_id) {
-                                setMfaChallengeId(result.challenge_id); setMfaRedirectUri(redirectUri)
+                                setMfaChallengeId(result.challenge_id); setMfaRedirectUri(isEmbedded ? '' : redirectUri)
                             } else if (result.ok && result.user_id) {
-                                window.location.href = resolveAuthRedirect(result.redirect_uri || redirectUri)
+                                if (isEmbedded && !result.redirect_uri) {
+                                    setError('The server did not return a sign-in destination.')
+                                } else {
+                                    window.location.href = resolveAuthRedirect(result.redirect_uri || redirectUri)
+                                }
                             } else { setError('Phone approval did not complete sign-in. Start again.') }
                         }} />
                     )}

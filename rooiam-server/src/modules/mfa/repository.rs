@@ -10,11 +10,12 @@ use super::models::{MfaBackupCode, MfaChallenge, UserMfaMethod};
 pub struct MfaRepository {
     pool: PgPool,
     device_completion: Option<crate::modules::device_login::repository::DeviceLoginCompletion>,
+    allow_registered_app_redirect: bool,
 }
 
 impl MfaRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool, device_completion: None }
+        Self { pool, device_completion: None, allow_registered_app_redirect: false }
     }
 
     pub fn with_device_completion(mut self, completion: crate::modules::device_login::repository::DeviceLoginCompletion) -> Self {
@@ -22,13 +23,26 @@ impl MfaRepository {
         self
     }
 
+    pub fn with_registered_app_redirect(mut self) -> Self {
+        self.allow_registered_app_redirect = true;
+        self
+    }
+
     /// A phone login may target a registered application outside the portal's
     /// origin allowlist. Accept only the exact callback bound to this approved
-    /// intent; ordinary MFA callers retain the existing redirect policy.
+    /// intent. Widget and direct app sign-in callers explicitly allow an exact
+    /// callback of an active registered application.
     pub async fn normalize_login_redirect(&self, redirect: Option<String>) -> Result<Option<String>, AppError> {
         match crate::shared::redirect::normalize_redirect_uri(redirect.clone()) {
             Ok(value) => Ok(value),
             Err(error) => {
+                if self.allow_registered_app_redirect {
+                    if let Some(uri) = redirect.as_deref() {
+                        if crate::shared::auth_context::is_registered_oauth_redirect_uri(&self.pool, uri).await? {
+                            return Ok(redirect);
+                        }
+                    }
+                }
                 if let (Some(completion), Some(uri)) = (&self.device_completion, redirect.as_ref()) {
                     let allowed: bool = sqlx::query_scalar(
                         "SELECT EXISTS(SELECT 1 FROM device_login_intents i \

@@ -1399,6 +1399,9 @@ async fn mfa_callback_requires_the_exact_approved_device_intent(pool: sqlx::PgPo
     let completion = DeviceLoginCompletion { public_id: id, nonce_hash: "nonce".into(), user_id: user };
     let plain = MfaRepository::new(pool.clone());
     assert!(plain.normalize_login_redirect(Some(callback.into())).await.is_err());
+    let app_login = plain.clone().with_registered_app_redirect();
+    assert_eq!(app_login.normalize_login_redirect(Some(callback.into())).await.unwrap().as_deref(), Some(callback));
+    assert!(app_login.normalize_login_redirect(Some(format!("{}?changed=1", callback))).await.is_err());
     let bound = plain.clone().with_device_completion(completion.clone());
     assert_eq!(bound.normalize_login_redirect(Some(callback.into())).await.unwrap().as_deref(), Some(callback));
     assert!(bound.normalize_login_redirect(Some(format!("{}?changed=1", callback))).await.is_err());
@@ -1408,6 +1411,7 @@ async fn mfa_callback_requires_the_exact_approved_device_intent(pool: sqlx::PgPo
     assert!(wrong_user.normalize_login_redirect(Some(callback.into())).await.is_err());
     sqlx::query("DELETE FROM oauth_client_redirect_uris WHERE oauth_client_id=$1").bind(client).execute(&pool).await.unwrap();
     assert!(bound.normalize_login_redirect(Some(callback.into())).await.is_err());
+    assert!(app_login.normalize_login_redirect(Some(callback.into())).await.is_err());
 }
 
 #[test]
@@ -1429,6 +1433,11 @@ fn start_context_rejects_unbounded_or_unsupported_values_before_logging() {
     assert!(validate_device_login_start(&input).is_err());
     input.widget_embed_origin = None;
     input.widget_login_context = Some("x".repeat(8193));
+    assert!(validate_device_login_start(&input).is_err());
+    input.widget_login_context = Some("context".into());
+    input.widget_embed_origin = Some("https://app.example".into());
+    assert!(validate_device_login_start(&input).is_ok());
+    input.redirect_uri = Some("https://app.example/callback".into());
     assert!(validate_device_login_start(&input).is_err());
 }
 

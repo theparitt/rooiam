@@ -158,7 +158,8 @@ pub struct LoginBootstrapResponse {
 pub struct LoginBootstrapAppResponse {
     pub client_id: String,
     pub app_name: String,
-    pub redirect_uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
     pub widget_login_context: Option<String>,
 }
 

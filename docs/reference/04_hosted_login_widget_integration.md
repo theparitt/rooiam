@@ -15,6 +15,13 @@ Use the [Hosted Widget Integration Guide](./03_hosted_widget_integration_guide.m
 
 Register the site's origin under `Allowed Embed Origins` and its full callback under `Redirect URIs`. The client must belong to the workspace. Rooiam selects a registered callback matching the embedding origin and creates a 15-minute `widget_login_context`.
 
+The callback stays on the server during sign-in:
+
+1. The embedded widget receives a temporary `widget_login_context` during bootstrap.
+2. Magic link, passkey, phone, and provider start requests send that context and the embed origin, never a callback URL.
+3. Rooiam stores the selected callback in the login transaction and any MFA challenge. It supplies the final navigation destination after sign-in.
+4. The downstream app starts its own standard OIDC authorization request using its registered `redirect_uri`, state, and PKCE values.
+
 Use `workspace_id` or the supported `workspace` slug alternative, plus `client_id`. The SDK's `buildHostedLoginUrl` takes `apiOrigin`, `workspaceId`, and `clientId` and encodes the URL safely.
 
 Do not put `app`, `redirect_uri`, `state`, `code_challenge`, or `code_challenge_method` on `/login-widget`. App display names come from registration. State and PKCE belong to the app's later OIDC authorization flow.

@@ -4,12 +4,9 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use super::repository::AuthRepository;
-use crate::shared::auth_context::is_registered_oauth_redirect_uri;
+use crate::shared::auth_context::resolve_allowed_login_redirect_uri;
 use crate::shared::auth_policy::{ensure_auth_method_allowed, AuthMethod};
 use crate::shared::error::AppError;
-use crate::shared::redirect::{
-    is_first_party_public_redirect_uri, is_relative_redirect_uri, normalize_redirect_uri,
-};
 use crate::shared::runtime_config::effective_issuer_url;
 
 pub struct AuthService {
@@ -29,17 +26,7 @@ impl AuthService {
         surface: Option<String>,
         _redis: &mut redis::aio::ConnectionManager,
     ) -> Result<(), AppError> {
-        let redirect_uri = resolve_magic_link_redirect_uri(&self.repo.pool, redirect_uri).await?;
-        if let Some(uri) = redirect_uri.as_deref() {
-            if !is_relative_redirect_uri(uri)
-                && !is_first_party_public_redirect_uri(uri)
-                && !is_registered_oauth_redirect_uri(&self.repo.pool, uri).await?
-            {
-                return Err(AppError::Validation(
-                    "This app callback is not allowed. Use a registered app redirect_uri or a first-party Rooiam URL.".into(),
-                ));
-            }
-        }
+        let redirect_uri = resolve_allowed_login_redirect_uri(&self.repo.pool, redirect_uri).await?;
         let org = ensure_auth_method_allowed(
             &self.repo.pool,
             redirect_uri.as_deref(),
@@ -160,31 +147,5 @@ impl AuthService {
         // Note: This returns control to the handler, which will logically pass it onto
         // IdentityService to register/find the `User` and SessionService to craft the Session
         Ok(link)
-    }
-}
-
-async fn resolve_magic_link_redirect_uri(
-    pool: &sqlx::PgPool,
-    redirect_uri: Option<String>,
-) -> Result<Option<String>, AppError> {
-    let Some(raw_redirect) = redirect_uri
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(None);
-    };
-
-    match normalize_redirect_uri(Some(raw_redirect.clone())) {
-        Ok(value) => Ok(value),
-        Err(AppError::Validation(message)) if message == "redirect_uri is not allowed" => {
-            if is_registered_oauth_redirect_uri(pool, &raw_redirect).await? {
-                Ok(Some(raw_redirect))
-            } else {
-                Err(AppError::Validation(
-                    "This app callback is not allowed. Use a registered app redirect_uri or a first-party Rooiam URL.".into(),
-                ))
-            }
-        }
-        Err(error) => Err(error),
     }
 }

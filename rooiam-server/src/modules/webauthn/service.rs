@@ -10,12 +10,9 @@ use webauthn_rs::prelude::{
 
 use crate::bootstrap::config::AppConfig;
 use crate::modules::identity::repository::IdentityRepository;
-use crate::shared::auth_context::is_registered_oauth_redirect_uri;
+use crate::shared::auth_context::resolve_allowed_login_redirect_uri;
 use crate::shared::auth_policy::{ensure_auth_method_allowed_for_workspace_id, AuthMethod};
 use crate::shared::error::AppError;
-use crate::shared::redirect::{
-    is_first_party_public_redirect_uri, is_relative_redirect_uri, normalize_redirect_uri,
-};
 
 use super::{
     models::{UserPasskey, WebauthnChallenge},
@@ -231,17 +228,7 @@ impl WebauthnService {
                 AppError::Internal(format!("Failed to start passkey authentication: {}", e))
             })?;
 
-        let redirect_uri = normalize_redirect_uri(redirect_uri)?;
-        if let Some(uri) = redirect_uri.as_deref() {
-            if !is_relative_redirect_uri(uri)
-                && !is_first_party_public_redirect_uri(uri)
-                && !is_registered_oauth_redirect_uri(self.repo.pool(), uri).await?
-            {
-                return Err(AppError::Validation(
-                    "This app callback is not allowed. Use a registered app redirect_uri or a first-party Rooiam URL.".into(),
-                ));
-            }
-        }
+        let redirect_uri = resolve_allowed_login_redirect_uri(self.repo.pool(), redirect_uri).await?;
         let state_json = serde_json::to_value(LoginState {
             authentication: state,
             redirect_uri: redirect_uri.clone(),

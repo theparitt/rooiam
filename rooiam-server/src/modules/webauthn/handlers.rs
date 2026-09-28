@@ -138,6 +138,16 @@ pub async fn start_login(
     state: web::Data<AppState>,
     body: web::Json<StartLoginRequest>,
 ) -> Result<HttpResponse, AppError> {
+    if body.widget_login_context.is_some() && body.redirect_uri.is_some() {
+        return Err(AppError::Validation(
+            "Provide either widget_login_context or redirect_uri, not both.".into(),
+        ));
+    }
+    if body.widget_embed_origin.is_some() && body.widget_login_context.is_none() {
+        return Err(AppError::Validation(
+            "widget_login_context is required for embedded widget login.".into(),
+        ));
+    }
     let widget_login_context =
         match consume_widget_login_context(&state, body.widget_login_context.as_deref()).await {
             Ok(value) => value,
@@ -387,7 +397,7 @@ async fn complete_passkey_login_response(
     success_action: &'static str,
 ) -> Result<HttpResponse, AppError> {
     let mfa_service = MfaService::new(
-        MfaRepository::new(state.db.clone()),
+        MfaRepository::new(state.db.clone()).with_registered_app_redirect(),
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
@@ -598,6 +608,16 @@ async fn demo_login(
     state: web::Data<AppState>,
     body: web::Json<StartLoginRequest>,
 ) -> Result<HttpResponse, AppError> {
+    if body.widget_login_context.is_some() && body.redirect_uri.is_some() {
+        return Err(AppError::Validation(
+            "Provide either widget_login_context or redirect_uri, not both.".into(),
+        ));
+    }
+    if body.widget_embed_origin.is_some() && body.widget_login_context.is_none() {
+        return Err(AppError::Validation(
+            "widget_login_context is required for embedded widget login.".into(),
+        ));
+    }
     // Demo mode skips browser WebAuthn ceremony, but still reuses the normal
     // passkey policy, IP, MFA, and session issuance path below.
     if !demo_seed_enabled() {
@@ -657,6 +677,11 @@ async fn demo_login(
         .as_ref()
         .map(|ctx| ctx.redirect_uri.clone())
         .or_else(|| body.redirect_uri.clone());
+    let effective_redirect_uri = crate::shared::auth_context::resolve_allowed_login_redirect_uri(
+        &state.db,
+        effective_redirect_uri,
+    )
+    .await?;
 
     let normalized_email = body.email.trim().to_ascii_lowercase();
     if !is_seeded_demo_email(&normalized_email) {

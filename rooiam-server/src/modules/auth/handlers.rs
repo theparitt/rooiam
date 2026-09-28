@@ -73,12 +73,10 @@ enum MagicLinkVerificationResult {
     },
     MfaRequired {
         challenge_id: uuid::Uuid,
-        redirect_uri: Option<String>,
         surface: Option<String>,
     },
     MfaEnrollmentRequired {
         challenge_id: uuid::Uuid,
-        redirect_uri: Option<String>,
         surface: Option<String>,
     },
 }
@@ -93,7 +91,6 @@ fn infer_magic_link_surface(surface: Option<&str>) -> &'static str {
 async fn build_login_ui_verify_url(
     state: &web::Data<AppState>,
     _surface: Option<&str>,
-    redirect_uri: Option<&str>,
     mfa_challenge: Option<uuid::Uuid>,
     mfa_enrollment_challenge: Option<uuid::Uuid>,
 ) -> Result<String, AppError> {
@@ -110,12 +107,6 @@ async fn build_login_ui_verify_url(
         }
         if let Some(challenge_id) = mfa_enrollment_challenge {
             query.append_pair("mfa_enrollment_challenge", &challenge_id.to_string());
-        }
-        if let Some(value) = redirect_uri
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            query.append_pair("redirect_uri", value);
         }
     }
 
@@ -753,7 +744,7 @@ async fn complete_magic_link_verification(
     };
 
     let mfa_service = MfaService::new(
-        MfaRepository::new(state.db.clone()),
+        MfaRepository::new(state.db.clone()).with_registered_app_redirect(),
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
@@ -817,7 +808,6 @@ async fn complete_magic_link_verification(
             .await?;
         return Ok(MagicLinkVerificationResult::MfaEnrollmentRequired {
             challenge_id: enrollment.challenge.id,
-            redirect_uri: verified_link.redirect_uri,
             surface: verified_link.surface,
         });
     }
@@ -833,7 +823,6 @@ async fn complete_magic_link_verification(
             .await?;
         return Ok(MagicLinkVerificationResult::MfaRequired {
             challenge_id: challenge.challenge.id,
-            redirect_uri: verified_link.redirect_uri,
             surface: verified_link.surface,
         });
     }
@@ -879,6 +868,17 @@ pub async fn start_magic_link(
     body: web::Json<StartMagicLinkRequest>,
 ) -> Result<HttpResponse, AppError> {
     tracing::info!("Starting magic link flow");
+
+    if body.widget_login_context.is_some() && body.redirect_uri.is_some() {
+        return Err(AppError::Validation(
+            "Provide either widget_login_context or redirect_uri, not both.".into(),
+        ));
+    }
+    if body.widget_embed_origin.is_some() && body.widget_login_context.is_none() {
+        return Err(AppError::Validation(
+            "widget_login_context is required for embedded widget login.".into(),
+        ));
+    }
 
     let ip = client_ip_string_from_http_request(&req, state.config.as_ref());
     let ua = req
@@ -1085,13 +1085,11 @@ async fn verify_magic_link_link(
     match complete_magic_link_verification(&req, &state, &query.token).await? {
         MagicLinkVerificationResult::MfaEnrollmentRequired {
             challenge_id,
-            redirect_uri,
             surface,
         } => {
             let redirect = build_login_ui_verify_url(
                 &state,
                 surface.as_deref(),
-                redirect_uri.as_deref(),
                 None,
                 Some(challenge_id),
             )
@@ -1102,13 +1100,11 @@ async fn verify_magic_link_link(
         }
         MagicLinkVerificationResult::MfaRequired {
             challenge_id,
-            redirect_uri,
             surface,
         } => {
             let redirect = build_login_ui_verify_url(
                 &state,
                 surface.as_deref(),
-                redirect_uri.as_deref(),
                 Some(challenge_id),
                 None,
             )
@@ -1458,7 +1454,6 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
     const params = new URLSearchParams(window.location.search);
     const apiBase = `${window.location.origin}/v1`;
     const previewMode = params.get('preview') === '1';
-    let redirectUri = '';
     const surface = params.get('surface') || 'user';
     const workspaceId = params.get('workspace_id') || '';
     const workspace = params.get('workspace') || params.get('org') || '';
@@ -1633,9 +1628,9 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
           onResize: reportSize,
           onBack: () => { view.classList.add('hidden'); loginViewEl.classList.remove('hidden'); reportSize(); },
           onComplete: result => {
-            if (result.mfa_enrollment_required && result.challenge_id) openVerify({ mfa_enrollment_challenge: result.challenge_id, redirect_uri: result.redirect_uri || redirectUri });
-            else if (result.mfa_required && result.challenge_id) openVerify({ mfa_challenge: result.challenge_id, redirect_uri: result.redirect_uri || redirectUri });
-            else if (result.ok && result.user_id) redirectTop(result.redirect_uri || redirectUri || '/');
+            if (result.mfa_enrollment_required && result.challenge_id) openVerify({ mfa_enrollment_challenge: result.challenge_id });
+            else if (result.mfa_required && result.challenge_id) openVerify({ mfa_challenge: result.challenge_id });
+            else if (result.ok && result.user_id) redirectTop(result.redirect_uri || '/');
             else { setNotice('Phone approval did not complete sign-in. Start again.', 'error'); reportSize(); }
           }
         });
@@ -1800,14 +1795,14 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
             ));
         }
           if (demoData.mfa_enrollment_required && demoData.challenge_id) {
-            openVerify({ mfa_enrollment_challenge: demoData.challenge_id, redirect_uri: redirectUri });
+            openVerify({ mfa_enrollment_challenge: demoData.challenge_id });
             return;
           }
           if (demoData.mfa_required && demoData.challenge_id) {
-            openVerify({ mfa_challenge: demoData.challenge_id, redirect_uri: redirectUri });
+            openVerify({ mfa_challenge: demoData.challenge_id });
             return;
           }
-          redirectTop(demoData.redirect_uri || redirectUri || '/');
+          redirectTop(demoData.redirect_uri || '/');
           return;
         }
 
@@ -1864,14 +1859,14 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
           ));
         }
         if (finishData.mfa_enrollment_required && finishData.challenge_id) {
-          openVerify({ mfa_enrollment_challenge: finishData.challenge_id, redirect_uri: redirectUri });
+          openVerify({ mfa_enrollment_challenge: finishData.challenge_id });
           return;
         }
         if (finishData.mfa_required && finishData.challenge_id) {
-          openVerify({ mfa_challenge: finishData.challenge_id, redirect_uri: redirectUri });
+          openVerify({ mfa_challenge: finishData.challenge_id });
           return;
         }
-        redirectTop(finishData.redirect_uri || redirectUri || '/');
+        redirectTop(finishData.redirect_uri || '/');
       } catch (error) {
         if (failureStage === 'browser') {
           void fetch(`${apiBase}/webauthn/login/report-failure`, {
@@ -1889,6 +1884,9 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
         if (isExpiredWidgetContextMessage(message)) {
           showExpiredWidgetContextNotice();
         } else {
+          if (failureStage === 'start') {
+            await loadBootstrap().catch(() => { widgetLoginContext = ''; });
+          }
           setNotice(stageError('Passkey sign-in failed', message, 'The passkey flow did not complete.'), 'error');
         }
       } finally {
@@ -1913,7 +1911,6 @@ const HOSTED_LOGIN_HTML: &str = r#"<!doctype html>
       const branding = data.workspace || null;
       const auth = data.auth || {};
       const appConfig = data.app || null;
-      redirectUri = appConfig?.redirect_uri || '';
       if (appConfig && appConfig.widget_login_context) {
         widgetLoginContext = appConfig.widget_login_context;
       }
@@ -2155,7 +2152,6 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
   <script>
     const params = new URLSearchParams(window.location.search);
     const apiBase = `${window.location.origin}/v1`;
-    const redirectUri = params.get('redirect_uri') || '';
     const mfaChallenge = params.get('mfa_challenge') || '';
     const enrollmentChallenge = params.get('mfa_enrollment_challenge') || '';
     const titleEl = document.getElementById('title');
@@ -2184,7 +2180,8 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
         data?.error?.message,
         'The server rejected the MFA code.'
       ));
-      window.location.href = data.redirect_uri || redirectUri || '/';
+      if (!data.redirect_uri) throw new Error('The server did not return a sign-in destination.');
+      window.location.href = data.redirect_uri;
     }
     async function loadEnrollment() {
       const res = await fetch(`${apiBase}/mfa/login/enroll/start`, {
@@ -2211,7 +2208,8 @@ const HOSTED_VERIFY_HTML: &str = r#"<!doctype html>
         data?.error?.message,
         'The server could not finish MFA setup.'
       ));
-      window.location.href = data.redirect_uri || redirectUri || '/';
+      if (!data.redirect_uri) throw new Error('The server did not return a sign-in destination.');
+      window.location.href = data.redirect_uri;
     }
     if (mfaChallenge) {
       titleEl.textContent = 'Enter MFA Code';

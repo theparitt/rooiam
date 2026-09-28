@@ -582,7 +582,9 @@ pub async fn get_login_bootstrap(
             Some(LoginBootstrapAppResponse {
                 client_id: row.client_id,
                 app_name: row.app_name,
-                redirect_uri: row.redirect_uri,
+                // The embedded widget receives only a short-lived context token.
+                // Its callback stays server-side until login completes.
+                redirect_uri: requested_embed_origin.is_none().then_some(row.redirect_uri),
                 widget_login_context,
             })
         } else {
@@ -631,4 +633,33 @@ pub async fn get_login_bootstrap(
         workspace,
         app,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{select_login_bootstrap_redirect_uri, LoginBootstrapAppResponse, LoginBootstrapAppRow};
+
+    #[test]
+    fn embedded_bootstrap_selects_only_matching_origin() {
+        let rows = vec![
+            LoginBootstrapAppRow { client_id: "client".into(), app_name: "App".into(), redirect_uri: "https://other.example/callback".into() },
+            LoginBootstrapAppRow { client_id: "client".into(), app_name: "App".into(), redirect_uri: "https://app.example/auth/callback".into() },
+        ];
+        let selected = select_login_bootstrap_redirect_uri("client", Some("https://app.example"), None, rows.clone()).unwrap();
+        assert_eq!(selected.redirect_uri, "https://app.example/auth/callback");
+        assert!(select_login_bootstrap_redirect_uri("client", Some("https://unknown.example"), None, rows).is_none());
+    }
+
+    #[test]
+    fn embedded_bootstrap_does_not_serialize_callback() {
+        let app = LoginBootstrapAppResponse {
+            client_id: "client".into(),
+            app_name: "App".into(),
+            redirect_uri: None,
+            widget_login_context: Some("opaque-context".into()),
+        };
+        let response = serde_json::to_value(app).unwrap();
+        assert!(response.get("redirect_uri").is_none());
+        assert_eq!(response["widget_login_context"], "opaque-context");
+    }
 }

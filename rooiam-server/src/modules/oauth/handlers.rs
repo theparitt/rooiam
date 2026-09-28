@@ -751,7 +751,7 @@ async fn complete_demo_oauth_login(
         }
     }
     let mfa_service = MfaService::new(
-        MfaRepository::new(state.db.clone()),
+        MfaRepository::new(state.db.clone()).with_registered_app_redirect(),
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
@@ -830,8 +830,7 @@ async fn complete_demo_oauth_login(
             .append_pair(
                 "mfa_enrollment_challenge",
                 &enrollment.challenge.id.to_string(),
-            )
-            .append_pair("redirect_uri", redirect_uri);
+            );
         return Ok(HttpResponse::Found()
             .insert_header(("Location", url.to_string()))
             .finish());
@@ -853,8 +852,7 @@ async fn complete_demo_oauth_login(
             .map_err(|e| AppError::Internal(format!("Invalid hosted verify URL: {}", e)))?;
         login_url
             .query_pairs_mut()
-            .append_pair("mfa_challenge", &challenge.challenge.id.to_string())
-            .append_pair("redirect_uri", redirect_uri);
+            .append_pair("mfa_challenge", &challenge.challenge.id.to_string());
 
         AuditService::new(state.db.clone())
             .log(AuditEvent {
@@ -1123,7 +1121,12 @@ pub async fn demo_provider_continue(
             ));
         }
     }
-    let redirect_uri = validate_redirect_uri(&payload.redirect_uri)?;
+    let redirect_uri = crate::shared::auth_context::resolve_allowed_login_redirect_uri(
+        &state.db,
+        Some(payload.redirect_uri.clone()),
+    )
+    .await?
+    .ok_or_else(|| AppError::Validation("redirect_uri is required".into()))?;
     let (_, effective_ip_policy) =
         resolve_effective_ip_policy_for_redirect(&state.db, Some(&redirect_uri)).await?;
     let decision = evaluate_ip_access(
@@ -2438,7 +2441,7 @@ async fn callback(
     .await?;
 
     let mfa_service = MfaService::new(
-        MfaRepository::new(state.db.clone()),
+        MfaRepository::new(state.db.clone()).with_registered_app_redirect(),
         IdentityRepository::new(state.db.clone()),
         state.config.as_ref().clone(),
     );
@@ -2507,8 +2510,7 @@ async fn callback(
             .append_pair(
                 "mfa_enrollment_challenge",
                 &enrollment.challenge.id.to_string(),
-            )
-            .append_pair("redirect_uri", &final_redirect);
+            );
         return Ok(HttpResponse::Found()
             .insert_header(("Location", url.to_string()))
             .finish());
@@ -2544,8 +2546,7 @@ async fn callback(
             .map_err(|e| AppError::Internal(format!("Invalid hosted verify URL: {}", e)))?;
         login_url
             .query_pairs_mut()
-            .append_pair("mfa_challenge", &challenge.challenge.id.to_string())
-            .append_pair("redirect_uri", &final_redirect);
+            .append_pair("mfa_challenge", &challenge.challenge.id.to_string());
 
         AuditService::new(state.db.clone())
             .log(AuditEvent {

@@ -115,6 +115,16 @@ pub struct StartDeviceLoginRequest {
 }
 
 pub(crate) fn validate_device_login_start(input: &StartDeviceLoginRequest) -> Result<(), AppError> {
+    if input.widget_login_context.is_some() && input.redirect_uri.is_some() {
+        return Err(AppError::Validation(
+            "Provide either widget_login_context or redirect_uri, not both.".into(),
+        ));
+    }
+    if input.widget_embed_origin.is_some() && input.widget_login_context.is_none() {
+        return Err(AppError::Validation(
+            "widget_login_context is required for embedded widget login.".into(),
+        ));
+    }
     match input.surface.as_deref() {
         None | Some("tenant") => {},
         Some("admin") => return Err(AppError::Validation("QR device login is not available on the admin console.".into())),
