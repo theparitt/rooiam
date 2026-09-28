@@ -50,6 +50,19 @@ describe('RooiamUser bearer self-service', () => {
     const user = new RooiamUser({ apiBase: 'https://api.example/v1', accessToken: 'expired', fetch })
     await expect(user.sessions.list()).rejects.toMatchObject({ status: 401, message: 'Session expired' })
   })
+
+  it('sends self-service MFA and passkey changes with the user token', async () => {
+    const { fetch, calls } = mockFetch(200, { ok: true })
+    const user = new RooiamUser({ apiBase: 'https://api.example/v1', accessToken: 'self-token', fetch })
+    await user.security.finishTotp('challenge-id', '123456')
+    await user.security.renamePasskey('passkey-id', 'Laptop')
+    expect(calls[0].url).toBe('https://api.example/v1/identity/token/mfa/totp/finish')
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ challenge_id: 'challenge-id', code: '123456' })
+    expect(calls[1].url).toBe('https://api.example/v1/identity/token/passkeys/passkey-id')
+    expect(calls[1].init.method).toBe('PATCH')
+    expect(JSON.parse(calls[1].init.body as string)).toEqual({ name: 'Laptop' })
+    expect((calls[1].init.headers as Record<string, string>).Authorization).toBe('Bearer self-token')
+  })
 })
 
 describe('RooiamServer construction', () => {

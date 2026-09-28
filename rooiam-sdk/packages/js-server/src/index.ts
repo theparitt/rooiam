@@ -57,12 +57,13 @@ export class RooiamUser {
     if (!this.fetchImpl) throw new Error('RooiamUser: no fetch available; pass opts.fetch')
   }
 
-  private async request<T>(path: string, method = 'GET'): Promise<T> {
+  private async request<T>(path: string, method = 'GET', payload?: unknown): Promise<T> {
     const response = await this.fetchImpl(`${this.apiBase}/identity/token${path}`, {
       method,
       redirect: 'error',
       signal: AbortSignal.timeout(10_000),
-      headers: { Authorization: `Bearer ${this.accessToken}` },
+      headers: { Authorization: `Bearer ${this.accessToken}`, ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
     })
     const raw = await response.text()
     let body: unknown
@@ -87,6 +88,22 @@ export class RooiamUser {
       this.request(`/sessions/${encodeURIComponent(sessionId)}`, 'DELETE'),
     revokeOthers: (): Promise<{ ok: boolean; revoked_count: number }> =>
       this.request('/sessions/revoke-all', 'POST'),
+  }
+
+  readonly security = {
+    profile: (): Promise<Record<string, unknown>> => this.request('/me'),
+    capabilities: (): Promise<Record<string, unknown>> => this.request('/security-capabilities'),
+    linkedAccounts: (): Promise<Record<string, unknown>> => this.request('/linked-accounts'),
+    mfa: (): Promise<{ totp_enabled: boolean; backup_codes_remaining: number }> => this.request('/mfa'),
+    startTotp: (): Promise<{ challenge_id: string; secret: string; otpauth_uri: string }> => this.request('/mfa/totp/start', 'POST'),
+    finishTotp: (challengeId: string, code: string): Promise<{ ok: boolean; backup_codes: string[] }> =>
+      this.request('/mfa/totp/finish', 'POST', { challenge_id: challengeId, code }),
+    regenerateRecoveryCodes: (): Promise<{ codes: string[]; remaining: number }> => this.request('/mfa/recovery-codes/regenerate', 'POST'),
+    disableTotp: (): Promise<{ ok: boolean; disabled: boolean }> => this.request('/mfa/totp', 'DELETE'),
+    passkeys: (): Promise<Array<{ id: string; name: string; created_at: string; last_used_at: string | null }>> => this.request('/passkeys'),
+    renamePasskey: (id: string, name: string): Promise<{ ok: boolean; name: string }> =>
+      this.request(`/passkeys/${encodeURIComponent(id)}`, 'PATCH', { name }),
+    deletePasskey: (id: string): Promise<{ ok: boolean }> => this.request(`/passkeys/${encodeURIComponent(id)}`, 'DELETE'),
   }
 }
 
