@@ -72,10 +72,10 @@ rooiam-examples/ Integration examples (widget / account / backend)
 `rooiam-server` is the Docker service. From the repository root, build it with your production environment file:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.docker.public.prod build server
+./rooiam-server/docker-build.sh
 ```
 
-This command builds an image on the current Docker host. The operator then updates the running server on the production host and checks `/health`; building alone does not change the running API.
+Pass Compose build options after the script name, for example `./rooiam-server/docker-build.sh --no-cache`. The script uses `.env.docker.public.prod` and records the Git revision and UTC build time in the image. It builds an image on the current Docker host; it does not restart the production server. After deploying the image, check `/health` to confirm its revision.
 
 The web sites are separate Cloudflare Pages projects. Run `npm run deploy` inside each directory; they do not need a Docker image:
 
